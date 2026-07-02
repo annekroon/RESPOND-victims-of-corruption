@@ -35,6 +35,12 @@ ANNOTATED_FILE = "outputs/sample_with_llm_suggestions.csv"
 LLM_ENDPOINT = "http://localhost:11434/api/chat"
 LLM_MODEL_NAME = "llama3:70b"
 
+# UvA LLM proxy settings for translation and annotation suggestions.
+# Keep the key in your shell environment or ignored config_local.py.
+LLMPROXY_BASE_URL = os.environ.get("LLMPROXY_BASE_URL", "https://llmproxy.uva.nl/v1")
+LLMPROXY_API_KEY = os.environ.get("LLMPROXY_API_KEY")
+LLMPROXY_MODEL = os.environ.get("LLMPROXY_MODEL", "gpt-4o-mini")
+
 ANNOTATION_PATH = "~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/"
 ANNOTATION_FILE = "classified_pol_corruption_validation_gabriele.csv"
 ANNOTATION_ENCODING = "latin1"
@@ -47,12 +53,13 @@ USER = os.environ.get("RD_USER", "")
 APP_PASSWORD = os.environ.get("RD_PASS")
 
 try:
-    from config_local import APP_PASSWORD as LOCAL_APP_PASSWORD
-    from config_local import BASE_URL as LOCAL_BASE_URL
-    from config_local import USER as LOCAL_USER
+    import config_local as _local_config
 
-    BASE_URL = LOCAL_BASE_URL or BASE_URL
-    USER = LOCAL_USER or USER
-    APP_PASSWORD = LOCAL_APP_PASSWORD or APP_PASSWORD
+    BASE_URL = getattr(_local_config, "BASE_URL", BASE_URL) or BASE_URL
+    USER = getattr(_local_config, "USER", USER) or USER
+    APP_PASSWORD = getattr(_local_config, "APP_PASSWORD", APP_PASSWORD) or APP_PASSWORD
+    LLMPROXY_BASE_URL = getattr(_local_config, "LLMPROXY_BASE_URL", LLMPROXY_BASE_URL) or LLMPROXY_BASE_URL
+    LLMPROXY_API_KEY = getattr(_local_config, "LLMPROXY_API_KEY", LLMPROXY_API_KEY) or LLMPROXY_API_KEY
+    LLMPROXY_MODEL = getattr(_local_config, "LLMPROXY_MODEL", LLMPROXY_MODEL) or LLMPROXY_MODEL
 except ImportError:
     pass
