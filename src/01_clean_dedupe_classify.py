@@ -17,8 +17,9 @@ pd = None
 tqdm = None
 
 
+REPO_DIR = Path(__file__).resolve().parents[1]
 PROJECT_DIR = Path("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)").expanduser()
-OUTPUT_DIR = PROJECT_DIR / "output" / "political_corruption_pipeline"
+OUTPUT_DIR = REPO_DIR / "output" / "political_corruption_pipeline"
 
 COUNTRIES = [
     "Bulgaria",
@@ -425,7 +426,15 @@ def parse_args() -> argparse.Namespace:
         description="Clean, deduplicate, classify, and subset RESPOND news for political corruption."
     )
     parser.add_argument("--project-dir", type=Path, default=PROJECT_DIR)
-    parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=OUTPUT_DIR,
+        help=(
+            "Where to write cleaned/classified files. Defaults to a local repo "
+            "output folder to avoid WebDAV mount write errors."
+        ),
+    )
     parser.add_argument("--countries", nargs="+", default=COUNTRIES)
     parser.add_argument("--min-words", type=int, default=80)
     parser.add_argument("--batch-save-every", type=int, default=250)
@@ -439,8 +448,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     project_dir = args.project_dir.expanduser()
-    output_dir = args.output_dir.expanduser() if args.output_dir else project_dir / "output" / "political_corruption_pipeline"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = args.output_dir.expanduser()
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise OSError(
+            f"Could not create output directory {output_dir}. If this is on the "
+            "WebDAV mount, write locally instead, for example: "
+            "--output-dir ./output/political_corruption_pipeline"
+        ) from exc
 
     countries = args.countries
     input_files = build_input_files(project_dir)
