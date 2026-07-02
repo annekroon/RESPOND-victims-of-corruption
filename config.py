@@ -39,7 +39,7 @@ LLM_MODEL_NAME = "llama3:70b"
 # Keep the key in your shell environment or ignored config_local.py.
 LLMPROXY_BASE_URL = os.environ.get("LLMPROXY_BASE_URL", "https://llmproxy.uva.nl/v1")
 LLMPROXY_API_KEY = os.environ.get("LLMPROXY_API_KEY")
-LLMPROXY_MODEL = os.environ.get("LLMPROXY_MODEL", "gpt-4o-mini")
+LLMPROXY_MODEL = os.environ.get("LLMPROXY_MODEL", "gpt-5.1")
 
 ANNOTATION_PATH = "~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/"
 ANNOTATION_FILE = "classified_pol_corruption_validation_gabriele.csv"
