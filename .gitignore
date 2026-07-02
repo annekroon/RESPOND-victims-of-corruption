@@ -13,6 +13,8 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.sample
+config.local.py
+config_local.py
 
 # Logs
 *.log
