@@ -22,11 +22,11 @@ DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline"
 )
-DEFAULT_ACTIVE_LEARNING_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
+DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "classifier_comparison"
 DEFAULT_SILVER_LABEL_PATHS = [
-    DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_with_llm_suggestions.csv",
-    DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
 ]
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         nargs="+",
         default=DEFAULT_SILVER_LABEL_PATHS,
-        help="LLM-labelled active-learning CSV files.",
+        help="LLM-labelled silver-label CSV files.",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)

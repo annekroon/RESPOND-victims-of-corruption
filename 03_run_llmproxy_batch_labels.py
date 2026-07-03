@@ -1,8 +1,8 @@
-"""Run LLM proxy translations and annotation suggestions for active-learning rows.
+"""Run LLM proxy translations and annotation suggestions for silver-label rows.
 
 Example:
     nohup python3 -u 03_run_llmproxy_batch_labels.py \
-      > llm_active_learning.log 2>&1 &
+      > llm_silver_label.log 2>&1 &
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from pathlib import Path
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
-DEFAULT_AL_DIR = Path(
+DEFAULT_SILVER_LABEL_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline/active_learning"
 )
-DEFAULT_INPUT_PATH = DEFAULT_AL_DIR / "active_learning_batch_for_annotation.csv"
-DEFAULT_OUTPUT_PATH = DEFAULT_AL_DIR / "active_learning_batch_with_llm_suggestions.csv"
+DEFAULT_INPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_for_annotation.csv"
+DEFAULT_OUTPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv"
 
 
 def build_annotation_prompt(article_text: str) -> str:
@@ -130,7 +130,7 @@ def write_checkpoint(existing, new_rows: list[dict], output_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Translate and add LLM label suggestions to active-learning rows."
+        description="Translate and add LLM label suggestions to silver-label rows."
     )
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
@@ -165,7 +165,7 @@ def main() -> None:
     print(f"Input:  {args.input}", flush=True)
     print(f"Output: {args.output}", flush=True)
     print(f"Model:  {args.model}", flush=True)
-    print(f"Loaded {len(al_df):,} active-learning rows.", flush=True)
+    print(f"Loaded {len(al_df):,} silver-label rows.", flush=True)
 
     if args.output.exists():
         existing = pd.read_csv(args.output)

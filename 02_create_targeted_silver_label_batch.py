@@ -1,17 +1,17 @@
-"""Create a second targeted active-learning batch from cleaned country files.
+"""Create a second targeted silver-label batch from cleaned country files.
 
 The script trains a classifier on LLM-generated silver labels, scores candidate
 articles from the cleaned corpus, and samples a new batch focused on weaker
 countries and articles near the selected decision threshold.
 
 Example:
-    python3 02_create_targeted_active_learning_batch.py
+    python3 02_create_targeted_silver_label_batch.py
 
 Then label the resulting batch with:
     nohup python3 -u 03_run_llmproxy_batch_labels.py \
       --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
       --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
-      > llm_active_learning_batch_2.log 2>&1 &
+      > llm_silver_label_batch_2.log 2>&1 &
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline"
 )
-DEFAULT_ACTIVE_LEARNING_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
-DEFAULT_SILVER_LABEL_PATH = DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_with_llm_suggestions.csv"
-DEFAULT_OUTPUT_PATH = DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_2_for_annotation.csv"
+DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
+DEFAULT_SILVER_LABEL_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv"
+DEFAULT_OUTPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_for_annotation.csv"
 
 DEFAULT_COUNTRY_TARGETS = {
     "Sweden": 180,
@@ -98,7 +98,7 @@ def parse_country_targets(text: str | None) -> dict[str, int]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a targeted active-learning batch.")
+    parser = argparse.ArgumentParser(description="Create a targeted silver-label batch.")
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
     parser.add_argument("--silver-labels", type=Path, default=DEFAULT_SILVER_LABEL_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
@@ -344,7 +344,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     batch[output_cols].to_csv(args.output, index=False)
 
-    print(f"\nSaved targeted active-learning batch: {args.output}", flush=True)
+    print(f"\nSaved targeted silver-label batch: {args.output}", flush=True)
     print(f"Rows: {len(batch):,}", flush=True)
     print("\nBy country:", flush=True)
     print(batch["country"].value_counts(), flush=True)

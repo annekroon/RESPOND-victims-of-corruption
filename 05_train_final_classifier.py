@@ -1,6 +1,6 @@
 """Train and apply a political-corruption classifier from LLM silver labels.
 
-This script reads one or more LLM-labelled active-learning CSVs, trains an
+This script reads one or more LLM-labelled silver-label CSVs, trains an
 embedding classifier on those silver labels, validates against the human-labelled
 set, and can optionally classify the cleaned country files.
 
@@ -22,11 +22,11 @@ DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline"
 )
-DEFAULT_ACTIVE_LEARNING_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
+DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
 DEFAULT_SILVER_LABEL_PATHS = [
-    DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_with_llm_suggestions.csv",
-    DEFAULT_ACTIVE_LEARNING_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
 ]
 DEFAULT_COUNTRIES = [
     "Bulgaria",
@@ -105,7 +105,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         nargs="+",
         default=DEFAULT_SILVER_LABEL_PATHS,
-        help="One or more LLM-labelled active-learning CSV files.",
+        help="One or more LLM-labelled silver-label CSV files.",
     )
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

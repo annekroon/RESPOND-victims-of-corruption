@@ -4,7 +4,7 @@ This repository contains a reproducible workflow for building a political-corrup
 
 The final recommended classifier is:
 
-- **Training labels:** LLM-generated silver labels from active-learning batches 1 and 2
+- **Training labels:** LLM-generated silver labels from batches 1 and 2
 - **Model:** multilingual sentence embeddings + balanced logistic regression
 - **Embedding model:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
 - **Decision threshold:** `0.30`
@@ -45,8 +45,8 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | Step | File | Run when |
 |---|---|---|
 | 1 | `01_load_clean_dedupe_data.ipynb` | Clean/dedupe raw corpus and create denominator tables |
-| 2 | `02_create_targeted_active_learning_batch.py` | Create a targeted active-learning CSV |
-| 3 | `03_run_llmproxy_batch_labels.py` | Label an active-learning CSV with the UvA LLM proxy |
+| 2 | `02_create_targeted_silver_label_batch.py` | Create a targeted silver-label CSV |
+| 3 | `03_run_llmproxy_batch_labels.py` | Label a silver-label CSV with the UvA LLM proxy |
 | 4 | `04_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 
@@ -83,12 +83,12 @@ denominator_country_week.csv
 
 ### 2. Create LLM Silver Labels
 
-Batch 1 was generated from the first active-learning sample. Batch 2 was generated from a targeted follow-up sample focused on weaker countries and boundary cases.
+Batch 1 was the initial LLM-labelled sample. Batch 2 was a targeted follow-up sample focused on weaker countries and boundary cases.
 
 To create a targeted follow-up batch:
 
 ```bash
-python3 02_create_targeted_active_learning_batch.py \
+python3 02_create_targeted_silver_label_batch.py \
   --country-targets Sweden:540,United_Kingdom:540,Ukraine:540,Netherlands:420,Serbia:360,Hungary:180,Bulgaria:180,Italy:120,France:120
 ```
 
@@ -99,13 +99,13 @@ nohup python3 -u 03_run_llmproxy_batch_labels.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
   --max-chars 3000 \
-  > llm_active_learning_batch_2.log 2>&1 &
+  > llm_silver_label_batch_2.log 2>&1 &
 ```
 
 Monitor with:
 
 ```bash
-tail -f llm_active_learning_batch_2.log
+tail -f llm_silver_label_batch_2.log
 ```
 
 ### 3. Optional Manual Review Interface
@@ -191,4 +191,4 @@ Important files:
 
 Suggested concise wording:
 
-> We trained a multilingual sentence-embedding classifier using LLM-generated silver labels from two active-learning batches. The classifier used `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` embeddings and a class-balanced logistic regression model. Candidate models were compared against a held-out manually annotated validation set of 452 articles. The final model was trained on the combined silver-label batches and used a decision threshold of 0.30, selected from validation-set threshold sweeps to balance precision and recall for the political-corruption class.
+> We trained a multilingual sentence-embedding classifier using LLM-generated silver labels from two targeted silver-label batches. The classifier used `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` embeddings and a class-balanced logistic regression model. Candidate models were compared against a held-out manually annotated validation set of 452 articles. The final model was trained on the combined silver-label batches and used a decision threshold of 0.30, selected from validation-set threshold sweeps to balance precision and recall for the political-corruption class.

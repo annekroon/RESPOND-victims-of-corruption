@@ -1,4 +1,4 @@
-"""Streamlit interface for manually reviewing active-learning annotations.
+"""Streamlit interface for manually reviewing silver-label annotations.
 
 Run on the remote machine with:
     streamlit run miscellaneous/annotation_interface.py --server.address 0.0.0.0 --server.port 8501
@@ -13,12 +13,12 @@ import pandas as pd
 import streamlit as st
 
 
-DEFAULT_AL_DIR = Path(
+DEFAULT_SILVER_LABEL_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline/active_learning"
 )
-DEFAULT_INPUT_PATH = DEFAULT_AL_DIR / "active_learning_batch_with_llm_suggestions.csv"
-DEFAULT_OUTPUT_PATH = DEFAULT_AL_DIR / "active_learning_batch_reviewed.csv"
+DEFAULT_INPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv"
+DEFAULT_OUTPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_reviewed.csv"
 
 INPUT_PATH = Path(os.environ.get("RESPOND_ANNOTATION_INPUT", DEFAULT_INPUT_PATH))
 OUTPUT_PATH = Path(os.environ.get("RESPOND_ANNOTATION_OUTPUT", DEFAULT_OUTPUT_PATH))
@@ -100,7 +100,7 @@ def apply_filters(data: pd.DataFrame) -> pd.DataFrame:
     st.session_state.current_status_filter = status
     selected_countries = st.sidebar.multiselect("Countries", countries, default=countries)
     selected_llm_labels = st.sidebar.multiselect("LLM suggestions", llm_labels, default=llm_labels)
-    selected_buckets = st.sidebar.multiselect("Active-learning buckets", buckets, default=buckets)
+    selected_buckets = st.sidebar.multiselect("Silver-label buckets", buckets, default=buckets)
 
     if selected_countries and "country" in filtered.columns:
         filtered = filtered[filtered["country"].astype(str).isin(selected_countries)]
@@ -149,7 +149,7 @@ total_rows = len(data)
 reviewed_rows = int(reviewed_mask(data).sum())
 
 st.sidebar.title("RESPOND Review")
-st.sidebar.caption("Manual validation of LLM-assisted active-learning labels.")
+st.sidebar.caption("Manual validation of LLM-assisted silver labels.")
 st.sidebar.metric("Reviewed", f"{reviewed_rows:,} / {total_rows:,}")
 st.sidebar.progress(reviewed_rows / total_rows if total_rows else 0)
 
