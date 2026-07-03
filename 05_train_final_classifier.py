@@ -96,6 +96,13 @@ def normalize_text(text):
     return text.strip()
 
 
+def format_texts_for_embedding(texts, embedding_model):
+    """Apply model-family-specific text formatting when needed."""
+    if "multilingual-e5" in embedding_model.lower():
+        return [f"passage: {text}" for text in texts]
+    return texts
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train a silver-label classifier and optionally classify the cleaned corpus."
@@ -243,7 +250,7 @@ def cleaned_country_path(pipeline_dir: Path, country: str) -> Path:
     return pipeline_dir / f"{country}_cleaned_deduped.csv.gz"
 
 
-def score_texts(texts, embedder, clf, batch_size: int):
+def score_texts(texts, embedder, clf, embedding_model: str, batch_size: int):
     import numpy as np
     from tqdm.auto import tqdm
 
@@ -251,7 +258,7 @@ def score_texts(texts, embedder, clf, batch_size: int):
     starts = range(0, len(texts), batch_size * 8)
     for start in tqdm(list(starts), desc="Embedding + scoring"):
         end = min(start + batch_size * 8, len(texts))
-        batch_texts = texts[start:end]
+        batch_texts = format_texts_for_embedding(texts[start:end], embedding_model)
         embeddings = embedder.encode(
             batch_texts,
             batch_size=batch_size,
@@ -262,7 +269,16 @@ def score_texts(texts, embedder, clf, batch_size: int):
     return np.concatenate(all_probs) if all_probs else np.array([])
 
 
-def score_country_file(country: str, path: Path, output_dir: Path, embedder, clf, threshold: float, batch_size: int):
+def score_country_file(
+    country: str,
+    path: Path,
+    output_dir: Path,
+    embedder,
+    clf,
+    embedding_model: str,
+    threshold: float,
+    batch_size: int,
+):
     import pandas as pd
 
     if not path.exists():
@@ -272,7 +288,7 @@ def score_country_file(country: str, path: Path, output_dir: Path, embedder, clf
     print(f"\nScoring {country}: {path}", flush=True)
     data = pd.read_csv(path)
     data["model_text"] = data["article_text"].fillna("").astype(str).map(normalize_text)
-    probs = score_texts(data["model_text"].tolist(), embedder, clf, batch_size)
+    probs = score_texts(data["model_text"].tolist(), embedder, clf, embedding_model, batch_size)
 
     data["prob_political_corruption"] = probs
     data["pred_political_corruption"] = (data["prob_political_corruption"] >= threshold).astype(int)
@@ -310,6 +326,7 @@ def score_corpus(args, embedder, clf, threshold: float) -> None:
             output_dir=classified_dir,
             embedder=embedder,
             clf=clf,
+            embedding_model=args.embedding_model,
             threshold=threshold,
             batch_size=args.batch_size,
         )
@@ -368,13 +385,13 @@ def main() -> None:
 
     embedder = SentenceTransformer(args.embedding_model)
     x_train = embedder.encode(
-        silver_df["model_text"].tolist(),
+        format_texts_for_embedding(silver_df["model_text"].tolist(), args.embedding_model),
         batch_size=args.batch_size,
         show_progress_bar=True,
         normalize_embeddings=True,
     )
     x_valid = embedder.encode(
-        valid_df["model_text"].tolist(),
+        format_texts_for_embedding(valid_df["model_text"].tolist(), args.embedding_model),
         batch_size=args.batch_size,
         show_progress_bar=True,
         normalize_embeddings=True,
