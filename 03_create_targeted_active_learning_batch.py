@@ -5,10 +5,10 @@ articles from the cleaned corpus, and samples a new batch focused on weaker
 countries and articles near the selected decision threshold.
 
 Example:
-    python3 create_targeted_active_learning_batch.py
+    python3 03_create_targeted_active_learning_batch.py
 
 Then label the resulting batch with:
-    nohup python3 -u run_llmproxy_active_learning_suggestions.py \
+    nohup python3 -u 04_run_llmproxy_active_learning_suggestions.py \
       --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
       --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
       > llm_active_learning_batch_2.log 2>&1 &

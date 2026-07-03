@@ -34,18 +34,28 @@ pip3 install --user -r requirements.txt
 
 Secrets should go in ignored `config_local.py`, not in `config.py`.
 
-## Repository Map
+## Main Execution Order
+
+Run the numbered files in this order when rebuilding the workflow. Files without numbers are shared helpers and are not meant to be run directly.
+
+| Step | File | Run when |
+|---|---|---|
+| 1 | `01_load_clean_dedupe_data.ipynb` | Clean/dedupe raw corpus and create denominator tables |
+| 2 | `02_llmproxy_active_learning_suggestions.ipynb` | Optional notebook version of LLM labelling; mostly superseded by step 4 script |
+| 3 | `03_create_targeted_active_learning_batch.py` | Create a targeted active-learning CSV |
+| 4 | `04_run_llmproxy_active_learning_suggestions.py` | Label an active-learning CSV with the UvA LLM proxy |
+| 5 | `05_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
+| 6 | `06_train_silver_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
+
+## Shared Helper Files
 
 | File | Purpose |
 |---|---|
 | `config.py` | Shared paths and non-secret defaults |
 | `dataloader.py` | Loads raw and annotated data from Research Drive/WebDAV |
-| `load_respond_data.ipynb` | Clean/dedupe corpus, create denominators, initial model checks |
-| `run_llmproxy_active_learning_suggestions.py` | Runs LLM translation and label suggestions for an active-learning batch |
-| `annotation_interface.py` | Streamlit interface for optional manual review of LLM-labelled rows |
-| `create_targeted_active_learning_batch.py` | Builds targeted follow-up active-learning batches |
-| `compare_classifier_models.py` | Compares candidate classifiers against the human validation set |
-| `train_silver_classifier.py` | Trains the final silver-label classifier and optionally scores the full cleaned corpus |
+| `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV I/O helpers |
+| `requirements.txt` | Python dependencies |
+| `miscellaneous/annotation_interface.py` | Optional Streamlit annotation UI; not needed for the final scripted workflow |
 
 ## Workflow
 
@@ -54,7 +64,7 @@ Secrets should go in ignored `config_local.py`, not in `config.py`.
 Run the notebook:
 
 ```text
-load_respond_data.ipynb
+01_load_clean_dedupe_data.ipynb
 ```
 
 This creates cleaned compressed files such as:
@@ -74,14 +84,14 @@ Batch 1 was generated from the first active-learning sample. Batch 2 was generat
 To create a targeted follow-up batch:
 
 ```bash
-python3 create_targeted_active_learning_batch.py \
+python3 03_create_targeted_active_learning_batch.py \
   --country-targets Sweden:540,United_Kingdom:540,Ukraine:540,Netherlands:420,Serbia:360,Hungary:180,Bulgaria:180,Italy:120,France:120
 ```
 
 To label that batch with the UvA LLM proxy:
 
 ```bash
-nohup python3 -u run_llmproxy_active_learning_suggestions.py \
+nohup python3 -u 04_run_llmproxy_active_learning_suggestions.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
   --max-chars 3000 \
@@ -99,7 +109,7 @@ tail -f llm_active_learning_batch_2.log
 Start Streamlit on `annecuda`:
 
 ```bash
-streamlit run annotation_interface.py --server.address 0.0.0.0 --server.port 8501
+streamlit run miscellaneous/annotation_interface.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 From your laptop, open an SSH tunnel:
@@ -119,7 +129,7 @@ http://127.0.0.1:8501
 Run:
 
 ```bash
-python3 compare_classifier_models.py
+python3 05_compare_classifier_models.py
 ```
 
 This writes:
@@ -144,7 +154,7 @@ The current comparison supports using the combined silver batches for the final 
 Train on both silver batches and classify every cleaned country file:
 
 ```bash
-nohup python3 -u train_silver_classifier.py \
+nohup python3 -u 06_train_silver_classifier.py \
   --threshold 0.30 \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &

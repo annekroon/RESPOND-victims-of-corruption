@@ -1,7 +1,7 @@
 """Streamlit interface for manually reviewing active-learning annotations.
 
 Run on the remote machine with:
-    streamlit run annotation_interface.py --server.address 0.0.0.0 --server.port 8501
+    streamlit run miscellaneous/annotation_interface.py --server.address 0.0.0.0 --server.port 8501
 """
 
 from __future__ import annotations
