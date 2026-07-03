@@ -7,7 +7,7 @@ set, and can optionally classify the cleaned country files.
 Examples:
     python3 05_train_final_classifier.py
 
-    nohup python3 -u 05_train_final_classifier.py --score-corpus --threshold 0.30 \
+    nohup python3 -u 05_train_final_classifier.py --score-corpus \
       > silver_classifier_scoring.log 2>&1 &
 """
 
@@ -39,7 +39,9 @@ DEFAULT_COUNTRIES = [
     "Ukraine",
     "United_Kingdom",
 ]
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
+DEFAULT_THRESHOLD = 0.40
+DEFAULT_BATCH_SIZE = 32
 
 SILVER_LABEL_MAP = {
     "Yes": 1,
@@ -117,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
-    parser.add_argument("--threshold", type=float, default=0.30)
+    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument(
         "--select-threshold",
         action="store_true",
@@ -125,7 +127,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--score-corpus", action="store_true")
     parser.add_argument("--countries", nargs="+", default=DEFAULT_COUNTRIES)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--random-state", type=int, default=42)
     return parser.parse_args()
 

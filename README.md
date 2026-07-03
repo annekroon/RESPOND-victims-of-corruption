@@ -12,10 +12,10 @@ The final recommended classifier is:
 
 - **Training labels:** LLM-generated silver labels from batches 1 and 2
 - **Model:** multilingual sentence embeddings + balanced logistic regression
-- **Embedding model:** `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
-- **Decision threshold:** `0.30`
+- **Embedding model:** `intfloat/multilingual-e5-large`
+- **Decision threshold:** `0.40`
 - **Validation set:** 452 manually labelled articles
-- **Validation performance:** political-corruption F1 about `0.667`
+- **Validation performance:** political-corruption precision `0.766`, recall `0.792`, F1 `0.779`, accuracy `0.881`
 
 The cleaned corpus and derived outputs are stored on `annecuda` under:
 
@@ -210,11 +210,39 @@ PY
 
 ### 5. Final Full-Corpus Classification
 
-Train on both silver batches and classify every cleaned country file:
+The final decision from the comparison notebook is:
+
+| Decision | Value |
+|---|---|
+| Training data | Combined silver-label batches 1 and 2 |
+| Classifier | Balanced logistic regression |
+| Embeddings | `intfloat/multilingual-e5-large` |
+| Threshold | `0.40` |
+| Validation precision | `0.766` |
+| Validation recall | `0.792` |
+| Validation political-corruption F1 | `0.779` |
+| Validation accuracy | `0.881` |
+
+Run a small end-to-end test first:
 
 ```bash
+TMPDIR=/home/akroon/data/1t_storage/tmp \
+HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
+TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
+CUDA_VISIBLE_DEVICES=1 \
+python3 05_train_final_classifier.py \
+  --score-corpus \
+  --countries Serbia
+```
+
+Then classify every cleaned country file:
+
+```bash
+TMPDIR=/home/akroon/data/1t_storage/tmp \
+HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
+TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
+CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u 05_train_final_classifier.py \
-  --threshold 0.30 \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &
 ```
@@ -246,4 +274,4 @@ Important files:
 
 Suggested concise wording:
 
-> We trained a multilingual sentence-embedding classifier using LLM-generated silver labels from two targeted silver-label batches. The classifier used `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` embeddings and a class-balanced logistic regression model. Candidate models were compared against a held-out manually annotated validation set of 452 articles. The final model was trained on the combined silver-label batches and used a decision threshold of 0.30, selected from validation-set threshold sweeps to balance precision and recall for the political-corruption class.
+> We trained a multilingual sentence-embedding classifier using LLM-generated silver labels from two targeted silver-label batches. The classifier used `intfloat/multilingual-e5-large` embeddings and a class-balanced logistic regression model. Candidate models were compared against a held-out manually annotated validation set of 452 articles. The final model was trained on the combined silver-label batches and used a decision threshold of 0.40, selected from validation-set threshold sweeps to balance precision and recall for the political-corruption class. On the validation set, the final classifier achieved precision = 0.766, recall = 0.792, and F1 = 0.779 for the political-corruption class.
