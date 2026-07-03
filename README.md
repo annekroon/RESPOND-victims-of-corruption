@@ -2,6 +2,12 @@
 
 This repository contains a reproducible workflow for building a political-corruption classifier for the RESPOND multilingual news corpus.
 
+The code used to collect the raw news data is maintained in the related RESPOND media repository:
+
+```text
+https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collection/news-api
+```
+
 The final recommended classifier is:
 
 - **Training labels:** LLM-generated silver labels from batches 1 and 2
