@@ -194,6 +194,14 @@ Then open the inspection notebook:
 
 The notebook does not redo the expensive model comparison. It reads the saved CSV files, displays the non-truncated final table, plots threshold trade-offs, shows country-level F1 scores, and prints the final scoring command for the selected model.
 
+It also writes manuscript/appendix LaTeX tables to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/manuscript_tables/
+```
+
+Generated tables include the main classifier comparison, the full appendix comparison, country-level validation metrics, and the threshold sweep for the selected final classifier. Model-level tables include accuracy, political-class precision/recall/F1, macro F1, and weighted F1.
+
 To check the GPU on `annecuda` before a longer comparison run:
 
 ```bash
