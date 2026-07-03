@@ -201,7 +201,7 @@ It also writes manuscript/appendix LaTeX tables to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/manuscript_tables/
 ```
 
-Generated tables include the main classifier comparison, the full appendix comparison, country-level validation metrics, and the threshold sweep for the selected final classifier. Model-level tables include accuracy, political-class precision/recall/F1, macro F1, and weighted F1.
+Generated tables include the main political-corruption classifier comparison, the full appendix comparison, country-level validation metrics, and the threshold sweep for the selected final political-corruption classifier. Model-level tables include accuracy, political-class precision/recall/F1, macro F1, and weighted F1. The generated tables use `booktabs` and wrap wide tabular content in `\resizebox{\textwidth}{!}{...}`, so the manuscript preamble should include `\usepackage{booktabs}` and `\usepackage{graphicx}`.
 
 To upload these generated tables to Research Drive/WebDAV:
 
