@@ -53,7 +53,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 1 | `01_load_clean_dedupe_data.ipynb` | Clean/dedupe raw corpus and create denominator tables |
 | 2 | `02_create_targeted_silver_label_batch.py` | Create a targeted silver-label CSV |
 | 3 | `03_label_silver_label_batch.py` | Label a silver-label CSV with the UvA LLM proxy |
-| 4 | `04_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
+| 4 | `04_compare_classifier_models.py` + `04_compare_classifier_models.ipynb` | Run reproducible model comparison, then inspect tables/plots |
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 
 ## Shared Helper Files
@@ -136,7 +136,7 @@ http://127.0.0.1:8501
 
 ### 4. Compare Candidate Classifiers
 
-Run:
+Run the reproducible comparison script:
 
 ```bash
 python3 04_compare_classifier_models.py
@@ -185,6 +185,14 @@ Main comparison tables:
 | `validation_prediction_comparison.csv` | Row-level validation predictions |
 
 The current comparison supports using the combined silver batches for the final classifier because it is transparent, uses all available silver labels, and performs almost identically to the best single-batch variant.
+
+Then open the inspection notebook:
+
+```text
+04_compare_classifier_models.ipynb
+```
+
+The notebook does not redo the expensive model comparison. It reads the saved CSV files, displays the non-truncated final table, plots threshold trade-offs, shows country-level F1 scores, and prints the final scoring command for the selected model.
 
 To check the GPU on `annecuda` before a longer comparison run:
 
