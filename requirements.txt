@@ -1,0 +1,8 @@
+pandas
+tqdm
+requests
+openai
+streamlit
+scikit-learn
+sentence-transformers
+joblib

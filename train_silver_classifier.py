@@ -7,7 +7,7 @@ set, and can optionally classify the cleaned country files.
 Examples:
     python3 train_silver_classifier.py
 
-    nohup python3 -u train_silver_classifier.py --score-corpus \
+    nohup python3 -u train_silver_classifier.py --score-corpus --threshold 0.30 \
       > silver_classifier_scoring.log 2>&1 &
 """
 
@@ -110,7 +110,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
-    parser.add_argument("--threshold", type=float, default=0.4)
+    parser.add_argument("--threshold", type=float, default=0.30)
     parser.add_argument(
         "--select-threshold",
         action="store_true",
