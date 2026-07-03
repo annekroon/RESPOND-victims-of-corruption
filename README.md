@@ -142,6 +142,33 @@ Run:
 python3 04_compare_classifier_models.py
 ```
 
+To compare several multilingual sentence-embedding models in one run:
+
+```bash
+python3 04_compare_classifier_models.py \
+  --embedding-models \
+  sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+  sentence-transformers/paraphrase-multilingual-mpnet-base-v2 \
+  sentence-transformers/LaBSE \
+  intfloat/multilingual-e5-base
+```
+
+For a longer weekend run, you can add heavier models:
+
+```bash
+python3 04_compare_classifier_models.py \
+  --embedding-models \
+  sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+  sentence-transformers/paraphrase-multilingual-mpnet-base-v2 \
+  sentence-transformers/LaBSE \
+  intfloat/multilingual-e5-base \
+  intfloat/multilingual-e5-large \
+  BAAI/bge-m3 \
+  --batch-size 32
+```
+
+These are sentence-embedding models, so they are directly comparable with the current logistic-regression classifier. Raw RoBERTa/XLM-R models are not included here because they are not sentence-embedding classifiers by themselves; comparing them properly would require a separate fine-tuning setup.
+
 This writes:
 
 ```text
@@ -158,6 +185,20 @@ Main comparison tables:
 | `validation_prediction_comparison.csv` | Row-level validation predictions |
 
 The current comparison supports using the combined silver batches for the final classifier because it is transparent, uses all available silver labels, and performs almost identically to the best single-batch variant.
+
+To check the GPU on `annecuda` before a longer comparison run:
+
+```bash
+nvidia-smi
+nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu --format=csv
+python3 - <<'PY'
+import torch
+print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+    print("CUDA version:", torch.version.cuda)
+PY
+```
 
 ### 5. Final Full-Corpus Classification
 

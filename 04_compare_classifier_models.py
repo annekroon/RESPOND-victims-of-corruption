@@ -28,7 +28,15 @@ DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
 ]
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODELS = [
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+]
+RECOMMENDED_EMBEDDING_MODELS = [
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "sentence-transformers/LaBSE",
+    "intfloat/multilingual-e5-base",
+]
 
 SILVER_LABEL_MAP = {
     "Yes": 1,
@@ -80,7 +88,21 @@ def parse_args() -> argparse.Namespace:
         help="LLM-labelled silver-label CSV files.",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
+    parser.add_argument(
+        "--embedding-models",
+        nargs="+",
+        default=DEFAULT_EMBEDDING_MODELS,
+        help=(
+            "One or more sentence-transformers embedding models to compare. "
+            "For a broader check, use: " + " ".join(RECOMMENDED_EMBEDDING_MODELS)
+        ),
+    )
+    parser.add_argument(
+        "--embedding-model",
+        dest="embedding_model",
+        default=None,
+        help="Backward-compatible alias for running one embedding model.",
+    )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--random-state", type=int, default=42)
     return parser.parse_args()
@@ -150,7 +172,36 @@ def load_silver_variants(paths):
     return variants
 
 
-def metrics_from_predictions(y_true, y_pred, model_name, threshold=None, train_rows=None, label_source=None):
+def resolve_embedding_models(args):
+    if args.embedding_model:
+        return [args.embedding_model]
+    return args.embedding_models
+
+
+def format_texts_for_embedding(texts, embedding_model):
+    """Apply model-family-specific text formatting when needed.
+
+    E5 models were trained with input prefixes. For this classification use
+    case, every item is a document/article rather than a search query.
+    """
+    if "multilingual-e5" in embedding_model.lower():
+        return [f"passage: {text}" for text in texts]
+    return texts
+
+
+def safe_model_slug(model_name):
+    return re.sub(r"[^A-Za-z0-9_.-]+", "__", model_name).strip("_")
+
+
+def metrics_from_predictions(
+    y_true,
+    y_pred,
+    model_name,
+    threshold=None,
+    train_rows=None,
+    label_source=None,
+    embedding_model=None,
+):
     from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
     precision, recall, f1, support = precision_recall_fscore_support(
@@ -161,6 +212,7 @@ def metrics_from_predictions(y_true, y_pred, model_name, threshold=None, train_r
     )
     return {
         "model": model_name,
+        "embedding_model": embedding_model or "",
         "label_source": label_source or "",
         "train_rows": train_rows,
         "threshold": threshold,
@@ -189,7 +241,7 @@ def add_weighted_f1(row, y_true):
     return row
 
 
-def threshold_table(y_true, probabilities, model_name, train_rows, label_source):
+def threshold_table(y_true, probabilities, model_name, train_rows, label_source, embedding_model=None):
     import pandas as pd
 
     rows = []
@@ -202,12 +254,21 @@ def threshold_table(y_true, probabilities, model_name, train_rows, label_source)
             threshold=threshold,
             train_rows=train_rows,
             label_source=label_source,
+            embedding_model=embedding_model,
         )
         rows.append(add_weighted_f1(row, y_true))
     return pd.DataFrame(rows)
 
 
-def country_table(valid_df, pred_column, model_name, threshold, train_rows, label_source):
+def country_table(
+    valid_df,
+    pred_column,
+    model_name,
+    threshold,
+    train_rows,
+    label_source,
+    embedding_model=None,
+):
     import pandas as pd
     from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
@@ -224,6 +285,7 @@ def country_table(valid_df, pred_column, model_name, threshold, train_rows, labe
         rows.append(
             {
                 "model": model_name,
+                "embedding_model": embedding_model or "",
                 "label_source": label_source,
                 "threshold": threshold,
                 "train_rows": train_rows,
@@ -290,6 +352,7 @@ def evaluate_tfidf_human_cv(valid_df, random_state):
         {
             "row_index": valid_df.index,
             "model": "tfidf_char_ngrams_logreg",
+            "embedding_model": "",
             "prob": probabilities,
             "pred_t05": pred,
             "y": valid_df["y"].to_numpy(),
@@ -299,7 +362,7 @@ def evaluate_tfidf_human_cv(valid_df, random_state):
     return table, predictions
 
 
-def evaluate_embedding_human_cv(valid_df, embeddings, random_state):
+def evaluate_embedding_human_cv(valid_df, embeddings, random_state, embedding_model):
     import pandas as pd
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
@@ -319,11 +382,13 @@ def evaluate_embedding_human_cv(valid_df, embeddings, random_state):
         model_name="multilingual_embeddings_logreg",
         train_rows=len(valid_df),
         label_source="human_5fold_cv",
+        embedding_model=embedding_model,
     )
     predictions = pd.DataFrame(
         {
             "row_index": valid_df.index,
             "model": "multilingual_embeddings_logreg",
+            "embedding_model": embedding_model,
             "prob": probabilities,
             "pred_t05": (probabilities >= 0.5).astype(int),
             "y": valid_df["y"].to_numpy(),
@@ -333,11 +398,20 @@ def evaluate_embedding_human_cv(valid_df, embeddings, random_state):
     return table, predictions
 
 
-def evaluate_silver_variant(name, train_df, valid_df, valid_embeddings, embedder, batch_size, random_state):
+def evaluate_silver_variant(
+    name,
+    train_df,
+    valid_df,
+    valid_embeddings,
+    embedder,
+    embedding_model,
+    batch_size,
+    random_state,
+):
     from sklearn.linear_model import LogisticRegression
 
     train_embeddings = embedder.encode(
-        train_df["model_text"].tolist(),
+        format_texts_for_embedding(train_df["model_text"].tolist(), embedding_model),
         batch_size=batch_size,
         show_progress_bar=True,
         normalize_embeddings=True,
@@ -351,13 +425,17 @@ def evaluate_silver_variant(name, train_df, valid_df, valid_embeddings, embedder
         model_name="multilingual_embeddings_logreg",
         train_rows=len(train_df),
         label_source=name,
+        embedding_model=embedding_model,
     ), probabilities
 
 
 def select_best_rows(all_threshold_results):
     sort_columns = ["political_f1", "political_recall", "political_precision", "accuracy"]
     best_rows = []
-    for _, group in all_threshold_results.groupby(["model", "label_source"], dropna=False):
+    for _, group in all_threshold_results.groupby(
+        ["model", "embedding_model", "label_source"],
+        dropna=False,
+    ):
         best_rows.append(group.sort_values(sort_columns, ascending=False).iloc[0])
     return (
         all_threshold_results.__class__(best_rows)
@@ -373,6 +451,7 @@ def main() -> None:
     from sentence_transformers import SentenceTransformer
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    embedding_models = resolve_embedding_models(args)
 
     valid_df = load_human_validation()
     print(f"Human validation rows: {len(valid_df):,}", flush=True)
@@ -390,67 +469,76 @@ def main() -> None:
     threshold_tables.append(tfidf_table)
     prediction_tables.append(tfidf_predictions)
 
-    embedder = SentenceTransformer(args.embedding_model)
-    valid_embeddings = embedder.encode(
-        valid_df["model_text"].tolist(),
-        batch_size=args.batch_size,
-        show_progress_bar=True,
-        normalize_embeddings=True,
-    )
-
-    embedding_cv_table, embedding_cv_predictions = evaluate_embedding_human_cv(
-        valid_df,
-        valid_embeddings,
-        args.random_state,
-    )
-    threshold_tables.append(embedding_cv_table)
-    prediction_tables.append(embedding_cv_predictions)
-
     country_tables = []
     silver_prediction_frames = []
-    for name, train_df in silver_variants.items():
-        print(f"\nEvaluating silver model: {name}", flush=True)
-        table, probabilities = evaluate_silver_variant(
-            name=name,
-            train_df=train_df,
-            valid_df=valid_df,
-            valid_embeddings=valid_embeddings,
-            embedder=embedder,
-            batch_size=args.batch_size,
-            random_state=args.random_state,
-        )
-        threshold_tables.append(table)
 
-        best_row = table.sort_values(
-            ["political_f1", "political_recall", "political_precision", "accuracy"],
-            ascending=False,
-        ).iloc[0]
-        pred_column = f"pred_{name}"
-        valid_df[pred_column] = (probabilities >= best_row["threshold"]).astype(int)
-        country_tables.append(
-            country_table(
-                valid_df,
-                pred_column=pred_column,
-                model_name="multilingual_embeddings_logreg",
-                threshold=best_row["threshold"],
-                train_rows=len(train_df),
-                label_source=name,
-            )
+    for embedding_model in embedding_models:
+        print(f"\nLoading embedding model: {embedding_model}", flush=True)
+        embedder = SentenceTransformer(embedding_model)
+
+        print(f"Encoding human validation set with {embedding_model}", flush=True)
+        valid_embeddings = embedder.encode(
+            format_texts_for_embedding(valid_df["model_text"].tolist(), embedding_model),
+            batch_size=args.batch_size,
+            show_progress_bar=True,
+            normalize_embeddings=True,
         )
-        silver_prediction_frames.append(
-            pd.DataFrame(
-                {
-                    "row_index": valid_df.index,
-                    "model": "multilingual_embeddings_logreg",
-                    "label_source": name,
-                    "prob": probabilities,
-                    "best_threshold": best_row["threshold"],
-                    "pred_best_threshold": valid_df[pred_column].to_numpy(),
-                    "y": valid_df["y"].to_numpy(),
-                    "country": valid_df["country"].to_numpy(),
-                }
-            )
+
+        embedding_cv_table, embedding_cv_predictions = evaluate_embedding_human_cv(
+            valid_df=valid_df,
+            embeddings=valid_embeddings,
+            random_state=args.random_state,
+            embedding_model=embedding_model,
         )
+        threshold_tables.append(embedding_cv_table)
+        prediction_tables.append(embedding_cv_predictions)
+
+        for name, train_df in silver_variants.items():
+            print(f"\nEvaluating silver model: {name} with {embedding_model}", flush=True)
+            table, probabilities = evaluate_silver_variant(
+                name=name,
+                train_df=train_df,
+                valid_df=valid_df,
+                valid_embeddings=valid_embeddings,
+                embedder=embedder,
+                embedding_model=embedding_model,
+                batch_size=args.batch_size,
+                random_state=args.random_state,
+            )
+            threshold_tables.append(table)
+
+            best_row = table.sort_values(
+                ["political_f1", "political_recall", "political_precision", "accuracy"],
+                ascending=False,
+            ).iloc[0]
+            pred_column = f"pred_{safe_model_slug(embedding_model)}_{name}"
+            valid_df[pred_column] = (probabilities >= best_row["threshold"]).astype(int)
+            country_tables.append(
+                country_table(
+                    valid_df,
+                    pred_column=pred_column,
+                    model_name="multilingual_embeddings_logreg",
+                    threshold=best_row["threshold"],
+                    train_rows=len(train_df),
+                    label_source=name,
+                    embedding_model=embedding_model,
+                )
+            )
+            silver_prediction_frames.append(
+                pd.DataFrame(
+                    {
+                        "row_index": valid_df.index,
+                        "model": "multilingual_embeddings_logreg",
+                        "embedding_model": embedding_model,
+                        "label_source": name,
+                        "prob": probabilities,
+                        "best_threshold": best_row["threshold"],
+                        "pred_best_threshold": valid_df[pred_column].to_numpy(),
+                        "y": valid_df["y"].to_numpy(),
+                        "country": valid_df["country"].to_numpy(),
+                    }
+                )
+            )
 
     all_threshold_results = pd.concat(threshold_tables, ignore_index=True)
     best_results = select_best_rows(all_threshold_results)
