@@ -218,7 +218,7 @@ By default this uploads local tables from:
 to:
 
 ```text
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/output/political_corruption_pipeline/manuscript_tables/
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/
 ```
 
 To check the GPU on `annecuda` before a longer comparison run:

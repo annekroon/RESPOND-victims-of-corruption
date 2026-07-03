@@ -22,9 +22,9 @@ DEFAULT_LOCAL_TABLE_DIR = Path(
 )
 DEFAULT_RD_TABLE_DIR = posixpath.join(
     RD_BASE_DIR,
+    "victims-of-corruption-paper",
     "output",
-    "political_corruption_pipeline",
-    "manuscript_tables",
+    "tables",
 )
 
 
