@@ -1,9 +1,12 @@
-"""Project configuration for RESPOND corruption annotation notebooks."""
+"""Shared non-secret configuration for the RESPOND corpus workflow.
+
+Secrets belong in ignored config_local.py or environment variables.
+"""
 
 import os
 
-NEWS_FOLDER = "~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/"
 RD_BASE_DIR = "ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)"
+NEWS_FOLDER = "~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/"
 
 ALL_COUNTRIES = [
     "Bulgaria",
@@ -30,27 +33,20 @@ COUNTRY_TO_LANG = {
     "United_Kingdom": "en",
 }
 
-TRANSLATED_FILE = "outputs/sample_for_annotation.csv"
-ANNOTATED_FILE = "outputs/sample_with_llm_suggestions.csv"
-LLM_ENDPOINT = "http://localhost:11434/api/chat"
-LLM_MODEL_NAME = "llama3:70b"
-
-# UvA LLM proxy settings for translation and annotation suggestions.
-# Keep the key in your shell environment or ignored config_local.py.
-LLMPROXY_BASE_URL = os.environ.get("LLMPROXY_BASE_URL", "https://llmproxy.uva.nl/v1")
-LLMPROXY_API_KEY = os.environ.get("LLMPROXY_API_KEY")
-LLMPROXY_MODEL = os.environ.get("LLMPROXY_MODEL", "gpt-5.1")
-
 ANNOTATION_PATH = "~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/"
 ANNOTATION_FILE = "classified_pol_corruption_validation_gabriele.csv"
 ANNOTATION_ENCODING = "latin1"
 VALID_CORRUPTION_LABELS = ["no political corruption", "political corruption"]
 
-# Research Drive / Nextcloud WebDAV settings.
-# Set credentials with environment variables or in ignored config_local.py.
+# Research Drive / Nextcloud WebDAV settings. Keep credentials out of git.
 BASE_URL = os.environ.get("RD_BASE_URL", "https://uva.data.surf.nl/remote.php/dav/files")
 USER = os.environ.get("RD_USER", "")
 APP_PASSWORD = os.environ.get("RD_PASS")
+
+# UvA LLM proxy settings. Keep the API key out of git.
+LLMPROXY_BASE_URL = os.environ.get("LLMPROXY_BASE_URL", "https://llmproxy.uva.nl/v1")
+LLMPROXY_API_KEY = os.environ.get("LLMPROXY_API_KEY")
+LLMPROXY_MODEL = os.environ.get("LLMPROXY_MODEL", "gpt-5.1")
 
 try:
     import config_local as _local_config

@@ -32,7 +32,11 @@ Install Python dependencies in the environment used for the notebooks/scripts:
 pip3 install --user -r requirements.txt
 ```
 
-Secrets should go in ignored `config_local.py`, not in `config.py`.
+Research Drive credentials and the UvA LLM proxy token should go in ignored `config_local.py`, not in `config.py`. Start from:
+
+```bash
+cp config_local.example.py config_local.py
+```
 
 ## Main Execution Order
 
