@@ -55,6 +55,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 3 | `03_label_silver_label_batch.py` | Label a silver-label CSV with the UvA LLM proxy |
 | 4 | `04_compare_classifier_models.py` + `04_compare_classifier_models.ipynb` | Run reproducible model comparison, then inspect tables/plots |
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
+| 6 | `06_upload_manuscript_tables.py` | Upload generated LaTeX manuscript tables to Research Drive |
 
 ## Shared Helper Files
 
@@ -201,6 +202,24 @@ It also writes manuscript/appendix LaTeX tables to:
 ```
 
 Generated tables include the main classifier comparison, the full appendix comparison, country-level validation metrics, and the threshold sweep for the selected final classifier. Model-level tables include accuracy, political-class precision/recall/F1, macro F1, and weighted F1.
+
+To upload these generated tables to Research Drive/WebDAV:
+
+```bash
+python3 06_upload_manuscript_tables.py
+```
+
+By default this uploads local tables from:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/manuscript_tables/
+```
+
+to:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/output/political_corruption_pipeline/manuscript_tables/
+```
 
 To check the GPU on `annecuda` before a longer comparison run:
 
