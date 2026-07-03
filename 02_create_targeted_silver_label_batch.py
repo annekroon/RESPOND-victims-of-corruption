@@ -8,7 +8,7 @@ Example:
     python3 02_create_targeted_silver_label_batch.py
 
 Then label the resulting batch with:
-    nohup python3 -u 03_run_llmproxy_batch_labels.py \
+    nohup python3 -u 03_label_silver_label_batch.py \
       --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
       --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
       > llm_silver_label_batch_2.log 2>&1 &

@@ -1,7 +1,7 @@
 """Run LLM proxy translations and annotation suggestions for silver-label rows.
 
 Example:
-    nohup python3 -u 03_run_llmproxy_batch_labels.py \
+    nohup python3 -u 03_label_silver_label_batch.py \
       > llm_silver_label.log 2>&1 &
 """
 

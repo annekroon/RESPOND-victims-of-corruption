@@ -52,7 +52,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 |---|---|---|
 | 1 | `01_load_clean_dedupe_data.ipynb` | Clean/dedupe raw corpus and create denominator tables |
 | 2 | `02_create_targeted_silver_label_batch.py` | Create a targeted silver-label CSV |
-| 3 | `03_run_llmproxy_batch_labels.py` | Label a silver-label CSV with the UvA LLM proxy |
+| 3 | `03_label_silver_label_batch.py` | Label a silver-label CSV with the UvA LLM proxy |
 | 4 | `04_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 
@@ -101,7 +101,7 @@ python3 02_create_targeted_silver_label_batch.py \
 To label that batch with the UvA LLM proxy:
 
 ```bash
-nohup python3 -u 03_run_llmproxy_batch_labels.py \
+nohup python3 -u 03_label_silver_label_batch.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
   --max-chars 3000 \
