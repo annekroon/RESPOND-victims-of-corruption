@@ -45,11 +45,10 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | Step | File | Run when |
 |---|---|---|
 | 1 | `01_load_clean_dedupe_data.ipynb` | Clean/dedupe raw corpus and create denominator tables |
-| 2 | `02_llmproxy_active_learning_suggestions.ipynb` | Optional notebook version of LLM labelling; mostly superseded by step 4 script |
-| 3 | `03_create_targeted_active_learning_batch.py` | Create a targeted active-learning CSV |
-| 4 | `04_run_llmproxy_active_learning_suggestions.py` | Label an active-learning CSV with the UvA LLM proxy |
-| 5 | `05_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
-| 6 | `06_train_silver_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
+| 2 | `02_create_targeted_active_learning_batch.py` | Create a targeted active-learning CSV |
+| 3 | `03_run_llmproxy_batch_labels.py` | Label an active-learning CSV with the UvA LLM proxy |
+| 4 | `04_compare_classifier_models.py` | Compare TF-IDF, human-label embedding, and silver-label embedding classifiers |
+| 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 
 ## Shared Helper Files
 
@@ -60,6 +59,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV I/O helpers |
 | `requirements.txt` | Python dependencies |
 | `miscellaneous/annotation_interface.py` | Optional Streamlit annotation UI; not needed for the final scripted workflow |
+| `miscellaneous/llmproxy_label_batch_notebook.ipynb` | Older notebook version of LLM batch labelling; kept for reference |
 
 ## Workflow
 
@@ -88,14 +88,14 @@ Batch 1 was generated from the first active-learning sample. Batch 2 was generat
 To create a targeted follow-up batch:
 
 ```bash
-python3 03_create_targeted_active_learning_batch.py \
+python3 02_create_targeted_active_learning_batch.py \
   --country-targets Sweden:540,United_Kingdom:540,Ukraine:540,Netherlands:420,Serbia:360,Hungary:180,Bulgaria:180,Italy:120,France:120
 ```
 
 To label that batch with the UvA LLM proxy:
 
 ```bash
-nohup python3 -u 04_run_llmproxy_active_learning_suggestions.py \
+nohup python3 -u 03_run_llmproxy_batch_labels.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
   --max-chars 3000 \
@@ -133,7 +133,7 @@ http://127.0.0.1:8501
 Run:
 
 ```bash
-python3 05_compare_classifier_models.py
+python3 04_compare_classifier_models.py
 ```
 
 This writes:
@@ -158,7 +158,7 @@ The current comparison supports using the combined silver batches for the final 
 Train on both silver batches and classify every cleaned country file:
 
 ```bash
-nohup python3 -u 06_train_silver_classifier.py \
+nohup python3 -u 05_train_final_classifier.py \
   --threshold 0.30 \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &

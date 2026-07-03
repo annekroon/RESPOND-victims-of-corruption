@@ -1,7 +1,7 @@
 """Run LLM proxy translations and annotation suggestions for active-learning rows.
 
 Example:
-    nohup python3 -u 04_run_llmproxy_active_learning_suggestions.py \
+    nohup python3 -u 03_run_llmproxy_batch_labels.py \
       > llm_active_learning.log 2>&1 &
 """
 
