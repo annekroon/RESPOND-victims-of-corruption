@@ -325,7 +325,13 @@ from:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/
 ```
 
-If these local files do not exist, the notebook loads the weekly total-coverage denominator from Research Drive/WebDAV and caches local copies:
+If these local files do not exist, the notebook first looks for mounted WebDAV files such as `Bulgaria_weekly_count.csv` and `UK_weekly_count.csv` in:
+
+```text
+/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/weekly_counts_total_coverage/
+```
+
+If the mounted folder is unavailable, it falls back to Research Drive/WebDAV API access and caches local copies:
 
 ```text
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/weekly_counts_total_coverage/
