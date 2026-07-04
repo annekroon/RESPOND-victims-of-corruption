@@ -365,6 +365,14 @@ and publication-style figures to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
 ```
 
+The notebook also writes LaTeX summary tables to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/latex/
+```
+
+These include country summaries, yearly summaries, country-year relative-attention matrices, and peak months of political-corruption attention. Figures include monthly/weekly country trend lines, small multiples, stacked absolute volume, a country-year heatmap, an average-attention country ranking, and an indexed monthly attention plot.
+
 Relative attention is defined as the share of **total news coverage** classified as political corruption in a given country-period:
 
 ```text
