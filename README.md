@@ -312,11 +312,32 @@ After the full corpus has been classified, run:
 07_analyze_political_corruption_attention.ipynb
 ```
 
-The notebook loads:
+The notebook loads total-news denominator files:
 
 ```text
-denominator_country_week.csv
-denominator_country_month.csv
+total_news_coverage_week.csv
+total_news_coverage_month.csv
+```
+
+from:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/
+```
+
+These files must count **all news coverage** by country-period, not just the corruption-query corpus. Expected columns are:
+
+```text
+country
+week or month
+total_news_articles
+```
+
+The count column may also be named `total_articles`, `total_coverage`, `n_articles`, or `count`; the notebook standardizes it to `total_news_articles`.
+
+The notebook also loads the classified political-corruption numerator:
+
+```text
 silver_classifier/classified_country_files/{country}_classified.csv.gz
 ```
 
@@ -332,4 +353,10 @@ and publication-style figures to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
 ```
 
-Relative attention is defined as the share of cleaned corruption-query articles that were classified as political corruption in a given country-period. The denominator is the cleaned corruption-query corpus, not all news coverage.
+Relative attention is defined as the share of **total news coverage** classified as political corruption in a given country-period:
+
+```text
+political_corruption_articles / total_news_articles
+```
+
+The cleaned corruption-query denominator files are only used in an optional diagnostic cell and are not the main denominator.
