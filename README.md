@@ -325,6 +325,12 @@ from:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/
 ```
 
+If these local files do not exist, the notebook loads the weekly total-coverage denominator from Research Drive/WebDAV and caches local copies:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/weekly_counts_total_coverage/
+```
+
 These files must count **all news coverage** by country-period, not just the corruption-query corpus. Expected columns are:
 
 ```text
