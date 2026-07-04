@@ -56,6 +56,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 4 | `04_compare_classifier_models.py` + `04_compare_classifier_models.ipynb` | Run reproducible model comparison, then inspect tables/plots |
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 | 6 | `06_upload_manuscript_tables.py` | Upload generated LaTeX manuscript tables to Research Drive |
+| 7 | `07_analyze_political_corruption_attention.ipynb` | Build weekly/monthly attention tables and plot political-corruption attention over time |
 
 ## Shared Helper Files
 
@@ -302,3 +303,33 @@ Important files:
 Suggested concise wording:
 
 > We trained a multilingual sentence-embedding classifier using LLM-generated silver labels from two targeted silver-label batches. The classifier used `intfloat/multilingual-e5-large` embeddings and a class-balanced logistic regression model. Candidate models were compared against a held-out manually annotated validation set of 452 articles. The final model was trained on the combined silver-label batches and used a decision threshold of 0.40, selected from validation-set threshold sweeps to balance precision and recall for the political-corruption class. On the validation set, the final classifier achieved precision = 0.766, recall = 0.792, and F1 = 0.779 for the political-corruption class.
+
+## Political-Corruption Attention Analysis
+
+After the full corpus has been classified, run:
+
+```text
+07_analyze_political_corruption_attention.ipynb
+```
+
+The notebook loads:
+
+```text
+denominator_country_week.csv
+denominator_country_month.csv
+silver_classifier/classified_country_files/{country}_classified.csv.gz
+```
+
+It writes derived weekly/monthly attention tables to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/
+```
+
+and publication-style figures to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
+```
+
+Relative attention is defined as the share of cleaned corruption-query articles that were classified as political corruption in a given country-period. The denominator is the cleaned corruption-query corpus, not all news coverage.
