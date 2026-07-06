@@ -58,6 +58,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 6 | `06_upload_manuscript_tables.py` | Upload generated LaTeX manuscript tables to Research Drive |
 | 7 | `07_analyze_political_corruption_attention.ipynb` | Build weekly/monthly attention tables and plot political-corruption attention over time |
 | 8 | `08_create_uk_silver_label_batch.py` | Create a UK-focused calibration batch for classifier auditing/improvement |
+| 9 | `09_create_uk_human_validation_review_batch.py` | Create a manually reviewable UK validation supplement from LLM-labelled UK cases |
 
 ## Shared Helper Files
 
@@ -475,3 +476,39 @@ nohup python3 -u 05_train_final_classifier.py \
   --score-corpus \
   > silver_classifier_uk_calibrated_scoring.log 2>&1 &
 ```
+
+## UK Human Validation Supplement
+
+The UK calibration batch did not improve the combined classifier, but it is still useful as a pool of translated, LLM-labelled UK cases for manual validation. To create a smaller review file from those labelled cases:
+
+```bash
+python3 09_create_uk_human_validation_review_batch.py \
+  --target-n 300
+```
+
+This writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_review_batch.csv
+```
+
+Review it in the Streamlit interface:
+
+```bash
+RESPOND_ANNOTATION_INPUT=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_review_batch.csv \
+RESPOND_ANNOTATION_OUTPUT=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
+streamlit run miscellaneous/annotation_interface.py \
+  --server.address 0.0.0.0 \
+  --server.port 8501
+```
+
+Rows with a completed `human_final_label` can then be appended to the human validation benchmark:
+
+```bash
+python3 04_compare_classifier_models.py \
+  --embedding-models intfloat/multilingual-e5-large \
+  --batch-size 32 \
+  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
+```
+
+This does not retrain on the reviewed UK rows. It evaluates the existing candidate models against the original human validation set plus the new manually reviewed UK supplement.

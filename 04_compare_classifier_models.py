@@ -47,6 +47,7 @@ SILVER_LABEL_MAP = {
 HUMAN_LABEL_MAP = {
     "political corruption": 1,
     "no political corruption": 0,
+    "mentioned but not central": 0,
 }
 THRESHOLDS = [0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.70]
 
@@ -104,6 +105,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Backward-compatible alias for running one embedding model.",
     )
+    parser.add_argument(
+        "--extra-human-validation",
+        type=Path,
+        nargs="+",
+        default=[],
+        help=(
+            "Optional manually reviewed validation CSV files to append to the "
+            "original human validation set. Expected label column: "
+            "human_final_label, corruption_label_m, or label."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--random-state", type=int, default=42)
     return parser.parse_args()
@@ -122,17 +134,54 @@ def choose_text_series(data):
     return title + "\n" + body
 
 
-def load_human_validation():
-    from dataloader import load_human_annotated_for_translation_webdav
+def prepare_human_validation_frame(data, source_name):
+    label_column = next(
+        (
+            column
+            for column in ["corruption_label_m", "human_final_label", "label"]
+            if column in data.columns
+        ),
+        None,
+    )
+    if label_column is None:
+        raise ValueError(
+            f"No human validation label column found in {source_name}. "
+            "Expected one of: corruption_label_m, human_final_label, label."
+        )
 
-    data = load_human_annotated_for_translation_webdav()
-    data["label_clean"] = data["corruption_label_m"].astype(str).str.strip().str.lower()
+    data = data.copy()
+    data["label_clean"] = data[label_column].astype(str).str.strip().str.lower()
     data["y"] = data["label_clean"].map(HUMAN_LABEL_MAP)
     data = data[data["y"].notna()].copy()
     data["y"] = data["y"].astype(int)
     data["model_text"] = choose_text_series(data).fillna("").astype(str).map(normalize_text)
     data = data[data["model_text"].str.strip().ne("")].copy()
+    data["human_validation_source"] = source_name
     return data
+
+
+def load_human_validation(extra_paths=None):
+    import pandas as pd
+    from dataloader import load_human_annotated_for_translation_webdav
+
+    data = load_human_annotated_for_translation_webdav()
+    frames = [prepare_human_validation_frame(data, "original_human_validation")]
+
+    for path in extra_paths or []:
+        if not path.exists():
+            print(f"Skipping missing extra human validation file: {path}", flush=True)
+            continue
+        extra = pd.read_csv(path)
+        frames.append(prepare_human_validation_frame(extra, path.name))
+
+    combined = pd.concat(frames, ignore_index=True)
+    if "uri" in combined.columns:
+        before = len(combined)
+        combined = combined.drop_duplicates(subset=["uri"], keep="first").copy()
+        dropped = before - len(combined)
+        if dropped:
+            print(f"Dropped duplicate human-validation URIs: {dropped:,}", flush=True)
+    return combined
 
 
 def load_one_silver_file(path: Path):
@@ -465,7 +514,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     embedding_models = resolve_embedding_models(args)
 
-    valid_df = load_human_validation()
+    valid_df = load_human_validation(args.extra_human_validation)
     print(f"Human validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 

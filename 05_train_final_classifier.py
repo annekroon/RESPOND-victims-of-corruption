@@ -52,6 +52,7 @@ SILVER_LABEL_MAP = {
 HUMAN_LABEL_MAP = {
     "political corruption": 1,
     "no political corruption": 0,
+    "mentioned but not central": 0,
 }
 
 CLASSIFIED_OUTPUT_COLUMNS = [
@@ -134,6 +135,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Pick the threshold with best political-corruption F1 on the human validation set.",
     )
+    parser.add_argument(
+        "--extra-human-validation",
+        type=Path,
+        nargs="+",
+        default=[],
+        help=(
+            "Optional manually reviewed validation CSV files to append to the "
+            "original human validation set. Expected label column: "
+            "human_final_label, corruption_label_m, or label."
+        ),
+    )
     parser.add_argument("--score-corpus", action="store_true")
     parser.add_argument("--countries", nargs="+", default=DEFAULT_COUNTRIES)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
@@ -182,17 +194,54 @@ def load_silver_labels(paths):
     return silver
 
 
-def load_human_validation():
-    from dataloader import load_human_annotated_for_translation_webdav
+def prepare_human_validation_frame(data, source_name):
+    label_column = next(
+        (
+            column
+            for column in ["corruption_label_m", "human_final_label", "label"]
+            if column in data.columns
+        ),
+        None,
+    )
+    if label_column is None:
+        raise ValueError(
+            f"No human validation label column found in {source_name}. "
+            "Expected one of: corruption_label_m, human_final_label, label."
+        )
 
-    data = load_human_annotated_for_translation_webdav()
-    data["label_clean"] = data["corruption_label_m"].astype(str).str.strip().str.lower()
+    data = data.copy()
+    data["label_clean"] = data[label_column].astype(str).str.strip().str.lower()
     data["y"] = data["label_clean"].map(HUMAN_LABEL_MAP)
     data = data[data["y"].notna()].copy()
     data["y"] = data["y"].astype(int)
     data["model_text"] = choose_text_series(data).fillna("").astype(str).map(normalize_text)
     data = data[data["model_text"].str.strip().ne("")].copy()
+    data["human_validation_source"] = source_name
     return data
+
+
+def load_human_validation(extra_paths=None):
+    import pandas as pd
+    from dataloader import load_human_annotated_for_translation_webdav
+
+    data = load_human_annotated_for_translation_webdav()
+    frames = [prepare_human_validation_frame(data, "original_human_validation")]
+
+    for path in extra_paths or []:
+        if not path.exists():
+            print(f"Skipping missing extra human validation file: {path}", flush=True)
+            continue
+        extra = pd.read_csv(path)
+        frames.append(prepare_human_validation_frame(extra, path.name))
+
+    combined = pd.concat(frames, ignore_index=True)
+    if "uri" in combined.columns:
+        before = len(combined)
+        combined = combined.drop_duplicates(subset=["uri"], keep="first").copy()
+        dropped = before - len(combined)
+        if dropped:
+            print(f"Dropped duplicate human-validation URIs: {dropped:,}", flush=True)
+    return combined
 
 
 def evaluate_thresholds(y_true, probabilities):
@@ -396,7 +445,7 @@ def main() -> None:
     print(f"Silver training rows: {len(silver_df):,}", flush=True)
     print(silver_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
-    valid_df = load_human_validation()
+    valid_df = load_human_validation(args.extra_human_validation)
     print(f"\nHuman validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
