@@ -57,6 +57,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 5 | `05_train_final_classifier.py` | Train the final combined silver-label classifier and classify the full corpus |
 | 6 | `06_upload_manuscript_tables.py` | Upload generated LaTeX manuscript tables to Research Drive |
 | 7 | `07_analyze_political_corruption_attention.ipynb` | Build weekly/monthly attention tables and plot political-corruption attention over time |
+| 8 | `08_create_uk_silver_label_batch.py` | Create a UK-focused calibration batch for classifier auditing/improvement |
 
 ## Shared Helper Files
 
@@ -380,3 +381,44 @@ political_corruption_articles / total_news_articles
 ```
 
 The cleaned corruption-query denominator files are only used in an optional diagnostic cell and are not the main denominator.
+
+## UK Classifier Calibration Batch
+
+The United Kingdom had the weakest country-level validation performance and very low positive support in the manual validation set. To audit and potentially improve the classifier, create a UK-focused third silver-label batch from the final classified UK output:
+
+```bash
+python3 08_create_uk_silver_label_batch.py
+```
+
+This writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_calibration_batch_for_annotation.csv
+```
+
+The default target is 1,500 UK articles sampled from:
+
+```text
+40% threshold-boundary cases, probability 0.30--0.50
+30% high predicted positives, probability >= 0.60
+20% high predicted negatives, probability <= 0.20
+10% random checks
+```
+
+Label the batch with the same LLM prompt as earlier silver-label batches:
+
+```bash
+nohup python3 -u 03_label_silver_label_batch.py \
+  --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_calibration_batch_for_annotation.csv \
+  --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_calibration_batch_with_llm_suggestions.csv \
+  --max-chars 3000 \
+  > llm_uk_calibration_batch.log 2>&1 &
+```
+
+Monitor with:
+
+```bash
+tail -f llm_uk_calibration_batch.log
+```
+
+Afterwards, compare models trained with and without this UK batch before changing the final classifier.
