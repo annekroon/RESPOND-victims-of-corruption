@@ -23,10 +23,11 @@ DEFAULT_PIPELINE_DIR = Path(
     "political_corruption_pipeline"
 )
 DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
-DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "classifier_comparison"
+DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "classifier_comparison_uk_calibration"
 DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "uk_calibration_batch_with_llm_suggestions.csv",
 ]
 DEFAULT_EMBEDDING_MODELS = [
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -150,21 +151,32 @@ def load_silver_variants(paths):
     import pandas as pd
 
     variants = {}
-    frames = []
+    baseline_frames = []
+    all_frames = []
     for idx, path in enumerate(paths, start=1):
         if not path.exists():
             print(f"Skipping missing silver-label file: {path}", flush=True)
             continue
-        name = f"silver_batch_{idx}"
+        if "uk_calibration" in path.name:
+            name = "silver_uk_calibration"
+        else:
+            name = f"silver_batch_{len(baseline_frames) + 1}"
         data = load_one_silver_file(path)
         variants[name] = data
-        frames.append(data)
+        all_frames.append(data)
+        if name != "silver_uk_calibration":
+            baseline_frames.append(data)
 
-    if frames:
-        combined = pd.concat(frames, ignore_index=True)
+    if baseline_frames:
+        combined = pd.concat(baseline_frames, ignore_index=True)
         if "uri" in combined.columns:
             combined = combined.drop_duplicates(subset=["uri"], keep="first").copy()
         variants["silver_combined"] = combined
+    if all_frames and len(all_frames) != len(baseline_frames):
+        combined_with_uk = pd.concat(all_frames, ignore_index=True)
+        if "uri" in combined_with_uk.columns:
+            combined_with_uk = combined_with_uk.drop_duplicates(subset=["uri"], keep="first").copy()
+        variants["silver_combined_with_uk_calibration"] = combined_with_uk
 
     if not variants:
         raise FileNotFoundError("No silver-label files were found.")

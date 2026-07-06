@@ -421,4 +421,57 @@ Monitor with:
 tail -f llm_uk_calibration_batch.log
 ```
 
-Afterwards, compare models trained with and without this UK batch before changing the final classifier.
+Afterwards, compare models trained with and without this UK batch before changing the final classifier. The comparison script includes the UK calibration labels by default when the file exists, but keeps the baseline and UK-calibrated training sets separate in the output:
+
+- `silver_combined`: original silver-label batches 1 and 2.
+- `silver_combined_with_uk_calibration`: original silver-label batches plus the UK calibration batch.
+
+The new comparison experiment is written to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/classifier_comparison_uk_calibration/
+```
+
+Run:
+
+```bash
+python3 04_compare_classifier_models.py \
+  --embedding-models intfloat/multilingual-e5-large \
+  --batch-size 32
+```
+
+Then inspect:
+
+```text
+04_compare_classifier_models.ipynb
+```
+
+If the UK-calibrated model improves UK performance without damaging overall validation, train/evaluate it into a separate output folder:
+
+```bash
+TMPDIR=/home/akroon/data/1t_storage/tmp \
+HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
+TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
+CUDA_VISIBLE_DEVICES=1 \
+python3 05_train_final_classifier.py \
+  --include-uk-calibration
+```
+
+With `--include-uk-calibration`, `05_train_final_classifier.py` appends the UK calibration batch and writes validation/model outputs to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier_uk_calibrated/
+```
+
+For a full UK-calibrated corpus scoring run:
+
+```bash
+TMPDIR=/home/akroon/data/1t_storage/tmp \
+HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
+TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
+CUDA_VISIBLE_DEVICES=1 \
+nohup python3 -u 05_train_final_classifier.py \
+  --include-uk-calibration \
+  --score-corpus \
+  > silver_classifier_uk_calibrated_scoring.log 2>&1 &
+```
