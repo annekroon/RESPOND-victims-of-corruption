@@ -33,8 +33,8 @@ Main sample/model:
 - Sampling: balanced across `country x year`, with `analysis_weight` saved so
   visualizations can recover weighted article counts and shares.
 - Topic model: multilingual BERTopic using `intfloat/multilingual-e5-large`.
-- Interpretability: reduce to roughly 25-30 broad topics, then use GPT 5.1 to
-  name each topic, summarize it, and propose inclusion/exclusion rules.
+- Interpretability: fit a somewhat granular raw topic model first, then use GPT
+  5.1 to map raw clusters onto a smaller controlled corruption-domain taxonomy.
 - Visualizations: interactive country-topic heatmap, stacked topic shares over
   time, and faceted country-over-time topic trends.
 
@@ -89,7 +89,8 @@ python3 topic_classification/scripts/fit_multilingual_bertopic.py \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample.csv.gz \
   --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_test \
   --max-docs 2000 \
-  --nr-topics 25
+  --min-topic-size 25 \
+  --nr-topics auto
 ```
 
 Full run:
@@ -102,7 +103,8 @@ CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u topic_classification/scripts/fit_multilingual_bertopic.py \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample.csv.gz \
   --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption \
-  --nr-topics 30 \
+  --min-topic-size 25 \
+  --nr-topics auto \
   > bertopic_political_corruption.log 2>&1 &
 ```
 
@@ -132,12 +134,13 @@ Output:
 topic_labels_llm.csv
 ```
 
-Each row includes a chart label, longer topic label, proposed corruption-domain
-category, short summary, inclusion rule, exclusion rule, and confidence score.
-The prompt asks GPT 5.1 to create country-neutral generic domain labels for
-cross-country comparison. Raw BERTopic topics may still be country-specific;
-use the generic-domain labels for the main figures and the raw topic labels for
-diagnosis.
+Each row includes a chart label, longer topic label, primary and secondary
+corruption-domain categories, short summary, inclusion rule, exclusion rule, and
+confidence score. The prompt asks GPT 5.1 to create country-neutral mechanism
+labels for cross-country comparison and explicitly avoids vague labels such as
+`elite corruption`, `corruption probes`, or `legal proceedings`. Raw BERTopic
+topics may still be country-specific; use the generic-domain labels for the
+main figures and the raw topic labels for diagnosis.
 
 ## 4. Inspect Final Results In A Notebook
 
@@ -153,9 +156,10 @@ example articles per topic, a country-topic heatmap, topic shares over time,
 and faceted country trends. It also exports the summary tables under
 `inspection_tables/`.
 
-By default, the notebook plots `generic_domain_short_label` rather than the raw
-BERTopic topic label. This is intentional: the domain labels abstract away from
-country-specific events so the plots show cross-country corruption mechanisms.
+By default, the notebook plots `primary_domain` rather than the raw BERTopic
+topic label. This is intentional: the controlled domain labels abstract away
+from country-specific events so the plots show cross-country corruption
+mechanisms.
 Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"` in the first code cell if you
 want to diagnose the raw BERTopic clusters.
 
@@ -185,9 +189,12 @@ topic_weighted_totals.csv
 - Inspect topic composition by country and time. A topic that is mostly one
   country-language may be a real country-specific issue, a language artifact, or
   both.
-- Prefer fewer topics for manuscript interpretation. Start with `--nr-topics
-  25` or `--nr-topics 30`; only increase if important domains are clearly being
-  merged.
+- Prefer fewer final domains for manuscript interpretation, but do not force the
+  raw BERTopic model to be too small. A good default is `--min-topic-size 25
+  --nr-topics auto`, then aggregate raw clusters using GPT's `primary_domain`.
+- If the topic labels collapse into vague categories such as `elite corruption`
+  or `corruption investigations`, refit a more granular BERTopic model before
+  interpreting.
 - The over-time and cross-country plots are weighted back to the political
   corruption article counts within each sampled country-year stratum.
 - Treat topic IDs as unstable. Save the model, sample, random seed, and

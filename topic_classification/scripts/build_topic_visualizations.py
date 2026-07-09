@@ -14,9 +14,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-n", type=int, default=12)
     parser.add_argument(
         "--label-mode",
-        choices=["generic-domain", "topic"],
-        default="generic-domain",
-        help="Use GPT country-neutral corruption-domain labels or raw topic labels.",
+        choices=["primary-domain", "generic-domain", "topic"],
+        default="primary-domain",
+        help="Use GPT controlled domain labels, country-neutral free labels, or raw topic labels.",
     )
     parser.add_argument(
         "--include-outlier",
@@ -43,14 +43,22 @@ def load_topic_labels(topic_info, labels_path):
     label_col = "llm_topic_short_label" if "llm_topic_short_label" in labels.columns else "llm_topic_label"
     labels["topic_label"] = labels[label_col].fillna("").astype(str)
     labels.loc[labels["topic_label"].str.strip().eq(""), "topic_label"] = labels["Name"]
+    if "llm_primary_domain" in labels.columns:
+        labels["primary_domain"] = labels["llm_primary_domain"].fillna("").astype(str)
+    elif "llm_corruption_type" in labels.columns:
+        labels["primary_domain"] = labels["llm_corruption_type"].fillna("").astype(str)
+    else:
+        labels["primary_domain"] = ""
+    labels.loc[labels["primary_domain"].str.strip().eq(""), "primary_domain"] = labels["topic_label"]
+
     if "llm_generic_domain_short_label" in labels.columns:
         labels["generic_domain_label"] = labels["llm_generic_domain_short_label"].fillna("").astype(str)
     elif "llm_corruption_type" in labels.columns:
         labels["generic_domain_label"] = labels["llm_corruption_type"].fillna("").astype(str)
     else:
         labels["generic_domain_label"] = ""
-    labels.loc[labels["generic_domain_label"].str.strip().eq(""), "generic_domain_label"] = labels["topic_label"]
-    return labels[["Topic", "topic_label", "generic_domain_label"]]
+    labels.loc[labels["generic_domain_label"].str.strip().eq(""), "generic_domain_label"] = labels["primary_domain"]
+    return labels[["Topic", "topic_label", "primary_domain", "generic_domain_label"]]
 
 
 def weighted_group_share(data, group_cols, weight_col):
@@ -82,8 +90,14 @@ def main() -> None:
 
     docs = docs.merge(labels, left_on="topic", right_on="Topic", how="left")
     docs["topic_label"] = docs["topic_label"].fillna(docs["topic"].astype(str))
+    docs["primary_domain"] = docs.get("primary_domain", docs["topic_label"]).fillna(docs["topic_label"])
     docs["generic_domain_label"] = docs.get("generic_domain_label", docs["topic_label"]).fillna(docs["topic_label"])
-    analysis_label = "generic_domain_label" if args.label_mode == "generic-domain" else "topic_label"
+    if args.label_mode == "primary-domain":
+        analysis_label = "primary_domain"
+    elif args.label_mode == "generic-domain":
+        analysis_label = "generic_domain_label"
+    else:
+        analysis_label = "topic_label"
     if not args.include_outlier:
         docs = docs[docs["topic"].ne(-1)].copy()
 

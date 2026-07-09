@@ -21,6 +21,29 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
+PROMPT_VERSION = "mechanism_taxonomy_v2"
+
+DOMAIN_TAXONOMY = [
+    "public procurement and contracting",
+    "public funds, embezzlement, and budget misuse",
+    "party finance and campaign money",
+    "election manipulation and vote buying",
+    "appointments, patronage, nepotism, and cronyism",
+    "judicial corruption and prosecution interference",
+    "police, security, and coercive-state corruption",
+    "local government and municipal corruption",
+    "executive abuse of office and impeachment",
+    "foreign influence, sanctions, and transnational corruption",
+    "state-owned enterprises and privatization",
+    "licensing, permits, land, and construction",
+    "lobbying, access, and conflict of interest",
+    "anti-corruption institutions and rule-of-law enforcement",
+    "asset declarations, unexplained wealth, and illicit enrichment",
+    "whistleblowing, leaks, and investigative journalism",
+    "mixed or unclear",
+]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Label BERTopic topics with GPT via the UvA LLM proxy.")
     parser.add_argument("--bertopic-dir", type=Path, required=True)
@@ -53,8 +76,11 @@ def extract_json(text: str) -> dict:
 
 def normalize_result(parsed: dict) -> dict:
     return {
+        "llm_label_prompt_version": PROMPT_VERSION,
         "llm_topic_label": parsed.get("topic_label", ""),
         "llm_topic_short_label": parsed.get("short_label", ""),
+        "llm_primary_domain": parsed.get("primary_domain", ""),
+        "llm_secondary_domain": parsed.get("secondary_domain", ""),
         "llm_generic_domain_label": parsed.get("generic_domain_label", ""),
         "llm_generic_domain_short_label": parsed.get("generic_domain_short_label", ""),
         "llm_corruption_type": parsed.get("corruption_type", ""),
@@ -75,6 +101,7 @@ def compact_text(text: object, max_chars: int) -> str:
 
 def build_prompt(topic_id: int, topic_name: str, count: int, examples: list[str]) -> str:
     example_block = "\n\n".join(f"Example {i + 1}: {example}" for i, example in enumerate(examples))
+    taxonomy_block = "\n".join(f"- {domain}" for domain in DOMAIN_TAXONOMY)
     return f"""
 You are helping interpret multilingual news topics for a research project on political corruption.
 
@@ -88,6 +115,15 @@ Important research goal:
   the generic domain labels unless the topic truly has no cross-country corruption mechanism.
 - If the topic looks country-specific or event-specific, abstract upward to the corruption mechanism,
   institutional arena, or scandal type that could appear in other countries.
+- Avoid umbrella labels such as "corruption investigations", "elite corruption", "political scandal",
+  "corruption probes", "legal proceedings", "accountability", or "rule of law" when a more specific
+  mechanism, institution, or resource is visible.
+- If the examples mostly discuss investigations/trials, label the underlying alleged conduct if it is
+  visible. Use "judicial corruption and prosecution interference" only when courts/prosecutors are the
+  alleged corrupt arena, not merely because a case is in court.
+
+Use this domain taxonomy for primary_domain and secondary_domain:
+{taxonomy_block}
 
 Topic metadata:
 - BERTopic topic id: {topic_id}
@@ -101,9 +137,11 @@ Return valid JSON only with these keys:
 {{
   "topic_label": "clear 5-10 word descriptive label; may mention event/country if unavoidable",
   "short_label": "2-4 word chart label for the descriptive topic",
-  "generic_domain_label": "country-neutral 4-8 word corruption mechanism/domain label",
+  "primary_domain": "one exact category from the taxonomy",
+  "secondary_domain": "one exact category from the taxonomy, or 'none'",
+  "generic_domain_label": "country-neutral 4-8 word corruption mechanism/domain label; not a vague investigation label",
   "generic_domain_short_label": "2-4 word country-neutral chart label",
-  "corruption_type": "best country-neutral corruption-domain category, or 'mixed/unclear'",
+  "corruption_type": "same as primary_domain unless a clearer short category is needed",
   "country_event_specific": true | false,
   "summary": "2-3 sentence interpretation of what binds these articles together",
   "inclusion_rule": "what belongs in this topic",
@@ -114,9 +152,11 @@ Return valid JSON only with these keys:
 Prefer substantive labels such as "Public procurement and contracting scandals" or
 "Election fraud and campaign finance allegations". Avoid vague labels such as "corruption news",
 "politics", or "legal issues". Avoid country labels such as "Italian scandals" or person labels such
-as "Trump/Russia" in generic_domain_label and generic_domain_short_label; use "elite investigations",
-"foreign influence investigations", "impeachment and executive misconduct", or another comparable
-domain instead.
+as "Trump/Russia" in generic_domain_label and generic_domain_short_label. Bad labels include
+"elite investigations", "corruption probes", "elite prosecutions", and "corruption scandals".
+Better labels include "campaign finance violations", "public contracting kickbacks",
+"executive abuse of office", "foreign influence allegations", "municipal procurement",
+"appointments and patronage", or "asset declarations and wealth".
 """.strip()
 
 
@@ -172,13 +212,20 @@ def main() -> None:
     if output_path.exists():
         existing = pd.read_csv(output_path)
         required_generic_columns = {
+            "llm_label_prompt_version",
+            "llm_primary_domain",
+            "llm_secondary_domain",
             "llm_generic_domain_label",
             "llm_generic_domain_short_label",
             "llm_country_event_specific",
         }
-        if not required_generic_columns.issubset(existing.columns):
+        has_current_prompt = (
+            "llm_label_prompt_version" in existing.columns
+            and existing["llm_label_prompt_version"].fillna("").astype(str).eq(PROMPT_VERSION).all()
+        )
+        if not required_generic_columns.issubset(existing.columns) or not has_current_prompt:
             print(
-                f"Existing label file lacks generic-domain columns; relabelling topics: {output_path}",
+                f"Existing label file is not prompt version {PROMPT_VERSION}; relabelling topics: {output_path}",
                 flush=True,
             )
             existing = pd.DataFrame()

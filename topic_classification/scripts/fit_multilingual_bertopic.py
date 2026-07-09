@@ -25,13 +25,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-topic-size",
         type=int,
-        default=75,
-        help="Larger values produce fewer, broader topics.",
+        default=25,
+        help="Larger values produce fewer, broader raw clusters before domain aggregation.",
     )
     parser.add_argument(
         "--nr-topics",
-        default="30",
-        help="Target number of topics after reduction. Use 'auto' to let BERTopic decide.",
+        default="auto",
+        help="Target number of raw topics after reduction. Use 'auto' to preserve discovered granularity.",
     )
     parser.add_argument("--max-docs", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
