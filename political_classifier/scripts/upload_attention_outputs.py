@@ -34,7 +34,7 @@ DEFAULT_RD_OUTPUT_DIR = posixpath.join(
     "output",
 )
 DEFAULT_FIGURE_PATTERNS = ["*.png", "*.pdf", "*.svg"]
-DEFAULT_TABLE_PATTERNS = ["*.csv", "*.tex"]
+DEFAULT_TABLE_PATTERNS = ["*.csv", "latex/*.tex"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -112,24 +112,25 @@ def collect_paths(directory: Path, patterns: list[str]) -> list[Path]:
     return sorted({path for path in paths if path.is_file()})
 
 
-def upload_file(path: Path, rd_dir: str) -> str:
+def upload_file(path: Path, local_base_dir: Path, rd_dir: str) -> str:
     from rd_utils import webdav_mkdirs, webdav_upload_bytes
 
-    rd_path = rd_join(rd_dir, path.name)
+    relative_path = path.relative_to(local_base_dir)
+    rd_path = rd_join(rd_dir, relative_path.as_posix())
     content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     webdav_mkdirs(rd_parent(rd_path))
     webdav_upload_bytes(rd_path, path.read_bytes(), content_type)
     return rd_path
 
 
-def upload_group(label: str, paths: list[Path], rd_dir: str) -> int:
+def upload_group(label: str, paths: list[Path], local_base_dir: Path, rd_dir: str) -> int:
     if not paths:
         print(f"No {label} found to upload.", flush=True)
         return 0
 
     print(f"\nUploading {len(paths)} {label} to: {rd_dir}", flush=True)
     for path in paths:
-        rd_path = upload_file(path, rd_dir)
+        rd_path = upload_file(path, local_base_dir, rd_dir)
         print(f"Uploaded {path.name} -> {rd_path}", flush=True)
     return len(paths)
 
@@ -145,12 +146,22 @@ def main() -> None:
     if not args.skip_figures:
         figure_paths = collect_paths(args.local_figure_dir, args.figure_patterns)
         figure_rd_dir = rd_join(args.rd_output_dir, args.rd_figure_subdir)
-        total += upload_group("attention figure(s)", figure_paths, figure_rd_dir)
+        total += upload_group(
+            "attention figure(s)",
+            figure_paths,
+            args.local_figure_dir,
+            figure_rd_dir,
+        )
 
     if not args.skip_tables:
         table_paths = collect_paths(args.local_table_dir, args.table_patterns)
         table_rd_dir = rd_join(args.rd_output_dir, args.rd_table_subdir)
-        total += upload_group("attention table(s)", table_paths, table_rd_dir)
+        total += upload_group(
+            "attention table(s)",
+            table_paths,
+            args.local_table_dir,
+            table_rd_dir,
+        )
 
     print(f"\nDone. Uploaded {total} file(s).", flush=True)
 

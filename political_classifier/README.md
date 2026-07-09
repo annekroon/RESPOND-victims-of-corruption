@@ -242,6 +242,14 @@ ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/out
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/attention/
 ```
 
+The attention notebook writes LaTeX tables from the saved CSV outputs into:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/latex/
+```
+
+The upload script sends both the CSV intermediates and the generated LaTeX files.
+
 Recommended manuscript figures:
 
 ```latex
