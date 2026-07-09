@@ -1,0 +1,17 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Comparison of political-corruption classifier variants on the augmented human validation set}
+\label{tab:pc-classifier-comparison}
+\begin{tabular}{lrrrrrr}
+\toprule
+Training labels & $N_{train}$ & Threshold & Accuracy & Political precision & Political recall & Political F1 \\
+\midrule
+Silver 1+2+UK & 5,480 & 0.40 & 0.871 & 0.750 & 0.809 & 0.778 \\
+Silver 1+2 & 3,982 & 0.40 & 0.863 & 0.731 & 0.809 & 0.768 \\
+Silver batch 2 & 2,995 & 0.40 & 0.849 & 0.704 & 0.794 & 0.747 \\
+Silver batch 1 & 987 & 0.45 & 0.843 & 0.701 & 0.766 & 0.732 \\
+UK silver only & 1,498 & 0.45 & 0.827 & 0.652 & 0.823 & 0.727 \\
+\bottomrule
+\end{tabular}
+\end{table}

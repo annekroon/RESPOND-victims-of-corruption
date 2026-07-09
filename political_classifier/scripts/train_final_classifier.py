@@ -5,17 +5,22 @@ embedding classifier on those silver labels, validates against the human-labelle
 set, and can optionally classify the cleaned country files.
 
 Examples:
-    python3 05_train_final_classifier.py
+    python3 political_classifier/scripts/train_final_classifier.py
 
-    nohup python3 -u 05_train_final_classifier.py --score-corpus \
-      > silver_classifier_scoring.log 2>&1 &
+    nohup python3 -u political_classifier/scripts/train_final_classifier.py --score-corpus \
+      > silver_classifier_uk_calibrated_scoring.log 2>&1 &
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -23,11 +28,13 @@ DEFAULT_PIPELINE_DIR = Path(
     "political_corruption_pipeline"
 )
 DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
-DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
+DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier_uk_calibrated"
 UK_CALIBRATION_LABEL_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_calibration_batch_with_llm_suggestions.csv"
+DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    UK_CALIBRATION_LABEL_PATH,
 ]
 DEFAULT_COUNTRIES = [
     "Bulgaria",
@@ -126,8 +133,8 @@ def parse_args() -> argparse.Namespace:
         "--include-uk-calibration",
         action="store_true",
         help=(
-            "Add the UK calibration silver-label batch and, unless --output-dir "
-            "is explicitly set, write to silver_classifier_uk_calibrated."
+            "Deprecated compatibility flag. The UK calibration silver-label "
+            "batch is included by default in the final classifier."
         ),
     )
     parser.add_argument(
@@ -139,7 +146,7 @@ def parse_args() -> argparse.Namespace:
         "--extra-human-validation",
         type=Path,
         nargs="+",
-        default=[],
+        default=[DEFAULT_UK_REVIEWED_VALIDATION_PATH],
         help=(
             "Optional manually reviewed validation CSV files to append to the "
             "original human validation set. Expected label column: "
@@ -433,11 +440,8 @@ def main() -> None:
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import classification_report, confusion_matrix
 
-    if args.include_uk_calibration:
-        if UK_CALIBRATION_LABEL_PATH not in args.silver_labels:
-            args.silver_labels = [*args.silver_labels, UK_CALIBRATION_LABEL_PATH]
-        if args.output_dir == DEFAULT_OUTPUT_DIR:
-            args.output_dir = DEFAULT_PIPELINE_DIR / "silver_classifier_uk_calibrated"
+    if args.include_uk_calibration and UK_CALIBRATION_LABEL_PATH not in args.silver_labels:
+        args.silver_labels = [*args.silver_labels, UK_CALIBRATION_LABEL_PATH]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 

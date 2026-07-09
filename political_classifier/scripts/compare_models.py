@@ -15,7 +15,12 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -24,19 +29,22 @@ DEFAULT_PIPELINE_DIR = Path(
 )
 DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "classifier_comparison_uk_calibration"
+DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "uk_calibration_batch_with_llm_suggestions.csv",
 ]
 DEFAULT_EMBEDDING_MODELS = [
-    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "intfloat/multilingual-e5-large",
 ]
 RECOMMENDED_EMBEDDING_MODELS = [
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
     "sentence-transformers/LaBSE",
     "intfloat/multilingual-e5-base",
+    "intfloat/multilingual-e5-large",
+    "BAAI/bge-m3",
 ]
 
 SILVER_LABEL_MAP = {
@@ -109,7 +117,7 @@ def parse_args() -> argparse.Namespace:
         "--extra-human-validation",
         type=Path,
         nargs="+",
-        default=[],
+        default=[DEFAULT_UK_REVIEWED_VALIDATION_PATH],
         help=(
             "Optional manually reviewed validation CSV files to append to the "
             "original human validation set. Expected label column: "

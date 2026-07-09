@@ -5,7 +5,7 @@ translations and LLM label suggestions. The output is meant for manual review
 in the Streamlit annotation interface. Reviewed rows can then be appended to
 the human validation set with:
 
-    python3 04_compare_classifier_models.py \
+    python3 political_classifier/scripts/compare_models.py \
       --extra-human-validation /path/to/uk_human_validation_reviewed.csv
 
 Important: do not also use these reviewed rows as silver training labels in the
@@ -15,7 +15,12 @@ same evaluation. They are intended as an external UK validation supplement.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 DEFAULT_PIPELINE_DIR = Path(

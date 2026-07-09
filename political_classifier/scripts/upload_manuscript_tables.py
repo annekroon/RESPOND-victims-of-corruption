@@ -1,17 +1,23 @@
 """Upload generated manuscript LaTeX tables to Research Drive/WebDAV.
 
-Run this after the LaTeX table section in 04_compare_classifier_models.ipynb
+Run this after the LaTeX table section in
+political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 has generated local .tex files.
 
 Example:
-    python3 06_upload_manuscript_tables.py
+    python3 political_classifier/scripts/upload_manuscript_tables.py
 """
 
 from __future__ import annotations
 
 import argparse
 import posixpath
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import RD_BASE_DIR
 
@@ -73,7 +79,8 @@ def main() -> None:
     if not args.local_table_dir.exists():
         raise FileNotFoundError(
             f"Local table directory does not exist: {args.local_table_dir}. "
-            "Run the LaTeX table cells in 04_compare_classifier_models.ipynb first."
+            "Run the LaTeX table cells in "
+            "political_classifier/notebooks/02_inspect_classifier_comparison.ipynb first."
         )
 
     table_paths = sorted(args.local_table_dir.glob(args.pattern))

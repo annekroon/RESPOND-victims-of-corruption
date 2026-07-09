@@ -5,10 +5,10 @@ the final classifier probabilities. It is intended to audit and improve the
 political-corruption classifier where validation performance was weakest.
 
 Example:
-    python3 08_create_uk_silver_label_batch.py
+    python3 political_classifier/scripts/create_uk_silver_batch.py
 
 Then label with:
-    nohup python3 -u 03_label_silver_label_batch.py \
+    nohup python3 -u political_classifier/scripts/label_silver_batch.py \
       --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_calibration_batch_for_annotation.csv \
       --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_calibration_batch_with_llm_suggestions.csv \
       --max-chars 3000 \
@@ -18,7 +18,12 @@ Then label with:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 DEFAULT_PIPELINE_DIR = Path(

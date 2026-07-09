@@ -1,7 +1,7 @@
 """Run LLM proxy translations and annotation suggestions for silver-label rows.
 
 Example:
-    nohup python3 -u 03_label_silver_label_batch.py \
+    nohup python3 -u political_classifier/scripts/label_silver_batch.py \
       > llm_silver_label.log 2>&1 &
 """
 
@@ -10,8 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 

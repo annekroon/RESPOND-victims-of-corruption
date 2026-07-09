@@ -1,13 +1,18 @@
 """Streamlit interface for manually reviewing silver-label annotations.
 
 Run on the remote machine with:
-    streamlit run miscellaneous/annotation_interface.py --server.address 0.0.0.0 --server.port 8501
+    streamlit run political_classifier/tools/annotation_interface.py --server.address 127.0.0.1 --server.port 8501
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import pandas as pd
 import streamlit as st

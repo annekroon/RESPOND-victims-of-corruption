@@ -38,6 +38,7 @@ target/
 # Python
 __pycache__/
 *.py[cod]
+*_local_outputs.ipynb
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
