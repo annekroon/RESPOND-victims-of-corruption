@@ -160,6 +160,8 @@ political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 
 This notebook generates manuscript-ready LaTeX classifier tables.
 
+The inspection notebook intentionally reads only `classifier_comparison/`. If old folders such as `classifier_comparison_uk_calibration/` still exist on disk, they are ignored. You may archive or delete them manually after confirming you no longer need them.
+
 ### 5. Train And Score Final Classifier
 
 Small test run:
