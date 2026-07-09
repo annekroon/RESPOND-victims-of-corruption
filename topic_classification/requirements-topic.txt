@@ -1,0 +1,5 @@
+bertopic
+umap-learn
+hdbscan
+plotly
+kaleido

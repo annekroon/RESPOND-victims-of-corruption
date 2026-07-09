@@ -15,7 +15,7 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 | Path | Purpose |
 |---|---|
 | `political_classifier/` | Part 1 workflow: clean/dedupe, silver labels, classifier comparison, final scoring, attention tables |
-| `topic_classification/` | Exploratory topic discovery and corruption-type mapping with country-time stratified samples |
+| `topic_classification/` | Political-corruption topic discovery, GPT topic interpretation, and country-time visualizations |
 | `config.py` | Shared non-secret paths and defaults |
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
@@ -106,7 +106,9 @@ See:
 topic_classification/README.md
 ```
 
-This workflow starts with reproducible random samples across country and year,
-then fits multilingual BERTopic models for a general news overview or a
-political-corruption-only topic map. The topic outputs are intended as a coding
-frame discovery step before building final corruption-type labels.
+This workflow starts with reproducible random samples across country and year
+among articles classified as political corruption, then fits multilingual
+BERTopic models, labels topics with GPT 5.1 through the UvA LLM proxy, and
+uses a notebook to inspect topic tables, example articles, and interactive
+country/time visualizations. The topic outputs are intended as a coding-frame
+discovery step before building final corruption-type labels.
