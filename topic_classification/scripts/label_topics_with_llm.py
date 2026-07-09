@@ -55,7 +55,10 @@ def normalize_result(parsed: dict) -> dict:
     return {
         "llm_topic_label": parsed.get("topic_label", ""),
         "llm_topic_short_label": parsed.get("short_label", ""),
+        "llm_generic_domain_label": parsed.get("generic_domain_label", ""),
+        "llm_generic_domain_short_label": parsed.get("generic_domain_short_label", ""),
         "llm_corruption_type": parsed.get("corruption_type", ""),
+        "llm_country_event_specific": parsed.get("country_event_specific", ""),
         "llm_topic_summary": parsed.get("summary", ""),
         "llm_inclusion_rule": parsed.get("inclusion_rule", ""),
         "llm_exclusion_rule": parsed.get("exclusion_rule", ""),
@@ -79,6 +82,13 @@ The documents were already classified as primarily discussing political corrupti
 to decide whether they are political corruption; your job is to name the topic in a way a human coder
 can use.
 
+Important research goal:
+- The final labels must support comparison across countries and over time.
+- Do not use country names, nationalities, politician names, party names, or one-off event names in
+  the generic domain labels unless the topic truly has no cross-country corruption mechanism.
+- If the topic looks country-specific or event-specific, abstract upward to the corruption mechanism,
+  institutional arena, or scandal type that could appear in other countries.
+
 Topic metadata:
 - BERTopic topic id: {topic_id}
 - BERTopic keyword/name string: {topic_name}
@@ -89,9 +99,12 @@ Representative documents:
 
 Return valid JSON only with these keys:
 {{
-  "topic_label": "clear 5-10 word label",
-  "short_label": "2-4 word chart label",
-  "corruption_type": "best corruption-domain category, or 'mixed/unclear'",
+  "topic_label": "clear 5-10 word descriptive label; may mention event/country if unavoidable",
+  "short_label": "2-4 word chart label for the descriptive topic",
+  "generic_domain_label": "country-neutral 4-8 word corruption mechanism/domain label",
+  "generic_domain_short_label": "2-4 word country-neutral chart label",
+  "corruption_type": "best country-neutral corruption-domain category, or 'mixed/unclear'",
+  "country_event_specific": true | false,
   "summary": "2-3 sentence interpretation of what binds these articles together",
   "inclusion_rule": "what belongs in this topic",
   "exclusion_rule": "what should not be coded as this topic",
@@ -100,7 +113,10 @@ Return valid JSON only with these keys:
 
 Prefer substantive labels such as "Public procurement and contracting scandals" or
 "Election fraud and campaign finance allegations". Avoid vague labels such as "corruption news",
-"politics", or "legal issues".
+"politics", or "legal issues". Avoid country labels such as "Italian scandals" or person labels such
+as "Trump/Russia" in generic_domain_label and generic_domain_short_label; use "elite investigations",
+"foreign influence investigations", "impeachment and executive misconduct", or another comparable
+domain instead.
 """.strip()
 
 
@@ -155,8 +171,21 @@ def main() -> None:
 
     if output_path.exists():
         existing = pd.read_csv(output_path)
-        done_topics = set(existing["Topic"].dropna().astype(int)) if "Topic" in existing.columns else set()
-        print(f"Resuming from {output_path}; already done: {len(done_topics):,}", flush=True)
+        required_generic_columns = {
+            "llm_generic_domain_label",
+            "llm_generic_domain_short_label",
+            "llm_country_event_specific",
+        }
+        if not required_generic_columns.issubset(existing.columns):
+            print(
+                f"Existing label file lacks generic-domain columns; relabelling topics: {output_path}",
+                flush=True,
+            )
+            existing = pd.DataFrame()
+            done_topics = set()
+        else:
+            done_topics = set(existing["Topic"].dropna().astype(int)) if "Topic" in existing.columns else set()
+            print(f"Resuming from {output_path}; already done: {len(done_topics):,}", flush=True)
     else:
         existing = pd.DataFrame()
         done_topics = set()

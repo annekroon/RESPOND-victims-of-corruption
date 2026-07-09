@@ -134,6 +134,10 @@ topic_labels_llm.csv
 
 Each row includes a chart label, longer topic label, proposed corruption-domain
 category, short summary, inclusion rule, exclusion rule, and confidence score.
+The prompt asks GPT 5.1 to create country-neutral generic domain labels for
+cross-country comparison. Raw BERTopic topics may still be country-specific;
+use the generic-domain labels for the main figures and the raw topic labels for
+diagnosis.
 
 ## 4. Inspect Final Results In A Notebook
 
@@ -148,6 +152,12 @@ The notebook reads the final `topic_info.csv`, `document_topics.csv.gz`, and
 example articles per topic, a country-topic heatmap, topic shares over time,
 and faceted country trends. It also exports the summary tables under
 `inspection_tables/`.
+
+By default, the notebook plots `generic_domain_short_label` rather than the raw
+BERTopic topic label. This is intentional: the domain labels abstract away from
+country-specific events so the plots show cross-country corruption mechanisms.
+Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"` in the first code cell if you
+want to diagnose the raw BERTopic clusters.
 
 ## 5. Optional: Export Standalone HTML Visualizations
 
