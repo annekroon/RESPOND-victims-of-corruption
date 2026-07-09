@@ -40,19 +40,19 @@ Final selected political-corruption classifier:
 
 | Item | Value |
 |---|---|
-| Training labels | LLM silver-label batches 1 + 2 + UK calibration batch |
+| Training labels | LLM silver-label batches 1 + 2 |
 | Classifier | Balanced logistic regression |
 | Embeddings | `intfloat/multilingual-e5-large` |
 | Decision threshold | `0.40` |
 | Human validation set | Original 452 rows + 50 manually reviewed UK supplement rows |
 | Validation rows | `502` |
 | Political-corruption support | `141` |
-| Political precision | `0.750` |
+| Political precision | `0.731` |
 | Political recall | `0.809` |
-| Political F1 | `0.778` |
-| Accuracy | `0.871` |
-| Macro F1 | `0.843` |
-| Weighted F1 | `0.872` |
+| Political F1 | `0.768` |
+| Accuracy | `0.863` |
+| Macro F1 | `0.835` |
+| Weighted F1 | `0.865` |
 
 The main derived outputs are stored on `annecuda` under:
 
@@ -88,7 +88,7 @@ CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u political_classifier/scripts/train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
   --score-corpus \
-  > silver_classifier_uk_calibrated_scoring.log 2>&1 &
+  > silver_classifier_final_scoring.log 2>&1 &
 ```
 
 Inspect political-corruption attention over time:

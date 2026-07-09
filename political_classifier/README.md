@@ -22,26 +22,26 @@ This folder contains the workflow for identifying which cleaned news articles ar
 
 ## Final Classifier Decision
 
-The final political-corruption classifier uses the UK-calibrated combined silver-label training set. This choice is based on the comparison run with the manually reviewed UK validation supplement.
+The final political-corruption classifier uses the conservative combined silver-label training set from batches 1 and 2. The UK-calibrated model performed slightly better on the extended validation benchmark, but the gain was modest. To avoid changing the already scored corpus for a small difference, the UK calibration is reported as a sensitivity check rather than adopted as the main classifier.
 
 | Metric | Value |
 |---|---|
-| Label source | `silver_combined_with_uk_calibration` |
-| Training rows | `5,480` |
+| Label source | `silver_combined` |
+| Training rows | `3,982` |
 | Embedding model | `intfloat/multilingual-e5-large` |
 | Classifier | Balanced logistic regression |
 | Threshold | `0.40` |
 | Validation rows | `502` |
 | Political-corruption support | `141` |
-| Accuracy | `0.871` |
-| Political precision | `0.750` |
+| Accuracy | `0.863` |
+| Political precision | `0.731` |
 | Political recall | `0.809` |
-| Political F1 | `0.778` |
-| Macro F1 | `0.843` |
-| Weighted F1 | `0.872` |
-| Predicted positive rate on validation | `0.303` |
+| Political F1 | `0.768` |
+| Macro F1 | `0.835` |
+| Weighted F1 | `0.865` |
+| Predicted positive rate on validation | `0.311` |
 
-Compared with the original batches 1+2 model, the UK-calibrated model improves overall political F1 and improves UK-specific F1 in the reviewed UK validation supplement.
+The UK-calibrated model is retained in the comparison tables as a robustness check. On the extended validation set, it improved political F1 from 0.768 to 0.778 and UK-specific F1 from 0.677 to 0.714.
 
 ## Workflow
 
@@ -200,19 +200,19 @@ CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u political_classifier/scripts/train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
   --score-corpus \
-  > silver_classifier_uk_calibrated_scoring.log 2>&1 &
+  > silver_classifier_final_scoring.log 2>&1 &
 ```
 
 Monitor:
 
 ```bash
-tail -f silver_classifier_uk_calibrated_scoring.log
+tail -f silver_classifier_final_scoring.log
 ```
 
 Outputs are written to:
 
 ```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier_uk_calibrated/
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/
 ```
 
 ### 6. Attention Over Time

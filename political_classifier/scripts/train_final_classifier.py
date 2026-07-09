@@ -8,7 +8,7 @@ Examples:
     python3 political_classifier/scripts/train_final_classifier.py
 
     nohup python3 -u political_classifier/scripts/train_final_classifier.py --score-corpus \
-      > silver_classifier_uk_calibrated_scoring.log 2>&1 &
+      > silver_classifier_final_scoring.log 2>&1 &
 """
 
 from __future__ import annotations
@@ -28,13 +28,12 @@ DEFAULT_PIPELINE_DIR = Path(
     "political_corruption_pipeline"
 )
 DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
-DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier_uk_calibrated"
+DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
 UK_CALIBRATION_LABEL_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_calibration_batch_with_llm_suggestions.csv"
 DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
-    UK_CALIBRATION_LABEL_PATH,
 ]
 DEFAULT_COUNTRIES = [
     "Bulgaria",
@@ -133,8 +132,8 @@ def parse_args() -> argparse.Namespace:
         "--include-uk-calibration",
         action="store_true",
         help=(
-            "Deprecated compatibility flag. The UK calibration silver-label "
-            "batch is included by default in the final classifier."
+            "Add the UK calibration silver-label batch and, unless --output-dir "
+            "is explicitly set, write to silver_classifier_uk_calibrated."
         ),
     )
     parser.add_argument(
@@ -442,6 +441,8 @@ def main() -> None:
 
     if args.include_uk_calibration and UK_CALIBRATION_LABEL_PATH not in args.silver_labels:
         args.silver_labels = [*args.silver_labels, UK_CALIBRATION_LABEL_PATH]
+        if args.output_dir == DEFAULT_OUTPUT_DIR:
+            args.output_dir = DEFAULT_PIPELINE_DIR / "silver_classifier_uk_calibrated"
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
