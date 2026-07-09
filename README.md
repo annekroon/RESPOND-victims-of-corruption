@@ -59,6 +59,7 @@ Run the numbered files in this order when rebuilding the workflow. Files without
 | 7 | `07_analyze_political_corruption_attention.ipynb` | Build weekly/monthly attention tables and plot political-corruption attention over time |
 | 8 | `08_create_uk_silver_label_batch.py` | Create a UK-focused calibration batch for classifier auditing/improvement |
 | 9 | `09_create_uk_human_validation_review_batch.py` | Create a manually reviewable UK validation supplement from LLM-labelled UK cases |
+| 10 | `10_merge_uk_validation_with_annotations.py` | Merge reviewed UK validation rows into a copy of the human annotation file |
 
 ## Shared Helper Files
 
@@ -512,3 +513,15 @@ python3 04_compare_classifier_models.py \
 ```
 
 This does not retrain on the reviewed UK rows. It evaluates the existing candidate models against the original human validation set plus the new manually reviewed UK supplement.
+
+To also save a merged annotation file on Research Drive, run:
+
+```bash
+python3 10_merge_uk_validation_with_annotations.py
+```
+
+This keeps the original annotation file unchanged and writes:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/classified_pol_corruption_validation_gabriele_plus_uk_review.csv
+```
