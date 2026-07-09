@@ -47,6 +47,8 @@ The UK-calibrated model is retained in the comparison tables as a robustness che
 
 Run commands from the repository root on `annecuda`.
 
+The notebooks include a small bootstrap cell that finds the repository root and adds it to `sys.path`. This keeps imports such as `from config import RD_BASE_DIR` and `from dataloader import ...` working even though the notebooks live in `political_classifier/notebooks/`.
+
 ### 1. Clean And Dedupe
 
 Run:
