@@ -14,15 +14,13 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/compare_models.py` | Reproducible classifier comparison and validation |
 | `scripts/train_final_classifier.py` | Train/evaluate the final classifier and optionally score all cleaned country files |
 | `scripts/upload_manuscript_tables.py` | Upload generated LaTeX tables to Research Drive |
-| `scripts/create_uk_silver_batch.py` | Create the UK calibration silver-label batch |
-| `scripts/create_uk_validation_review_batch.py` | Create a small UK human-validation review file from LLM-labelled UK cases |
 | `scripts/merge_uk_validation_annotations.py` | Save a merged annotation file with the reviewed UK supplement |
 | `tools/annotation_interface.py` | Streamlit UI for manual review |
 | `archive/` | Older notebook versions kept for provenance |
 
 ## Final Classifier Decision
 
-The final political-corruption classifier uses the conservative combined silver-label training set from batches 1 and 2. The UK-calibrated model performed slightly better on the extended validation benchmark, but the gain was modest. To avoid changing the already scored corpus for a small difference, the UK calibration is reported as a sensitivity check rather than adopted as the main classifier.
+The final political-corruption classifier uses the combined silver-label training set from batches 1 and 2. The manually reviewed UK supplement is used only for validation, not for training.
 
 | Metric | Value |
 |---|---|
@@ -40,8 +38,6 @@ The final political-corruption classifier uses the conservative combined silver-
 | Macro F1 | `0.835` |
 | Weighted F1 | `0.865` |
 | Predicted positive rate on validation | `0.311` |
-
-The UK-calibrated model is retained in the comparison tables as a robustness check. On the extended validation set, it improved political F1 from 0.768 to 0.778 and UK-specific F1 from 0.677 to 0.714.
 
 ## Workflow
 
@@ -92,22 +88,9 @@ nohup python3 -u political_classifier/scripts/label_silver_batch.py \
   > llm_silver_label_batch_2.log 2>&1 &
 ```
 
-### 3. UK Calibration And Validation Supplement
+### 3. UK Validation Supplement
 
-The original balanced human validation set had low UK positive support. A UK calibration batch was therefore created from already classified UK articles and labelled with the same LLM prompt:
-
-```bash
-python3 political_classifier/scripts/create_uk_silver_batch.py
-```
-
-A smaller UK review file was then sampled from the translated/LLM-labelled UK cases:
-
-```bash
-python3 political_classifier/scripts/create_uk_validation_review_batch.py \
-  --target-n 50
-```
-
-Review it with Streamlit:
+The original balanced human validation set had low UK positive support. A small UK supplement was therefore manually reviewed and is used as validation-only data. If you need to inspect or edit that reviewed file, use Streamlit:
 
 ```bash
 RESPOND_ANNOTATION_INPUT=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_review_batch.csv \
@@ -166,7 +149,7 @@ python3 political_classifier/scripts/compare_models.py \
 Main outputs:
 
 ```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/classifier_comparison_uk_calibration/
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/classifier_comparison/
 ```
 
 Then inspect:

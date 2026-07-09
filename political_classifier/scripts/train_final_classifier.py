@@ -29,7 +29,6 @@ DEFAULT_PIPELINE_DIR = Path(
 )
 DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
-UK_CALIBRATION_LABEL_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_calibration_batch_with_llm_suggestions.csv"
 DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
     DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
@@ -128,14 +127,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
-    parser.add_argument(
-        "--include-uk-calibration",
-        action="store_true",
-        help=(
-            "Add the UK calibration silver-label batch and, unless --output-dir "
-            "is explicitly set, write to silver_classifier_uk_calibrated."
-        ),
-    )
     parser.add_argument(
         "--select-threshold",
         action="store_true",
@@ -438,11 +429,6 @@ def main() -> None:
     from sentence_transformers import SentenceTransformer
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import classification_report, confusion_matrix
-
-    if args.include_uk_calibration and UK_CALIBRATION_LABEL_PATH not in args.silver_labels:
-        args.silver_labels = [*args.silver_labels, UK_CALIBRATION_LABEL_PATH]
-        if args.output_dir == DEFAULT_OUTPUT_DIR:
-            args.output_dir = DEFAULT_PIPELINE_DIR / "silver_classifier_uk_calibrated"
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
