@@ -9,8 +9,8 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `notebooks/01_clean_dedupe_data.ipynb` | Load raw country files, clean text, deduplicate, and write denominator tables |
 | `notebooks/02_inspect_classifier_comparison.ipynb` | Inspect saved classifier comparison outputs and generate manuscript tables |
 | `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time |
-| `scripts/create_silver_label_batch.py` | Create targeted silver-label batches |
-| `scripts/label_silver_batch.py` | Send a silver-label batch to the UvA LLM proxy |
+| `scripts/create_silver_label_batch.py` | Create targeted source files for the silver-labelled training set |
+| `scripts/label_silver_batch.py` | Send silver-training-set source files to the UvA LLM proxy |
 | `scripts/compare_models.py` | Reproducible classifier comparison and validation |
 | `scripts/train_final_classifier.py` | Train/evaluate the final classifier and optionally score all cleaned country files |
 | `scripts/upload_manuscript_tables.py` | Upload generated LaTeX tables to Research Drive |
@@ -20,11 +20,11 @@ This folder contains the workflow for identifying which cleaned news articles ar
 
 ## Final Classifier Decision
 
-The final political-corruption classifier uses the combined silver-label training set from batches 1 and 2. The manually reviewed UK supplement is used only for validation, not for training.
+The final political-corruption classifier uses one combined LLM silver-labelled training set. The manually reviewed UK supplement is used only for validation, not for training.
 
 | Metric | Value |
 |---|---|
-| Label source | `silver_combined` |
+| Label source | Silver-labelled training set |
 | Training rows | `3,982` |
 | Embedding model | `intfloat/multilingual-e5-large` |
 | Classifier | Balanced logistic regression |
@@ -71,14 +71,14 @@ denominator_country_week.csv
 
 ### 2. Create And Label Silver Data
 
-Create a targeted silver-label batch:
+Create targeted files for the silver-labelled training set:
 
 ```bash
 python3 political_classifier/scripts/create_silver_label_batch.py \
   --country-targets Sweden:540,United_Kingdom:540,Ukraine:540,Netherlands:420,Serbia:360,Hungary:180,Bulgaria:180,Italy:120,France:120
 ```
 
-Label a batch with the UvA LLM proxy:
+Label each file with the UvA LLM proxy:
 
 ```bash
 nohup python3 -u political_classifier/scripts/label_silver_batch.py \
@@ -158,7 +158,7 @@ Then inspect:
 political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 ```
 
-This notebook generates manuscript-ready LaTeX classifier tables.
+This notebook generates manuscript-ready LaTeX classifier tables. The final model is reported as trained on one silver-labelled training set rather than as separate data-collection batches.
 
 The inspection notebook intentionally reads only `classifier_comparison/`. If old folders such as `classifier_comparison_uk_calibration/` still exist on disk, they are ignored. You may archive or delete them manually after confirming you no longer need them.
 

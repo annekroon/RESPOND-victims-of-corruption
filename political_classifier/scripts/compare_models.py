@@ -5,10 +5,12 @@ It evaluates:
 
 1. TF-IDF trained/evaluated with cross-validation on the human labels.
 2. Multilingual embeddings trained/evaluated with cross-validation on human labels.
-3. Multilingual embeddings trained on LLM silver labels, validated on human labels.
+3. Multilingual embeddings trained on the combined LLM silver-labelled training
+   set, validated on human labels.
 
-The silver-label variants are evaluated per supplied silver-label file and for
-the combined set of all supplied files.
+By default, supplied silver-label files are pooled into one training set. Use
+--include-silver-source-diagnostics only when you explicitly want to inspect
+individual source-file diagnostics.
 """
 
 from __future__ import annotations
@@ -94,7 +96,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         nargs="+",
         default=DEFAULT_SILVER_LABEL_PATHS,
-        help="LLM-labelled silver-label CSV files.",
+        help="LLM-labelled CSV files that will be pooled into one silver-labelled training set.",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
@@ -125,6 +127,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--include-silver-source-diagnostics",
+        action="store_true",
+        help=(
+            "Also evaluate each supplied silver-label file separately. This is "
+            "for diagnostics only; manuscript tables use the pooled silver-labelled set."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -203,7 +213,7 @@ def load_one_silver_file(path: Path):
     return data
 
 
-def load_silver_variants(paths):
+def load_silver_variants(paths, include_source_diagnostics=False):
     import pandas as pd
 
     variants = {}
@@ -212,16 +222,16 @@ def load_silver_variants(paths):
         if not path.exists():
             print(f"Skipping missing silver-label file: {path}", flush=True)
             continue
-        name = f"silver_batch_{idx}"
         data = load_one_silver_file(path)
-        variants[name] = data
+        if include_source_diagnostics:
+            variants[f"silver_source_file_{idx}"] = data
         frames.append(data)
 
     if frames:
         combined = pd.concat(frames, ignore_index=True)
         if "uri" in combined.columns:
             combined = combined.drop_duplicates(subset=["uri"], keep="first").copy()
-        variants["silver_combined"] = combined
+        variants["silver_labelled_training_set"] = combined
 
     if not variants:
         raise FileNotFoundError("No silver-label files were found.")
@@ -514,7 +524,10 @@ def main() -> None:
     print(f"Human validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
-    silver_variants = load_silver_variants(args.silver_labels)
+    silver_variants = load_silver_variants(
+        args.silver_labels,
+        include_source_diagnostics=args.include_silver_source_diagnostics,
+    )
     for name, data in silver_variants.items():
         print(f"{name}: {len(data):,} rows", flush=True)
         print(data["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)

@@ -40,7 +40,7 @@ Final selected political-corruption classifier:
 
 | Item | Value |
 |---|---|
-| Training labels | LLM silver-label batches 1 + 2 |
+| Training labels | LLM silver-labelled training set |
 | Classifier | Balanced logistic regression |
 | Embeddings | `intfloat/multilingual-e5-large` |
 | Decision threshold | `0.40` |

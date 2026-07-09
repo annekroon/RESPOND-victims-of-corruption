@@ -1,13 +1,13 @@
-"""Create a second targeted silver-label batch from cleaned country files.
+"""Create a targeted source file for the silver-labelled training set.
 
 The script trains a classifier on LLM-generated silver labels, scores candidate
-articles from the cleaned corpus, and samples a new batch focused on weaker
-countries and articles near the selected decision threshold.
+articles from the cleaned corpus, and samples rows focused on weaker countries
+and articles near the selected decision threshold.
 
 Example:
     python3 political_classifier/scripts/create_silver_label_batch.py
 
-Then label the resulting batch with:
+Then label the resulting source file with:
     nohup python3 -u political_classifier/scripts/label_silver_batch.py \
       --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
       --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \

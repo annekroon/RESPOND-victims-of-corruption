@@ -1,4 +1,4 @@
-"""Run LLM proxy translations and annotation suggestions for silver-label rows.
+"""Run LLM proxy translations and suggestions for silver-training-set rows.
 
 Example:
     nohup python3 -u political_classifier/scripts/label_silver_batch.py \
