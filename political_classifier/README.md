@@ -242,6 +242,22 @@ ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/out
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/attention/
 ```
 
+Recommended manuscript figures:
+
+```latex
+% Main results section
+\includegraphics[width=\textwidth]{figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png}
+
+% Appendix
+\includegraphics[width=\textwidth]{figures/attention/political_corruption_absolute_volume_month_stacked.png}
+```
+
+A draft results section and appendix figure text are available in:
+
+```text
+docs/results_political_corruption_attention.tex
+```
+
 ## Manuscript Tables
 
 The comparison notebook writes classifier validation tables to:
