@@ -51,8 +51,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--pattern",
-        default="*.tex",
-        help="Glob pattern of files to upload from local-table-dir.",
+        default="table_pc_classifier*.tex",
+        help=(
+            "Glob pattern of files to upload from local-table-dir. The default "
+            "uploads only political-corruption classifier tables and avoids older "
+            "generic table_classifier*.tex outputs."
+        ),
     )
     return parser.parse_args()
 
