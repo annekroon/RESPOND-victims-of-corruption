@@ -20,7 +20,7 @@ and over-time topic patterns.
 | `scripts/create_stratified_topic_sample.py` | Create balanced random samples across country and year |
 | `scripts/fit_multilingual_bertopic.py` | Fit BERTopic on a sample and export document-topic assignments |
 | `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
-| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to group fine-grained topics into higher-order inductive groups |
+| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order coverage frames |
 | `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
 | `requirements-topic.txt` | Optional extra dependencies for BERTopic |
@@ -142,12 +142,23 @@ comparability rating, label rationale, and confidence score. GPT 5.1 is used
 only to interpret and name the discovered BERTopic clusters; it is not asked to
 apply a predefined corruption-type taxonomy.
 
-## 4. Group Fine-Grained Topics Inductively
+## 4. Group Fine-Grained Topics Into Coverage Frames
 
 For a many-topic solution, keep the fine-grained BERTopic clusters, then ask GPT
-5.1 to group those discovered topics into higher-order groups. This is still
-inductive: GPT sees the topic labels/summaries and proposes groups from them,
-without a predefined taxonomy.
+5.1 to assign those discovered topics to higher-order coverage frames. These
+frames describe how corruption is organized in the news coverage rather than
+claiming to measure objective corruption types.
+
+Current coverage frames:
+
+| Frame | Meaning |
+|---|---|
+| `individualized_elite_scandal` | Named politicians, leaders, trials, accusations, scandals, or personal misconduct |
+| `systemic_institutional_corruption` | Broader institutional dysfunction, governance crisis, state capture, anti-corruption politics, or abuse of power |
+| `transnational_investigative_corruption` | Cross-border probes, international investigations, foreign-linked cases, offshore money, sanctions, or investigative journalism |
+| `boundary_or_nonpolitical_cases` | Corruption/scandal language that is less clearly centered on political corruption by public officials |
+| `local_sectoral_corruption` | Municipal, public-service, school, housing, charity, sport, public company, or other sector-specific cases |
+| `electoral_party_finance_scandal` | Campaign finance, party funding, vote manipulation, electoral control, or election-centered corruption allegations |
 
 ```bash
 python3 topic_classification/scripts/group_topics_with_llm.py \
@@ -155,6 +166,10 @@ python3 topic_classification/scripts/group_topics_with_llm.py \
   --model gpt-5.1 \
   --target-groups 12
 ```
+
+`--target-groups` is kept for command compatibility, but the frame set is fixed
+by the script. Each fine-grained topic is assigned to exactly one frame, with an
+LLM rationale.
 
 Outputs:
 
@@ -177,8 +192,8 @@ It shows topic/group-size tables, GPT summaries, example articles, a
 country-topic heatmap, topic shares over time, and faceted country trends. It
 also exports the summary tables under `inspection_tables/`.
 
-By default, the notebook plots `topic_group_short_label`, the GPT-labelled
-higher-order inductive group. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
+By default, the notebook plots `topic_group_short_label`, the higher-order
+coverage frame. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
 in the first code cell to inspect the fine-grained BERTopic topics directly.
 It also includes lift diagnostics and country-specificity checks to evaluate
 whether the discovered topics capture variation across countries and over time.

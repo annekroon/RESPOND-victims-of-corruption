@@ -1,8 +1,9 @@
-"""Cluster inductive BERTopic labels into higher-order topic groups with GPT.
+"""Assign inductive BERTopic topics to higher-level coverage frames with GPT.
 
 This script reads a BERTopic output directory after `label_topics_with_llm.py`
-has created `topic_labels_llm.csv`. It asks GPT to group the discovered topics
-inductively, without using a predefined corruption-type taxonomy.
+has created `topic_labels_llm.csv`. It asks GPT to assign each fine-grained
+topic to exactly one higher-level coverage frame, then writes an auditable
+topic-to-frame mapping with assignment rationales.
 """
 
 from __future__ import annotations
@@ -20,17 +21,79 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
-PROMPT_VERSION = "inductive_topic_groups_v2"
+PROMPT_VERSION = "coverage_frame_groups_v1"
+
+COVERAGE_FRAMES = [
+    {
+        "frame_id": "individualized_elite_scandal",
+        "label": "Individualized elite scandal",
+        "short_label": "Elite scandals",
+        "meaning": (
+            "Corruption coverage centered on named politicians, leaders, trials, "
+            "accusations, scandals, or personal misconduct."
+        ),
+    },
+    {
+        "frame_id": "systemic_institutional_corruption",
+        "label": "Systemic institutional corruption",
+        "short_label": "Systemic corruption",
+        "meaning": (
+            "Corruption represented as broader institutional dysfunction, state capture, "
+            "governance crisis, anti-corruption politics, or abuse of power."
+        ),
+    },
+    {
+        "frame_id": "transnational_investigative_corruption",
+        "label": "Transnational investigative corruption",
+        "short_label": "Transnational probes",
+        "meaning": (
+            "Cross-border probes, international investigations, foreign-linked cases, "
+            "offshore money, sanctions, or investigative journalism across borders."
+        ),
+    },
+    {
+        "frame_id": "boundary_or_nonpolitical_cases",
+        "label": "Boundary or less clearly political cases",
+        "short_label": "Boundary cases",
+        "meaning": (
+            "Cases using corruption or scandal language but less clearly centered on "
+            "political corruption by public officials."
+        ),
+    },
+    {
+        "frame_id": "local_sectoral_corruption",
+        "label": "Local or sectoral corruption",
+        "short_label": "Local/sectoral cases",
+        "meaning": (
+            "Municipal, local-government, public-service, school, housing, charity, "
+            "sport, public company, or other sector-specific corruption cases."
+        ),
+    },
+    {
+        "frame_id": "electoral_party_finance_scandal",
+        "label": "Electoral or party-finance scandal",
+        "short_label": "Elections & finance",
+        "meaning": (
+            "Campaign finance, party funding, vote manipulation, electoral control, "
+            "or corruption allegations organized around elections."
+        ),
+    },
+]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Group GPT-labelled BERTopic topics inductively.")
+    parser = argparse.ArgumentParser(description="Assign GPT-labelled BERTopic topics to coverage frames.")
     parser.add_argument("--bertopic-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--model", default=LLMPROXY_MODEL)
-    parser.add_argument("--target-groups", type=int, default=12)
-    parser.add_argument("--min-groups", type=int, default=8)
-    parser.add_argument("--max-groups", type=int, default=16)
+    parser.add_argument(
+        "--target-groups",
+        type=int,
+        default=12,
+        help="Kept for backward compatibility; coverage frames are fixed by the prompt.",
+    )
+    parser.add_argument("--min-groups", type=int, default=8, help=argparse.SUPPRESS)
+    parser.add_argument("--max-groups", type=int, default=16, help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -83,11 +146,25 @@ def load_topic_table(bertopic_dir: Path):
         ]
         if col in labels.columns
     ]
-    labels = labels[keep_cols].sort_values("Count", ascending=False)
-    return labels
+    return labels[keep_cols].sort_values("Count", ascending=False)
 
 
-def build_prompt(topic_rows, target_groups: int, min_groups: int, max_groups: int) -> str:
+def frame_rows(prompt_version: str) -> dict[str, dict]:
+    return {
+        frame["frame_id"]: {
+            "llm_group_prompt_version": prompt_version,
+            "topic_group_id": frame["frame_id"],
+            "topic_group_label": frame["label"],
+            "topic_group_short_label": frame["short_label"],
+            "topic_group_summary": frame["meaning"],
+            "topic_group_cross_country_comparability": "",
+            "topic_grouping_principle": frame["meaning"],
+        }
+        for frame in COVERAGE_FRAMES
+    }
+
+
+def build_prompt(topic_rows) -> str:
     topic_lines = []
     for row in topic_rows:
         topic_lines.append(
@@ -104,24 +181,31 @@ def build_prompt(topic_rows, target_groups: int, min_groups: int, max_groups: in
             )
         )
     topic_block = "\n\n".join(topic_lines)
+    frame_block = "\n".join(
+        (
+            f"- {frame['frame_id']} | {frame['label']} | "
+            f"{frame['meaning']} Chart label: {frame['short_label']}"
+        )
+        for frame in COVERAGE_FRAMES
+    )
 
     return f"""
-You are helping organize inductively discovered BERTopic clusters from multilingual political-corruption news.
+You are helping interpret inductively discovered BERTopic clusters from multilingual political-corruption news.
 
 Task:
-Group these fine-grained topics into a smaller set of higher-order topic groups.
+Assign each fine-grained topic to exactly one higher-level coverage frame.
 
 Important:
-- Do not apply a predefined corruption taxonomy.
-- Induce the groups from the topic labels and summaries below.
-- The grouping should preserve meaningful variation across countries and over time.
-- Do not create groups that are only generic placeholders such as "corruption", "scandals", or "politics".
-- Some topics may be country/person/event-specific; group them only when they share a recognizable narrative,
-  institution, issue type, or coverage pattern.
-- Aim for about {target_groups} groups, with a reasonable range of {min_groups}-{max_groups}.
-- Every topic must be assigned to exactly one group.
-- For each topic assignment, explain briefly why that topic belongs in that group.
-- Do not list the same topic id in more than one group.
+- These are coverage frames: ways corruption is organized in the news coverage.
+- They are not objective corruption-type labels.
+- Use the topic labels and summaries to decide which frame best describes how the topic is narratively organized.
+- Every topic must be assigned exactly once.
+- Do not assign the same topic id more than once.
+- If a topic could fit multiple frames, choose the dominant frame and mention the competing frame in the rationale.
+- Keep the frame labels exactly as listed; do not invent new frame ids.
+
+Coverage frames:
+{frame_block}
 
 Topics:
 {topic_block}
@@ -129,44 +213,22 @@ Topics:
 Return valid JSON only with this structure:
 {{
   "prompt_version": "{PROMPT_VERSION}",
-  "groups": [
+  "frame_notes": [
     {{
-      "group_id": "G01",
-      "group_label": "5-10 word higher-order group label",
-      "group_short_label": "2-5 word chart label",
-      "group_summary": "1-2 sentence explanation of the common thread",
-      "cross_country_comparability": "high" | "medium" | "low",
-      "grouping_principle": "brief explanation of why these topics are grouped together",
-      "topics": [
-        {{
-          "topic_id": 1,
-          "assignment_rationale": "brief reason this topic belongs in the group"
-        }}
-      ]
+      "frame_id": "one frame_id from the coverage frames",
+      "frame_summary_for_this_solution": "1-2 sentences on how this frame appears in these topics",
+      "cross_country_comparability": "high" | "medium" | "low"
+    }}
+  ],
+  "assignments": [
+    {{
+      "topic_id": 1,
+      "frame_id": "one frame_id from the coverage frames",
+      "assignment_rationale": "brief reason this topic belongs in the selected frame"
     }}
   ]
 }}
 """.strip()
-
-
-def normalize_topic_assignments(group: dict) -> list[dict]:
-    """Support the current schema and older topic_ids-only responses."""
-    if isinstance(group.get("topics"), list):
-        assignments = []
-        for assignment in group["topics"]:
-            if isinstance(assignment, dict) and "topic_id" in assignment:
-                assignments.append(
-                    {
-                        "topic_id": int(assignment["topic_id"]),
-                        "assignment_rationale": assignment.get("assignment_rationale", ""),
-                    }
-                )
-        return assignments
-
-    assignments = []
-    for topic_id in group.get("topic_ids", []):
-        assignments.append({"topic_id": int(topic_id), "assignment_rationale": ""})
-    return assignments
 
 
 def main() -> None:
@@ -184,48 +246,38 @@ def main() -> None:
     client = OpenAI(api_key=LLMPROXY_API_KEY, base_url=LLMPROXY_BASE_URL)
     response = client.chat.completions.create(
         model=args.model,
-        messages=[
-            {
-                "role": "user",
-                "content": build_prompt(
-                    topics.to_dict("records"),
-                    target_groups=args.target_groups,
-                    min_groups=args.min_groups,
-                    max_groups=args.max_groups,
-                ),
-            }
-        ],
+        messages=[{"role": "user", "content": build_prompt(topics.to_dict("records"))}],
         temperature=0,
     )
     parsed = extract_json(response.choices[0].message.content)
 
+    groups = frame_rows(parsed.get("prompt_version", PROMPT_VERSION))
+    for note in parsed.get("frame_notes", []):
+        frame_id = note.get("frame_id")
+        if frame_id in groups:
+            groups[frame_id]["topic_group_summary"] = note.get(
+                "frame_summary_for_this_solution",
+                groups[frame_id]["topic_group_summary"],
+            )
+            groups[frame_id]["topic_group_cross_country_comparability"] = note.get(
+                "cross_country_comparability",
+                "",
+            )
+
     topic_to_group_rows = []
-    group_rows = []
-    for group in parsed.get("groups", []):
-        group_row = {
-            "llm_group_prompt_version": parsed.get("prompt_version", PROMPT_VERSION),
-            "topic_group_id": group.get("group_id", ""),
-            "topic_group_label": group.get("group_label", ""),
-            "topic_group_short_label": group.get("group_short_label", ""),
-            "topic_group_summary": group.get("group_summary", ""),
-            "topic_group_cross_country_comparability": group.get("cross_country_comparability", ""),
-            "topic_grouping_principle": group.get("grouping_principle", ""),
-        }
-        assignments = normalize_topic_assignments(group)
-        group_rows.append(
+    for assignment in parsed.get("assignments", []):
+        if not isinstance(assignment, dict) or "topic_id" not in assignment or "frame_id" not in assignment:
+            continue
+        frame_id = assignment["frame_id"]
+        if frame_id not in groups:
+            raise RuntimeError(f"LLM returned unknown frame_id={frame_id!r} for topic {assignment['topic_id']}.")
+        topic_to_group_rows.append(
             {
-                **group_row,
-                "topic_ids": json.dumps([assignment["topic_id"] for assignment in assignments]),
+                **groups[frame_id],
+                "Topic": int(assignment["topic_id"]),
+                "topic_group_assignment_rationale": assignment.get("assignment_rationale", ""),
             }
         )
-        for assignment in assignments:
-            topic_to_group_rows.append(
-                {
-                    **group_row,
-                    "Topic": assignment["topic_id"],
-                    "topic_group_assignment_rationale": assignment["assignment_rationale"],
-                }
-            )
 
     mapping = pd.DataFrame(topic_to_group_rows)
     if mapping.empty:
@@ -238,15 +290,23 @@ def main() -> None:
             .apply(lambda values: ", ".join(values.astype(str)))
             .to_dict()
         )
-        raise RuntimeError(
-            "LLM assigned some topics to multiple groups. Rerun grouping or adjust group counts. "
-            f"Duplicate assignments: {duplicate_summary}"
-        )
+        raise RuntimeError(f"LLM assigned some topics to multiple groups: {duplicate_summary}")
 
     merged = topics.merge(mapping, on="Topic", how="left")
     missing = merged[merged["topic_group_id"].fillna("").eq("")]
     if not missing.empty:
         raise RuntimeError(f"LLM did not assign all topics. Missing topic ids: {missing['Topic'].tolist()}")
+
+    assigned_topic_ids = set(merged["Topic"].astype(int))
+    group_rows = []
+    for frame_id, group_row in groups.items():
+        topic_ids = sorted(
+            int(row["Topic"])
+            for row in topic_to_group_rows
+            if row["topic_group_id"] == frame_id and int(row["Topic"]) in assigned_topic_ids
+        )
+        if topic_ids:
+            group_rows.append({**group_row, "topic_ids": json.dumps(topic_ids)})
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output_path, index=False)
