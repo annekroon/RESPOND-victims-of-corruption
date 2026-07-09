@@ -1,0 +1,159 @@
+"""Upload generated political-corruption attention outputs to Research Drive.
+
+Run this after political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
+has generated the local attention figures and tables.
+
+Example:
+    python3 political_classifier/scripts/upload_attention_outputs.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import mimetypes
+import posixpath
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from config import RD_BASE_DIR
+
+
+DEFAULT_PIPELINE_DIR = Path(
+    "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
+    "political_corruption_pipeline"
+)
+DEFAULT_LOCAL_FIGURE_DIR = DEFAULT_PIPELINE_DIR / "attention_figures"
+DEFAULT_LOCAL_TABLE_DIR = DEFAULT_PIPELINE_DIR / "attention_tables"
+DEFAULT_RD_OUTPUT_DIR = posixpath.join(
+    RD_BASE_DIR,
+    "victims-of-corruption-paper",
+    "output",
+)
+DEFAULT_FIGURE_PATTERNS = ["*.png", "*.pdf", "*.svg"]
+DEFAULT_TABLE_PATTERNS = ["*.csv", "*.tex"]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Upload generated attention figures and tables to Research Drive/WebDAV."
+    )
+    parser.add_argument(
+        "--local-figure-dir",
+        type=Path,
+        default=DEFAULT_LOCAL_FIGURE_DIR,
+        help="Local directory containing generated attention figures.",
+    )
+    parser.add_argument(
+        "--local-table-dir",
+        type=Path,
+        default=DEFAULT_LOCAL_TABLE_DIR,
+        help="Local directory containing generated attention tables.",
+    )
+    parser.add_argument(
+        "--rd-output-dir",
+        default=DEFAULT_RD_OUTPUT_DIR,
+        help="Research Drive base output directory.",
+    )
+    parser.add_argument(
+        "--rd-figure-subdir",
+        default="figures/attention",
+        help="Subdirectory under rd-output-dir for attention figures.",
+    )
+    parser.add_argument(
+        "--rd-table-subdir",
+        default="tables/attention",
+        help="Subdirectory under rd-output-dir for attention tables.",
+    )
+    parser.add_argument(
+        "--figure-patterns",
+        nargs="+",
+        default=DEFAULT_FIGURE_PATTERNS,
+        help="Glob patterns to upload from local-figure-dir.",
+    )
+    parser.add_argument(
+        "--table-patterns",
+        nargs="+",
+        default=DEFAULT_TABLE_PATTERNS,
+        help="Glob patterns to upload from local-table-dir.",
+    )
+    parser.add_argument(
+        "--skip-tables",
+        action="store_true",
+        help="Upload figures only.",
+    )
+    parser.add_argument(
+        "--skip-figures",
+        action="store_true",
+        help="Upload tables only.",
+    )
+    return parser.parse_args()
+
+
+def rd_join(*parts: str) -> str:
+    clean = [p.strip("/ ") for p in parts if p]
+    return posixpath.join(*clean)
+
+
+def rd_parent(path: str) -> str:
+    return posixpath.dirname(path.rstrip("/"))
+
+
+def collect_paths(directory: Path, patterns: list[str]) -> list[Path]:
+    if not directory.exists():
+        raise FileNotFoundError(f"Local directory does not exist: {directory}")
+
+    paths: list[Path] = []
+    for pattern in patterns:
+        paths.extend(directory.glob(pattern))
+    return sorted({path for path in paths if path.is_file()})
+
+
+def upload_file(path: Path, rd_dir: str) -> str:
+    from rd_utils import webdav_mkdirs, webdav_upload_bytes
+
+    rd_path = rd_join(rd_dir, path.name)
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    webdav_mkdirs(rd_parent(rd_path))
+    webdav_upload_bytes(rd_path, path.read_bytes(), content_type)
+    return rd_path
+
+
+def upload_group(label: str, paths: list[Path], rd_dir: str) -> int:
+    if not paths:
+        print(f"No {label} found to upload.", flush=True)
+        return 0
+
+    print(f"\nUploading {len(paths)} {label} to: {rd_dir}", flush=True)
+    for path in paths:
+        rd_path = upload_file(path, rd_dir)
+        print(f"Uploaded {path.name} -> {rd_path}", flush=True)
+    return len(paths)
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.skip_tables and args.skip_figures:
+        raise ValueError("Both --skip-tables and --skip-figures were set; nothing to upload.")
+
+    total = 0
+
+    if not args.skip_figures:
+        figure_paths = collect_paths(args.local_figure_dir, args.figure_patterns)
+        figure_rd_dir = rd_join(args.rd_output_dir, args.rd_figure_subdir)
+        total += upload_group("attention figure(s)", figure_paths, figure_rd_dir)
+
+    if not args.skip_tables:
+        table_paths = collect_paths(args.local_table_dir, args.table_patterns)
+        table_rd_dir = rd_join(args.rd_output_dir, args.rd_table_subdir)
+        total += upload_group("attention table(s)", table_paths, table_rd_dir)
+
+    print(f"\nDone. Uploaded {total} file(s).", flush=True)
+
+
+if __name__ == "__main__":
+    main()

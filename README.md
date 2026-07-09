@@ -15,6 +15,7 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 | Path | Purpose |
 |---|---|
 | `political_classifier/` | Part 1 workflow: clean/dedupe, silver labels, classifier comparison, final scoring, attention tables |
+| `topic_classification/` | Exploratory topic discovery and corruption-type mapping with country-time stratified samples |
 | `config.py` | Shared non-secret paths and defaults |
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
@@ -96,3 +97,16 @@ Inspect political-corruption attention over time:
 ```text
 political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
 ```
+
+## Part 2: Topic Classification And Discovery
+
+See:
+
+```text
+topic_classification/README.md
+```
+
+This workflow starts with reproducible random samples across country and year,
+then fits multilingual BERTopic models for a general news overview or a
+political-corruption-only topic map. The topic outputs are intended as a coding
+frame discovery step before building final corruption-type labels.

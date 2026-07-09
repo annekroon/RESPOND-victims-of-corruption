@@ -229,6 +229,19 @@ The notebook writes attention tables, LaTeX summaries, and figures under:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
 ```
 
+Upload generated attention figures and tables to Research Drive:
+
+```bash
+python3 political_classifier/scripts/upload_attention_outputs.py
+```
+
+Default Research Drive destinations:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/figures/attention/
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/attention/
+```
+
 ## Manuscript Tables
 
 The comparison notebook writes classifier validation tables to:
