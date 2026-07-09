@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
-PROMPT_VERSION = "inductive_topic_groups_v1"
+PROMPT_VERSION = "inductive_topic_groups_v2"
 
 
 def parse_args() -> argparse.Namespace:
@@ -120,6 +120,8 @@ Important:
   institution, issue type, or coverage pattern.
 - Aim for about {target_groups} groups, with a reasonable range of {min_groups}-{max_groups}.
 - Every topic must be assigned to exactly one group.
+- For each topic assignment, explain briefly why that topic belongs in that group.
+- Do not list the same topic id in more than one group.
 
 Topics:
 {topic_block}
@@ -134,11 +136,37 @@ Return valid JSON only with this structure:
       "group_short_label": "2-5 word chart label",
       "group_summary": "1-2 sentence explanation of the common thread",
       "cross_country_comparability": "high" | "medium" | "low",
-      "topic_ids": [1, 2, 3]
+      "grouping_principle": "brief explanation of why these topics are grouped together",
+      "topics": [
+        {{
+          "topic_id": 1,
+          "assignment_rationale": "brief reason this topic belongs in the group"
+        }}
+      ]
     }}
   ]
 }}
 """.strip()
+
+
+def normalize_topic_assignments(group: dict) -> list[dict]:
+    """Support the current schema and older topic_ids-only responses."""
+    if isinstance(group.get("topics"), list):
+        assignments = []
+        for assignment in group["topics"]:
+            if isinstance(assignment, dict) and "topic_id" in assignment:
+                assignments.append(
+                    {
+                        "topic_id": int(assignment["topic_id"]),
+                        "assignment_rationale": assignment.get("assignment_rationale", ""),
+                    }
+                )
+        return assignments
+
+    assignments = []
+    for topic_id in group.get("topic_ids", []):
+        assignments.append({"topic_id": int(topic_id), "assignment_rationale": ""})
+    return assignments
 
 
 def main() -> None:
@@ -181,14 +209,39 @@ def main() -> None:
             "topic_group_short_label": group.get("group_short_label", ""),
             "topic_group_summary": group.get("group_summary", ""),
             "topic_group_cross_country_comparability": group.get("cross_country_comparability", ""),
+            "topic_grouping_principle": group.get("grouping_principle", ""),
         }
-        group_rows.append({**group_row, "topic_ids": json.dumps(group.get("topic_ids", []))})
-        for topic_id in group.get("topic_ids", []):
-            topic_to_group_rows.append({**group_row, "Topic": int(topic_id)})
+        assignments = normalize_topic_assignments(group)
+        group_rows.append(
+            {
+                **group_row,
+                "topic_ids": json.dumps([assignment["topic_id"] for assignment in assignments]),
+            }
+        )
+        for assignment in assignments:
+            topic_to_group_rows.append(
+                {
+                    **group_row,
+                    "Topic": assignment["topic_id"],
+                    "topic_group_assignment_rationale": assignment["assignment_rationale"],
+                }
+            )
 
     mapping = pd.DataFrame(topic_to_group_rows)
     if mapping.empty:
         raise RuntimeError("LLM returned no topic-group assignments.")
+
+    duplicate_assignments = mapping[mapping.duplicated("Topic", keep=False)].sort_values("Topic")
+    if not duplicate_assignments.empty:
+        duplicate_summary = (
+            duplicate_assignments.groupby("Topic")["topic_group_short_label"]
+            .apply(lambda values: ", ".join(values.astype(str)))
+            .to_dict()
+        )
+        raise RuntimeError(
+            "LLM assigned some topics to multiple groups. Rerun grouping or adjust group counts. "
+            f"Duplicate assignments: {duplicate_summary}"
+        )
 
     merged = topics.merge(mapping, on="Topic", how="left")
     missing = merged[merged["topic_group_id"].fillna("").eq("")]
