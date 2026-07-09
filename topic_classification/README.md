@@ -20,6 +20,7 @@ and over-time topic patterns.
 | `scripts/create_stratified_topic_sample.py` | Create balanced random samples across country and year |
 | `scripts/fit_multilingual_bertopic.py` | Fit BERTopic on a sample and export document-topic assignments |
 | `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
+| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to group fine-grained topics into higher-order inductive groups |
 | `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
 | `requirements-topic.txt` | Optional extra dependencies for BERTopic |
@@ -141,7 +142,28 @@ comparability rating, label rationale, and confidence score. GPT 5.1 is used
 only to interpret and name the discovered BERTopic clusters; it is not asked to
 apply a predefined corruption-type taxonomy.
 
-## 4. Inspect Final Results In A Notebook
+## 4. Group Fine-Grained Topics Inductively
+
+For a many-topic solution, keep the fine-grained BERTopic clusters, then ask GPT
+5.1 to group those discovered topics into higher-order groups. This is still
+inductive: GPT sees the topic labels/summaries and proposes groups from them,
+without a predefined taxonomy.
+
+```bash
+python3 topic_classification/scripts/group_topics_with_llm.py \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
+  --model gpt-5.1 \
+  --target-groups 12
+```
+
+Outputs:
+
+```text
+topic_groups_llm.csv
+topic_group_summaries_llm.csv
+```
+
+## 5. Inspect Final Results In A Notebook
 
 Preferred inspection workflow:
 
@@ -150,17 +172,18 @@ topic_classification/notebooks/01_inspect_topic_results.ipynb
 ```
 
 The notebook reads the final `topic_info.csv`, `document_topics.csv.gz`, and
-`topic_labels_llm.csv` files. It shows topic-size tables, GPT topic summaries,
-example articles per topic, a country-topic heatmap, topic shares over time,
-and faceted country trends. It also exports the summary tables under
-`inspection_tables/`.
+`topic_labels_llm.csv` files, and reads `topic_groups_llm.csv` when available.
+It shows topic/group-size tables, GPT summaries, example articles, a
+country-topic heatmap, topic shares over time, and faceted country trends. It
+also exports the summary tables under `inspection_tables/`.
 
-By default, the notebook plots `topic_short_label`, the GPT-labelled inductive
-topic name for each raw BERTopic cluster. It also includes lift diagnostics and
-country-specificity checks to evaluate whether the discovered topics capture
-variation across countries and over time.
+By default, the notebook plots `topic_group_short_label`, the GPT-labelled
+higher-order inductive group. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
+in the first code cell to inspect the fine-grained BERTopic topics directly.
+It also includes lift diagnostics and country-specificity checks to evaluate
+whether the discovered topics capture variation across countries and over time.
 
-## 5. Optional: Export Standalone HTML Visualizations
+## 6. Optional: Export Standalone HTML Visualizations
 
 ```bash
 python3 topic_classification/scripts/build_topic_visualizations.py \
