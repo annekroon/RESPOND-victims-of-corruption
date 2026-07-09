@@ -34,7 +34,8 @@ Main sample/model:
   visualizations can recover weighted article counts and shares.
 - Topic model: multilingual BERTopic using `intfloat/multilingual-e5-large`.
 - Interpretability: fit a somewhat granular raw topic model first, then use GPT
-  5.1 to map raw clusters onto a smaller controlled corruption-domain taxonomy.
+  5.1 to label the discovered clusters inductively from representative
+  documents and topic keywords.
 - Visualizations: interactive country-topic heatmap, stacked topic shares over
   time, and faceted country-over-time topic trends.
 
@@ -134,13 +135,11 @@ Output:
 topic_labels_llm.csv
 ```
 
-Each row includes a chart label, longer topic label, primary and secondary
-corruption-domain categories, short summary, inclusion rule, exclusion rule, and
-confidence score. The prompt asks GPT 5.1 to create country-neutral mechanism
-labels for cross-country comparison and explicitly avoids vague labels such as
-`elite corruption`, `corruption probes`, or `legal proceedings`. Raw BERTopic
-topics may still be country-specific; use the generic-domain labels for the
-main figures and the raw topic labels for diagnosis.
+Each row includes an inductive topic label, short chart label, topic summary,
+inclusion rule, exclusion rule, country/event-specific flag, cross-country
+comparability rating, label rationale, and confidence score. GPT 5.1 is used
+only to interpret and name the discovered BERTopic clusters; it is not asked to
+apply a predefined corruption-type taxonomy.
 
 ## 4. Inspect Final Results In A Notebook
 
@@ -156,12 +155,10 @@ example articles per topic, a country-topic heatmap, topic shares over time,
 and faceted country trends. It also exports the summary tables under
 `inspection_tables/`.
 
-By default, the notebook plots `primary_domain` rather than the raw BERTopic
-topic label. This is intentional: the controlled domain labels abstract away
-from country-specific events so the plots show cross-country corruption
-mechanisms.
-Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"` in the first code cell if you
-want to diagnose the raw BERTopic clusters.
+By default, the notebook plots `topic_short_label`, the GPT-labelled inductive
+topic name for each raw BERTopic cluster. It also includes lift diagnostics and
+country-specificity checks to evaluate whether the discovered topics capture
+variation across countries and over time.
 
 ## 5. Optional: Export Standalone HTML Visualizations
 
@@ -189,9 +186,9 @@ topic_weighted_totals.csv
 - Inspect topic composition by country and time. A topic that is mostly one
   country-language may be a real country-specific issue, a language artifact, or
   both.
-- Prefer fewer final domains for manuscript interpretation, but do not force the
-  raw BERTopic model to be too small. A good default is `--min-topic-size 25
-  --nr-topics auto`, then aggregate raw clusters using GPT's `primary_domain`.
+- Do not force the raw BERTopic model to be too small. A good default is
+  `--min-topic-size 25 --nr-topics auto`; if topics remain too broad, try a
+  larger sample and `--min-topic-size 10`.
 - If the topic labels collapse into vague categories such as `elite corruption`
   or `corruption investigations`, refit a more granular BERTopic model before
   interpreting.

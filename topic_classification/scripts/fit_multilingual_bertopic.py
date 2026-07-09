@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         "--min-topic-size",
         type=int,
         default=25,
-        help="Larger values produce fewer, broader raw clusters before domain aggregation.",
+        help="Larger values produce fewer, broader raw clusters.",
     )
     parser.add_argument(
         "--nr-topics",

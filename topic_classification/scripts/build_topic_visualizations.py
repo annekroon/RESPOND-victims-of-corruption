@@ -14,9 +14,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-n", type=int, default=12)
     parser.add_argument(
         "--label-mode",
-        choices=["primary-domain", "generic-domain", "topic"],
-        default="primary-domain",
-        help="Use GPT controlled domain labels, country-neutral free labels, or raw topic labels.",
+        choices=["topic", "primary-domain", "generic-domain"],
+        default="topic",
+        help="Use GPT inductive topic labels by default. Legacy domain-label modes are optional.",
     )
     parser.add_argument(
         "--include-outlier",
@@ -92,10 +92,10 @@ def main() -> None:
     docs["topic_label"] = docs["topic_label"].fillna(docs["topic"].astype(str))
     docs["primary_domain"] = docs.get("primary_domain", docs["topic_label"]).fillna(docs["topic_label"])
     docs["generic_domain_label"] = docs.get("generic_domain_label", docs["topic_label"]).fillna(docs["topic_label"])
-    if args.label_mode == "primary-domain":
-        analysis_label = "primary_domain"
-    elif args.label_mode == "generic-domain":
+    if args.label_mode == "generic-domain":
         analysis_label = "generic_domain_label"
+    elif args.label_mode == "primary-domain":
+        analysis_label = "primary_domain"
     else:
         analysis_label = "topic_label"
     if not args.include_outlier:

@@ -21,28 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
-PROMPT_VERSION = "mechanism_taxonomy_v3"
-
-DOMAIN_TAXONOMY = [
-    "public procurement and contracting",
-    "public funds, embezzlement, and budget misuse",
-    "party finance and campaign money",
-    "election manipulation and vote buying",
-    "appointments, patronage, nepotism, and cronyism",
-    "judicial corruption and prosecution interference",
-    "police, security, and coercive-state corruption",
-    "local government and municipal corruption",
-    "executive abuse of office and impeachment",
-    "foreign influence, sanctions, and transnational corruption",
-    "state-owned enterprises and privatization",
-    "licensing, permits, land, and construction",
-    "lobbying, access, and conflict of interest",
-    "anti-corruption institutions and rule-of-law enforcement",
-    "asset declarations, unexplained wealth, and illicit enrichment",
-    "whistleblowing, leaks, and investigative journalism",
-    "mixed or unclear",
-]
-
+PROMPT_VERSION = "inductive_topic_labels_v1"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Label BERTopic topics with GPT via the UvA LLM proxy.")
@@ -80,16 +59,12 @@ def normalize_result(parsed: dict) -> dict:
         "llm_label_prompt_version": PROMPT_VERSION,
         "llm_topic_label": parsed.get("topic_label", ""),
         "llm_topic_short_label": parsed.get("short_label", ""),
-        "llm_primary_domain": parsed.get("primary_domain", ""),
-        "llm_secondary_domain": parsed.get("secondary_domain", ""),
-        "llm_generic_domain_label": parsed.get("generic_domain_label", ""),
-        "llm_generic_domain_short_label": parsed.get("generic_domain_short_label", ""),
-        "llm_corruption_type": parsed.get("corruption_type", ""),
-        "llm_country_event_specific": parsed.get("country_event_specific", ""),
-        "llm_domain_evidence": parsed.get("domain_evidence", ""),
         "llm_topic_summary": parsed.get("summary", ""),
         "llm_inclusion_rule": parsed.get("inclusion_rule", ""),
         "llm_exclusion_rule": parsed.get("exclusion_rule", ""),
+        "llm_country_event_specific": parsed.get("country_event_specific", ""),
+        "llm_cross_country_comparability": parsed.get("cross_country_comparability", ""),
+        "llm_label_rationale": parsed.get("label_rationale", ""),
         "llm_confidence": parsed.get("confidence", ""),
     }
 
@@ -132,34 +107,24 @@ def select_diverse_examples(topic_docs, text_column: str, n: int, max_chars: int
 
 def build_prompt(topic_id: int, topic_name: str, count: int, examples: list[str]) -> str:
     example_block = "\n\n".join(f"Example {i + 1}: {example}" for i, example in enumerate(examples))
-    taxonomy_block = "\n".join(f"- {domain}" for domain in DOMAIN_TAXONOMY)
     return f"""
-You are helping interpret multilingual news topics for a research project on political corruption.
+You are helping interpret multilingual BERTopic clusters for a research project on political corruption.
 
-The documents were already classified as primarily discussing political corruption. Your job is not
-to decide whether they are political corruption; your job is to name the topic in a way a human coder
-can use.
+The documents were already classified as primarily discussing political corruption. Your job is to
+label the topic inductively from the examples and BERTopic keywords. Do not apply a predefined
+corruption-type taxonomy. Do not force the topic into categories such as procurement, patronage, or
+campaign finance unless that is clearly what the examples themselves show.
 
-Important research goal:
-- The final labels must support comparison across countries and over time.
-- Do not use country names, nationalities, politician names, party names, or one-off event names in
-  the generic domain labels unless the topic truly has no cross-country corruption mechanism.
-- If the topic looks country-specific or event-specific, abstract upward to the corruption mechanism,
-  institutional arena, or scandal type that could appear in other countries.
-- Avoid umbrella labels such as "corruption investigations", "elite corruption", "political scandal",
-  "corruption probes", "legal proceedings", "accountability", or "rule of law" when a more specific
-  mechanism, institution, or resource is visible.
-- If the examples mostly discuss investigations/trials, label the underlying alleged conduct if it is
-  visible. Use "judicial corruption and prosecution interference" only when courts/prosecutors are the
-  alleged corrupt arena, not merely because a case is in court.
-- You must choose the closest primary_domain from the taxonomy. Use "mixed or unclear" only when no
-  substantive mechanism/domain is visible in the examples or when several unrelated domains appear
-  with no clear majority.
-- If two domains are present, choose the majority as primary_domain and the other as secondary_domain.
-- If the cluster is event-specific, still classify the alleged mechanism behind the event.
-
-Use this domain taxonomy for primary_domain and secondary_domain:
-{taxonomy_block}
+Research goal:
+- We want topics that can reveal variation across countries and over time.
+- Use specific, substantive labels that describe what actually binds the examples together.
+- It is acceptable for a label to mention a country, person, institution, or event when the cluster is
+  genuinely country/event-specific. In that case, set country_event_specific to true.
+- If a cross-country theme is visible, prefer a country-neutral label. If not, do not pretend it is
+  cross-country.
+- Avoid generic labels such as "corruption investigations", "political corruption", "scandals",
+  "legal proceedings", "elite corruption", or "accountability" unless the examples truly contain no
+  more specific common thread.
 
 Topic metadata:
 - BERTopic topic id: {topic_id}
@@ -171,31 +136,17 @@ Representative documents:
 
 Return valid JSON only with these keys:
 {{
-  "topic_label": "clear 5-10 word descriptive label; may mention event/country if unavoidable",
-  "short_label": "2-4 word chart label for the descriptive topic",
-  "primary_domain": "one exact category from the taxonomy",
-  "secondary_domain": "one exact category from the taxonomy, or 'none'",
-  "generic_domain_label": "country-neutral 4-8 word corruption mechanism/domain label; not a vague investigation label",
-  "generic_domain_short_label": "2-4 word country-neutral chart label",
-  "corruption_type": "same as primary_domain unless a clearer short category is needed",
-  "country_event_specific": true | false,
-  "domain_evidence": "brief explanation of why the primary domain was selected; mention competing domain if any",
+  "topic_label": "clear 5-12 word inductive label grounded in the examples",
+  "short_label": "2-5 word chart label",
   "summary": "2-3 sentence interpretation of what binds these articles together",
-  "inclusion_rule": "what belongs in this topic",
+  "inclusion_rule": "what belongs in this topic, based only on this cluster",
   "exclusion_rule": "what should not be coded as this topic",
+  "country_event_specific": true | false,
+  "cross_country_comparability": "high" | "medium" | "low",
+  "label_rationale": "brief explanation of the evidence for the label and whether it captures cross-country variation",
   "confidence": 0-100
 }}
-
-Prefer substantive labels such as "Public procurement and contracting scandals" or
-"Election fraud and campaign finance allegations". Avoid vague labels such as "corruption news",
-"politics", or "legal issues". Avoid country labels such as "Italian scandals" or person labels such
-as "Trump/Russia" in generic_domain_label and generic_domain_short_label. Bad labels include
-"elite investigations", "corruption probes", "elite prosecutions", and "corruption scandals".
-Better labels include "campaign finance violations", "public contracting kickbacks",
-"executive abuse of office", "foreign influence allegations", "municipal procurement",
-"appointments and patronage", or "asset declarations and wealth".
 """.strip()
-
 
 def llm_label_topic(client, model: str, topic_id: int, topic_name: str, count: int, examples: list[str]) -> dict:
     response = client.chat.completions.create(
@@ -250,10 +201,10 @@ def main() -> None:
         existing = pd.read_csv(output_path)
         required_generic_columns = {
             "llm_label_prompt_version",
-            "llm_primary_domain",
-            "llm_secondary_domain",
-            "llm_generic_domain_label",
-            "llm_generic_domain_short_label",
+            "llm_topic_label",
+            "llm_topic_short_label",
+            "llm_cross_country_comparability",
+            "llm_label_rationale",
             "llm_country_event_specific",
         }
         has_current_prompt = (
