@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 
 
-PROMPT_VERSION = "mechanism_taxonomy_v2"
+PROMPT_VERSION = "mechanism_taxonomy_v3"
 
 DOMAIN_TAXONOMY = [
     "public procurement and contracting",
@@ -58,6 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--retry-sleep", type=float, default=5.0)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--random-state", type=int, default=42)
     return parser.parse_args()
 
 
@@ -85,6 +86,7 @@ def normalize_result(parsed: dict) -> dict:
         "llm_generic_domain_short_label": parsed.get("generic_domain_short_label", ""),
         "llm_corruption_type": parsed.get("corruption_type", ""),
         "llm_country_event_specific": parsed.get("country_event_specific", ""),
+        "llm_domain_evidence": parsed.get("domain_evidence", ""),
         "llm_topic_summary": parsed.get("summary", ""),
         "llm_inclusion_rule": parsed.get("inclusion_rule", ""),
         "llm_exclusion_rule": parsed.get("exclusion_rule", ""),
@@ -97,6 +99,35 @@ def compact_text(text: object, max_chars: int) -> str:
         return ""
     text = re.sub(r"\s+", " ", text).strip()
     return text[:max_chars]
+
+
+def format_example(row, text_column: str, max_chars: int) -> str:
+    country = row.get("country", "")
+    year = row.get("year", "")
+    text = compact_text(row.get(text_column, ""), max_chars)
+    return f"Country: {country}; year: {year}; text: {text}"
+
+
+def select_diverse_examples(topic_docs, text_column: str, n: int, max_chars: int, random_state: int) -> list[str]:
+    if topic_docs.empty:
+        return []
+
+    sort_cols = [col for col in ["country", "year"] if col in topic_docs.columns]
+    if sort_cols:
+        topic_docs = topic_docs.sort_values(sort_cols).copy()
+
+    examples = []
+    if "country" in topic_docs.columns:
+        per_country = topic_docs.groupby("country", group_keys=False).head(2)
+        examples.append(per_country)
+
+    remaining = topic_docs.drop(index=examples[0].index, errors="ignore") if examples else topic_docs
+    remaining_n = max(0, n - sum(len(frame) for frame in examples))
+    if remaining_n:
+        examples.append(remaining.sample(n=min(remaining_n, len(remaining)), random_state=random_state))
+
+    selected = topic_docs.head(0) if not examples else __import__("pandas").concat(examples).head(n)
+    return [format_example(row, text_column, max_chars) for _, row in selected.iterrows()]
 
 
 def build_prompt(topic_id: int, topic_name: str, count: int, examples: list[str]) -> str:
@@ -121,6 +152,11 @@ Important research goal:
 - If the examples mostly discuss investigations/trials, label the underlying alleged conduct if it is
   visible. Use "judicial corruption and prosecution interference" only when courts/prosecutors are the
   alleged corrupt arena, not merely because a case is in court.
+- You must choose the closest primary_domain from the taxonomy. Use "mixed or unclear" only when no
+  substantive mechanism/domain is visible in the examples or when several unrelated domains appear
+  with no clear majority.
+- If two domains are present, choose the majority as primary_domain and the other as secondary_domain.
+- If the cluster is event-specific, still classify the alleged mechanism behind the event.
 
 Use this domain taxonomy for primary_domain and secondary_domain:
 {taxonomy_block}
@@ -143,6 +179,7 @@ Return valid JSON only with these keys:
   "generic_domain_short_label": "2-4 word country-neutral chart label",
   "corruption_type": "same as primary_domain unless a clearer short category is needed",
   "country_event_specific": true | false,
+  "domain_evidence": "brief explanation of why the primary domain was selected; mention competing domain if any",
   "summary": "2-3 sentence interpretation of what binds these articles together",
   "inclusion_rule": "what belongs in this topic",
   "exclusion_rule": "what should not be coded as this topic",
@@ -246,12 +283,13 @@ def main() -> None:
             continue
 
         topic_docs = docs[docs["topic"].eq(topic_id)].copy()
-        if "analysis_weight" in topic_docs.columns:
-            topic_docs = topic_docs.sort_values("analysis_weight", ascending=False)
-        examples = [
-            compact_text(text, args.max_example_chars)
-            for text in topic_docs[args.text_column].dropna().head(args.examples_per_topic)
-        ]
+        examples = select_diverse_examples(
+            topic_docs=topic_docs,
+            text_column=args.text_column,
+            n=args.examples_per_topic,
+            max_chars=args.max_example_chars,
+            random_state=args.random_state + topic_id,
+        )
         out = topic_row.to_dict()
 
         for attempt in range(1, args.retries + 1):
