@@ -6,7 +6,8 @@ corresponding WebDAV collection URL, for example:
     https://uva.data.surf.nl/remote.php/dav/files/<username>/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper
 
 Set `SURF_WEBDAV_URL`, `SURF_USERNAME`, and `SURF_PASSWORD` to upload the
-archive after it is created.
+archive after it is created. Set `SURF_TABLES_WEBDAV_URL` to upload only the
+manuscript LaTeX tables to the paper `output/tables` folder.
 """
 
 from __future__ import annotations
@@ -34,7 +35,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--archive-name", default=None)
     parser.add_argument("--no-model", action="store_true", help="Exclude the saved BERTopic model directory.")
     parser.add_argument("--upload", action="store_true", help="Upload the archive to SURF WebDAV.")
+    parser.add_argument(
+        "--upload-latex-tables",
+        action="store_true",
+        help="Upload generated LaTeX appendix tables to a SURF output/tables subfolder.",
+    )
+    parser.add_argument(
+        "--tables-only",
+        action="store_true",
+        help="Only upload LaTeX tables; do not create the full publication archive.",
+    )
     parser.add_argument("--webdav-url", default=None, help="Destination SURF WebDAV collection URL.")
+    parser.add_argument(
+        "--tables-webdav-url",
+        default=None,
+        help="Destination SURF WebDAV collection URL for the paper output/tables folder.",
+    )
+    parser.add_argument(
+        "--tables-folder-name",
+        default="topic models",
+        help="Subfolder to create under the tables WebDAV URL.",
+    )
     parser.add_argument("--username", default=None, help="SURF username. Defaults to SURF_USERNAME.")
     parser.add_argument("--password", default=None, help="SURF app password/password. Defaults to SURF_PASSWORD.")
     return parser.parse_args()
@@ -125,61 +146,113 @@ def make_tarball(staging_dir: Path, archive_path: Path) -> Path:
     return archive_path
 
 
-def upload_webdav(file_path: Path, webdav_url: str, username: str, password: str) -> None:
-    parsed = urlparse(webdav_url.rstrip("/") + "/" + quote(file_path.name))
+def auth_header(username: str, password: str) -> str:
+    token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+    return f"Basic {token}"
+
+
+def request_webdav(method: str, url: str, username: str, password: str, headers: dict[str, str] | None = None, body=None):
+    parsed = urlparse(url)
     if parsed.scheme != "https":
         raise ValueError("Only HTTPS WebDAV URLs are supported.")
-    token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
     connection = http.client.HTTPSConnection(parsed.netloc)
-    headers = {
-        "Authorization": f"Basic {token}",
-        "Content-Type": mimetypes.guess_type(file_path.name)[0] or "application/octet-stream",
-        "Content-Length": str(file_path.stat().st_size),
-    }
+    request_headers = {"Authorization": auth_header(username, password)}
+    request_headers.update(headers or {})
     path = parsed.path
     if parsed.query:
         path += f"?{parsed.query}"
-    connection.putrequest("PUT", path)
-    for key, value in headers.items():
+    connection.putrequest(method, path)
+    for key, value in request_headers.items():
         connection.putheader(key, value)
     connection.endheaders()
-    with file_path.open("rb") as handle:
+    if body is not None:
         while True:
-            chunk = handle.read(1024 * 1024)
+            chunk = body.read(1024 * 1024)
             if not chunk:
                 break
             connection.send(chunk)
     response = connection.getresponse()
-    body = response.read().decode("utf-8", errors="replace")
+    response_body = response.read().decode("utf-8", errors="replace")
+    status = response.status
+    reason = response.reason
     connection.close()
-    if response.status not in {200, 201, 204}:
-        raise RuntimeError(f"Unexpected WebDAV upload status: {response.status} {response.reason}: {body[:500]}")
+    return status, reason, response_body
+
+
+def ensure_webdav_collection(webdav_url: str, username: str, password: str) -> None:
+    status, reason, body = request_webdav("MKCOL", webdav_url.rstrip("/"), username, password)
+    if status in {200, 201, 204, 405}:
+        return
+    raise RuntimeError(f"Could not create WebDAV folder: {status} {reason}: {body[:500]}")
+
+
+def upload_webdav(file_path: Path, webdav_url: str, username: str, password: str) -> None:
+    destination = webdav_url.rstrip("/") + "/" + quote(file_path.name)
+    headers = {
+        "Content-Type": mimetypes.guess_type(file_path.name)[0] or "application/octet-stream",
+        "Content-Length": str(file_path.stat().st_size),
+    }
+    with file_path.open("rb") as handle:
+        status, reason, body = request_webdav("PUT", destination, username, password, headers=headers, body=handle)
+    if status not in {200, 201, 204}:
+        raise RuntimeError(f"Unexpected WebDAV upload status: {status} {reason}: {body[:500]}")
+
+
+def latex_table_paths(bertopic_dir: Path) -> list[Path]:
+    latex_dir = bertopic_dir / "inspection_tables" / "latex"
+    paths = [
+        latex_dir / "table_topic_coverage_frame_summary.tex",
+        latex_dir / "table_all_topics_llm_coverage_frames.tex",
+    ]
+    missing = [path for path in paths if not path.exists()]
+    if missing:
+        raise FileNotFoundError("Missing LaTeX table(s): " + ", ".join(str(path) for path in missing))
+    return paths
 
 
 def main() -> None:
     args = parse_args()
     import os
 
-    output_root = args.output_root or (args.bertopic_dir / "publication_archive")
-    archive_name = args.archive_name or f"topic_archive_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.tar.gz"
-    archive_path = output_root / archive_name
+    if args.tables_only and not args.upload_latex_tables:
+        raise RuntimeError("--tables-only requires --upload-latex-tables.")
 
-    with tempfile.TemporaryDirectory(prefix="topic_archive_") as tmpdir:
-        staging_dir = Path(tmpdir) / archive_name.replace(".tar.gz", "")
-        staging_dir.mkdir(parents=True)
-        stage_archive_contents(args, staging_dir)
-        make_tarball(staging_dir, archive_path)
+    if not args.tables_only:
+        output_root = args.output_root or (args.bertopic_dir / "publication_archive")
+        archive_name = args.archive_name or f"topic_archive_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.tar.gz"
+        archive_path = output_root / archive_name
 
-    print(f"Created archive: {archive_path}", flush=True)
+        with tempfile.TemporaryDirectory(prefix="topic_archive_") as tmpdir:
+            staging_dir = Path(tmpdir) / archive_name.replace(".tar.gz", "")
+            staging_dir.mkdir(parents=True)
+            stage_archive_contents(args, staging_dir)
+            make_tarball(staging_dir, archive_path)
 
-    if args.upload:
-        webdav_url = args.webdav_url or os.environ.get("SURF_WEBDAV_URL", "")
+        print(f"Created archive: {archive_path}", flush=True)
+
+        if args.upload:
+            webdav_url = args.webdav_url or os.environ.get("SURF_WEBDAV_URL", "")
+            username = args.username or os.environ.get("SURF_USERNAME", "")
+            password = args.password or os.environ.get("SURF_PASSWORD", "")
+            if not webdav_url or not username or not password:
+                raise RuntimeError("Upload requires --webdav-url/--username/--password or SURF_WEBDAV_URL/SURF_USERNAME/SURF_PASSWORD.")
+            upload_webdav(archive_path, webdav_url, username, password)
+            print(f"Uploaded archive to: {webdav_url.rstrip('/')}/{archive_path.name}", flush=True)
+
+    if args.upload_latex_tables:
+        tables_webdav_url = args.tables_webdav_url or os.environ.get("SURF_TABLES_WEBDAV_URL", "")
         username = args.username or os.environ.get("SURF_USERNAME", "")
         password = args.password or os.environ.get("SURF_PASSWORD", "")
-        if not webdav_url or not username or not password:
-            raise RuntimeError("Upload requires --webdav-url/--username/--password or SURF_WEBDAV_URL/SURF_USERNAME/SURF_PASSWORD.")
-        upload_webdav(archive_path, webdav_url, username, password)
-        print(f"Uploaded archive to: {webdav_url.rstrip('/')}/{archive_path.name}", flush=True)
+        if not tables_webdav_url or not username or not password:
+            raise RuntimeError(
+                "LaTeX table upload requires --tables-webdav-url/--username/--password "
+                "or SURF_TABLES_WEBDAV_URL/SURF_USERNAME/SURF_PASSWORD."
+            )
+        topic_tables_url = tables_webdav_url.rstrip("/") + "/" + quote(args.tables_folder_name)
+        ensure_webdav_collection(topic_tables_url, username, password)
+        for table_path in latex_table_paths(args.bertopic_dir):
+            upload_webdav(table_path, topic_tables_url, username, password)
+            print(f"Uploaded LaTeX table to: {topic_tables_url}/{table_path.name}", flush=True)
 
 
 if __name__ == "__main__":

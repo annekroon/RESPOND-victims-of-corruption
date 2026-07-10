@@ -366,3 +366,24 @@ python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
 If the archive is too large because it includes `topic_model/`, rerun with
 `--no-model` for a smaller upload, but keep a separate archived copy of
 `topic_model/` for maximum reproducibility.
+
+To also push the manuscript-ready LaTeX tables to the paper output folder,
+set the WebDAV URL for the `output/tables` collection and ask the script to
+create a `topic models` subfolder:
+
+```bash
+export SURF_TABLES_WEBDAV_URL="https://uva.data.surf.nl/remote.php/dav/files/${SURF_USERNAME}/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper/output/tables"
+
+python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --upload-latex-tables \
+  --tables-only \
+  --tables-folder-name "topic models"
+```
+
+This uploads:
+
+```text
+output/tables/topic models/table_topic_coverage_frame_summary.tex
+output/tables/topic models/table_all_topics_llm_coverage_frames.tex
+```
