@@ -11,6 +11,8 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import io
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -19,7 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import ALL_COUNTRIES
+from config import ALL_COUNTRIES, RD_BASE_DIR
 from topic_classification.scripts.reproducibility import write_run_manifest
 
 
@@ -31,6 +33,21 @@ DEFAULT_CLASSIFIED_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier" / "classifie
 DEFAULT_OUTPUT_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "topic_classification"
+)
+DEFAULT_RD_CLASSIFIED_DIR = posixpath.join(
+    RD_BASE_DIR,
+    "victims-of-corruption-paper",
+    "derived_data",
+    "political_classifier",
+    "classifier_outputs",
+    "classified_country_files",
+)
+DEFAULT_RD_CLEANED_DIR = posixpath.join(
+    RD_BASE_DIR,
+    "victims-of-corruption-paper",
+    "derived_data",
+    "political_classifier",
+    "cleaned_deduped",
 )
 
 KEEP_COLUMNS = [
@@ -61,15 +78,25 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--source",
-        choices=["cleaned", "classified"],
+        choices=["cleaned", "classified", "cleaned-webdav", "classified-webdav"],
         default="cleaned",
         help=(
-            "Use cleaned deduplicated country files, or classified files from "
-            "the political-corruption classifier."
+            "Use local cleaned/classified files, or archived Research Drive/WebDAV "
+            "cleaned/classified files."
         ),
     )
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
     parser.add_argument("--classified-dir", type=Path, default=DEFAULT_CLASSIFIED_DIR)
+    parser.add_argument(
+        "--cleaned-rd-dir",
+        default=DEFAULT_RD_CLEANED_DIR,
+        help="Research Drive directory containing archived cleaned/deduped country files.",
+    )
+    parser.add_argument(
+        "--classified-rd-dir",
+        default=DEFAULT_RD_CLASSIFIED_DIR,
+        help="Research Drive directory containing archived classified country files.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output-name", default=None)
     parser.add_argument("--countries", nargs="+", default=ALL_COUNTRIES)
@@ -122,15 +149,47 @@ def country_path(args: argparse.Namespace, country: str) -> Path:
     return args.classified_dir / f"{country}_classified.csv.gz"
 
 
-def load_country_file(args: argparse.Namespace, country: str):
+def country_rd_path(args: argparse.Namespace, country: str) -> str:
+    if args.source == "cleaned-webdav":
+        return posixpath.join(args.cleaned_rd_dir, f"{country}_cleaned_deduped.csv.gz")
+    if args.source == "classified-webdav":
+        return posixpath.join(args.classified_rd_dir, f"{country}_classified.csv.gz")
+    raise ValueError(f"Source is not a WebDAV source: {args.source}")
+
+
+def read_country_csv(args: argparse.Namespace, country: str):
     import pandas as pd
+
+    if args.source.endswith("-webdav"):
+        from rd_utils import webdav_download_bytes
+
+        rd_path = country_rd_path(args, country)
+        try:
+            data = webdav_download_bytes(rd_path)
+        except Exception as exc:
+            print(f"Skipping missing/unreadable WebDAV file for {country}: {rd_path} ({exc!r})", flush=True)
+            return None, rd_path
+        frame = pd.read_csv(
+            io.BytesIO(data),
+            compression="gzip" if rd_path.endswith(".gz") else "infer",
+            usecols=lambda column: column in set(KEEP_COLUMNS),
+        )
+        return frame, rd_path
 
     path = country_path(args, country)
     if not path.exists():
         print(f"Skipping missing file for {country}: {path}", flush=True)
-        return None
+        return None, str(path)
+    frame = pd.read_csv(path, usecols=lambda column: column in set(KEEP_COLUMNS))
+    return frame, str(path)
 
-    data = pd.read_csv(path, usecols=lambda column: column in set(KEEP_COLUMNS))
+
+def load_country_file(args: argparse.Namespace, country: str):
+    import pandas as pd
+
+    data, source_path = read_country_csv(args, country)
+    if data is None:
+        return None
     data["country"] = country
     data["article_text"] = choose_text(data).map(normalize_text)
     data = data[data["article_text"].str.split().str.len().fillna(0).ge(args.min_words)].copy()
@@ -145,7 +204,7 @@ def load_country_file(args: argparse.Namespace, country: str):
         None,
     )
     if date_column is None and "year" not in data.columns:
-        raise ValueError(f"No usable date/year column found in {path}.")
+        raise ValueError(f"No usable date/year column found in {source_path}.")
 
     if "year" not in data.columns:
         data["date_parsed"] = pd.to_datetime(data[date_column], errors="coerce", utc=True)
@@ -213,8 +272,8 @@ def default_output_name(args: argparse.Namespace) -> str:
 
 def main() -> None:
     args = parse_args()
-    if args.political_only and args.source != "classified":
-        raise ValueError("--political-only can only be used with --source classified.")
+    if args.political_only and args.source not in {"classified", "classified-webdav"}:
+        raise ValueError("--political-only can only be used with --source classified or classified-webdav.")
 
     import pandas as pd
 

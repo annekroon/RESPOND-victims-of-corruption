@@ -82,6 +82,29 @@ rows in that stratum are retained. The output includes `analysis_weight`,
 `stratum_total_rows`, and `stratum_sample_rows`, which are used by the
 visualization script.
 
+For a reproducibility rerun from the archived Research Drive/WebDAV classifier
+outputs, use the `classified-webdav` source. This reads the archived
+`*_classified.csv.gz` files from:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/classifier_outputs/classified_country_files/
+```
+
+The command uses the same WebDAV credentials as the rest of the repository
+(`config_local.py`, or `RD_USER`/`RD_PASS` environment variables):
+
+```bash
+python3 topic_classification/scripts/create_stratified_topic_sample.py \
+  --source classified-webdav \
+  --political-only \
+  --per-country-year 200 \
+  --output-name political_corruption_country_year_sample_200.csv.gz
+```
+
+If the cleaned/deduplicated country files need to be sampled directly from the
+archive, use `--source cleaned-webdav`. Local sources remain available through
+`--source classified` and `--source cleaned`.
+
 ## 2. Fit Multilingual BERTopic
 
 Small test run:
@@ -307,6 +330,22 @@ topic_classification/scripts/
 topic_classification/notebooks/
 topic_classification/requirements-topic.txt
 ```
+
+For a full rerun from Research Drive rather than local `annecuda` paths, the
+recommended starting point is:
+
+```bash
+python3 topic_classification/scripts/create_stratified_topic_sample.py \
+  --source classified-webdav \
+  --political-only \
+  --per-country-year 200 \
+  --output-name political_corruption_country_year_sample_200.csv.gz
+```
+
+Then fit BERTopic from that saved sample and continue with the LLM labelling,
+grouping, notebook inspection, and table/archive upload steps below. This keeps
+the input-data dependency explicit and avoids relying on a local mounted folder
+still existing in the same place.
 
 The manifests record package versions from the environment where the scripts
 were run. For even stronger rerun reproducibility, also save a frozen
