@@ -11,6 +11,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from topic_classification.scripts.reproducibility import write_run_manifest
+
 
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
 
@@ -146,6 +148,26 @@ def main() -> None:
         serialization="safetensors",
         save_ctfidf=True,
         save_embedding_model=False,
+    )
+
+    write_run_manifest(
+        args.output_dir,
+        script_name=Path(__file__).name,
+        args=args,
+        inputs={"sample": args.sample},
+        outputs={
+            "topic_info": args.output_dir / "topic_info.csv",
+            "document_topics": args.output_dir / "document_topics.csv.gz",
+        },
+        extra={
+            "documents_for_model": int(len(docs)),
+            "embedding_model": args.embedding_model,
+            "embedding_model_revision": "not pinned",
+            "random_state": args.random_state,
+            "min_topic_size": args.min_topic_size,
+            "nr_topics": args.nr_topics,
+            "bertopic_model_dir": str(args.output_dir / "topic_model"),
+        },
     )
 
     print(f"Saved topic info: {args.output_dir / 'topic_info.csv'}", flush=True)

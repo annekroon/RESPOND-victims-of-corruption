@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
+from topic_classification.scripts.reproducibility import write_run_manifest
 
 
 PROMPT_VERSION = "coverage_frame_groups_v1"
@@ -241,15 +242,18 @@ def main() -> None:
         raise RuntimeError("Set LLMPROXY_API_KEY in your environment or config_local.py.")
 
     output_path = args.output or (args.bertopic_dir / "topic_groups_llm.csv")
+    audit_path = output_path.with_name(output_path.stem + "_audit.json")
     topics = load_topic_table(args.bertopic_dir)
 
     client = OpenAI(api_key=LLMPROXY_API_KEY, base_url=LLMPROXY_BASE_URL)
+    prompt = build_prompt(topics.to_dict("records"))
     response = client.chat.completions.create(
         model=args.model,
-        messages=[{"role": "user", "content": build_prompt(topics.to_dict("records"))}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
-    parsed = extract_json(response.choices[0].message.content)
+    raw_response = response.choices[0].message.content
+    parsed = extract_json(raw_response)
 
     groups = frame_rows(parsed.get("prompt_version", PROMPT_VERSION))
     for note in parsed.get("frame_notes", []):
@@ -310,10 +314,46 @@ def main() -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output_path, index=False)
-    pd.DataFrame(group_rows).to_csv(output_path.with_name("topic_group_summaries_llm.csv"), index=False)
+    summaries_path = output_path.with_name("topic_group_summaries_llm.csv")
+    pd.DataFrame(group_rows).to_csv(summaries_path, index=False)
+    audit_path.write_text(
+        json.dumps(
+            {
+                "prompt_version": PROMPT_VERSION,
+                "model": args.model,
+                "temperature": 0,
+                "coverage_frames": COVERAGE_FRAMES,
+                "prompt": prompt,
+                "raw_response": raw_response,
+                "parsed": parsed,
+            },
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    write_run_manifest(
+        args.bertopic_dir,
+        script_name=Path(__file__).name,
+        args=args,
+        inputs={"topic_labels": args.bertopic_dir / "topic_labels_llm.csv"},
+        outputs={
+            "topic_groups": output_path,
+            "topic_group_summaries": summaries_path,
+            "topic_group_audit": audit_path,
+        },
+        extra={
+            "prompt_version": PROMPT_VERSION,
+            "model": args.model,
+            "temperature": 0,
+            "coverage_frames": COVERAGE_FRAMES,
+        },
+        manifest_name="topic_groups_run_manifest.json",
+    )
 
     print(f"Saved topic-group mapping: {output_path}", flush=True)
-    print(f"Saved group summaries: {output_path.with_name('topic_group_summaries_llm.csv')}", flush=True)
+    print(f"Saved group summaries: {summaries_path}", flush=True)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
+from topic_classification.scripts.reproducibility import write_run_manifest
 
 
 PROMPT_VERSION = "inductive_topic_labels_v1"
@@ -148,14 +149,21 @@ Return valid JSON only with these keys:
 }}
 """.strip()
 
-def llm_label_topic(client, model: str, topic_id: int, topic_name: str, count: int, examples: list[str]) -> dict:
+def llm_label_topic(client, model: str, topic_id: int, topic_name: str, count: int, examples: list[str]) -> tuple[dict, str, str]:
+    prompt = build_prompt(topic_id, topic_name, count, examples)
     response = client.chat.completions.create(
         model=model,
-        messages=[{"role": "user", "content": build_prompt(topic_id, topic_name, count, examples)}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )
     raw = response.choices[0].message.content
-    return normalize_result(extract_json(raw))
+    return normalize_result(extract_json(raw)), prompt, raw
+
+
+def append_audit_record(path: Path, record: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def write_checkpoint(existing, new_rows: list[dict], output_path: Path) -> None:
@@ -187,6 +195,7 @@ def main() -> None:
         raise FileNotFoundError(document_topics_path)
 
     output_path = args.output or (args.bertopic_dir / "topic_labels_llm.csv")
+    audit_path = output_path.with_name(output_path.stem + "_audit.jsonl")
     topic_info = pd.read_csv(topic_info_path)
     docs = pd.read_csv(document_topics_path)
     if args.text_column not in docs.columns:
@@ -245,17 +254,30 @@ def main() -> None:
 
         for attempt in range(1, args.retries + 1):
             try:
-                out.update(
-                    llm_label_topic(
-                        client=client,
-                        model=args.model,
-                        topic_id=topic_id,
-                        topic_name=str(topic_row.get("Name", "")),
-                        count=int(topic_row.get("Count", len(topic_docs))),
-                        examples=examples,
-                    )
+                parsed_label, prompt, raw_response = llm_label_topic(
+                    client=client,
+                    model=args.model,
+                    topic_id=topic_id,
+                    topic_name=str(topic_row.get("Name", "")),
+                    count=int(topic_row.get("Count", len(topic_docs))),
+                    examples=examples,
                 )
+                out.update(parsed_label)
+                out["llm_model"] = args.model
                 out["llm_error"] = ""
+                append_audit_record(
+                    audit_path,
+                    {
+                        "prompt_version": PROMPT_VERSION,
+                        "topic_id": topic_id,
+                        "model": args.model,
+                        "temperature": 0,
+                        "examples": examples,
+                        "prompt": prompt,
+                        "raw_response": raw_response,
+                        "parsed": parsed_label,
+                    },
+                )
                 break
             except Exception as exc:
                 out["llm_error"] = repr(exc)
@@ -269,6 +291,28 @@ def main() -> None:
             time.sleep(args.sleep)
 
     write_checkpoint(existing, new_rows, output_path)
+    write_run_manifest(
+        args.bertopic_dir,
+        script_name=Path(__file__).name,
+        args=args,
+        inputs={
+            "topic_info": topic_info_path,
+            "document_topics": document_topics_path,
+        },
+        outputs={
+            "topic_labels": output_path,
+            "topic_label_audit": audit_path,
+        },
+        extra={
+            "prompt_version": PROMPT_VERSION,
+            "model": args.model,
+            "temperature": 0,
+            "examples_per_topic": args.examples_per_topic,
+            "max_example_chars": args.max_example_chars,
+            "min_topic_count": args.min_topic_count,
+        },
+        manifest_name="topic_labels_run_manifest.json",
+    )
     print("Done.", flush=True)
 
 

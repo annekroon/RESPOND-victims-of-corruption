@@ -22,6 +22,7 @@ and over-time topic patterns.
 | `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
 | `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order coverage frames |
 | `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
+| `scripts/publish_topic_archive_to_surf.py` | Package final topic outputs, code, manifests, and manuscript tables for SURF archiving |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
 | `requirements-topic.txt` | Optional extra dependencies for BERTopic |
 
@@ -116,7 +117,12 @@ Main outputs:
 topic_info.csv
 document_topics.csv.gz
 topic_model/
+run_manifest.json
 ```
+
+`run_manifest.json` records the command-line arguments, git commit, Python
+version, package versions, input/output checksums, random seed, embedding model,
+and relevant environment variables. Treat this file as part of the model output.
 
 ## 3. Label Topics With GPT 5.1
 
@@ -134,6 +140,8 @@ Output:
 
 ```text
 topic_labels_llm.csv
+topic_labels_llm_audit.jsonl
+topic_labels_run_manifest.json
 ```
 
 Each row includes an inductive topic label, short chart label, topic summary,
@@ -141,6 +149,10 @@ inclusion rule, exclusion rule, country/event-specific flag, cross-country
 comparability rating, label rationale, and confidence score. GPT 5.1 is used
 only to interpret and name the discovered BERTopic clusters; it is not asked to
 apply a predefined corruption-type taxonomy.
+
+The audit file contains one JSON record per labelled topic with the prompt,
+selected examples, raw LLM response, parsed response, model name, temperature,
+and prompt version. This is the archival source for reviewing what the LLM saw.
 
 ## 4. Group Fine-Grained Topics Into Coverage Frames
 
@@ -176,7 +188,13 @@ Outputs:
 ```text
 topic_groups_llm.csv
 topic_group_summaries_llm.csv
+topic_groups_llm_audit.json
+topic_groups_run_manifest.json
 ```
+
+The group audit file stores the full coverage-frame prompt, raw LLM response,
+parsed assignments, fixed frame definitions, model name, temperature, and prompt
+version.
 
 ## 5. Inspect Final Results In A Notebook
 
@@ -197,6 +215,22 @@ coverage frame. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
 in the first code cell to inspect the fine-grained BERTopic topics directly.
 It also includes lift diagnostics and country-specificity checks to evaluate
 whether the discovered topics capture variation across countries and over time.
+
+The final export cell writes journal/appendix-ready tables under:
+
+```text
+inspection_tables/latex/
+```
+
+Recommended manuscript tables:
+
+| File | Use |
+|---|---|
+| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order coverage frames, weighted shares, number of fine-grained topics, country spread, example fine-grained topics, and substantive description |
+| `table_all_topics_llm_coverage_frames.tex` | Longer appendix table listing every fine-grained BERTopic topic with its LLM-assigned coverage frame and assignment rationale |
+
+The CSV versions under `inspection_tables/` are easier to inspect, but the
+LaTeX files above are the ones intended for the journal appendix.
 
 ## 6. Optional: Export Standalone HTML Visualizations
 
@@ -237,3 +271,98 @@ topic_weighted_totals.csv
 - Use topic outputs to build a small hand-coded validation set for corruption
   type. The final corruption-type labels should not rely only on unsupervised
   topic IDs.
+
+## Reproducibility And Archiving
+
+The workflow is reproducible in two different senses:
+
+1. **Published-result reproducibility:** preserve the exact files used in the
+   paper so readers can verify the topic tables, labels, and plots.
+2. **Full rerun reproducibility:** rerun sampling, embeddings, BERTopic, and LLM
+   interpretation from source data. This is harder because package versions,
+   Hugging Face model files, GPU libraries, and hosted LLM behavior can change.
+
+For a journal submission, archive the published-result artifacts as the source
+of truth:
+
+```text
+political_corruption_country_year_sample*.csv.gz
+political_corruption_country_year_sample*_strata.csv
+political_corruption_country_year_sample*_run_manifest.json
+topic_info.csv
+document_topics.csv.gz
+topic_model/
+run_manifest.json
+topic_labels_llm.csv
+topic_labels_llm_audit.jsonl
+topic_labels_run_manifest.json
+topic_groups_llm.csv
+topic_group_summaries_llm.csv
+topic_groups_llm_audit.json
+topic_groups_run_manifest.json
+inspection_tables/
+visualizations/
+topic_classification/README.md
+topic_classification/scripts/
+topic_classification/notebooks/
+topic_classification/requirements-topic.txt
+```
+
+The manifests record package versions from the environment where the scripts
+were run. For even stronger rerun reproducibility, also save a frozen
+environment file from `annecuda`:
+
+```bash
+python3 -m pip freeze > topic_classification/requirements-topic-freeze-$(date +%Y%m%d).txt
+```
+
+If the exact embedding-model revision is needed, download or cache the Hugging
+Face model files used by `intfloat/multilingual-e5-large` and archive the cache
+or record the model commit hash. The current script records the embedding model
+name, but not a pinned Hugging Face revision.
+
+LLM labels and coverage-frame groupings should be treated as archived outputs,
+not guaranteed-regenerable outputs. Even with `temperature=0`, hosted LLMs can
+change over time. The audit files preserve the exact prompt and response for
+the published labels.
+
+## Publish Topic Archive To SURF
+
+Use the packaging script after the sample, BERTopic model, LLM labels/groups,
+notebook tables, and visualizations have been generated.
+
+Create a local archive only:
+
+```bash
+python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz
+```
+
+The browser folder is:
+
+```text
+https://uva.data.surf.nl/apps/files/?dir=/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper
+```
+
+For command-line upload, use the corresponding SURF/Nextcloud WebDAV collection
+URL and credentials. Set these environment variables on `annecuda`:
+
+```bash
+export SURF_USERNAME="your_uva_or_surf_username"
+export SURF_PASSWORD="your_surf_app_password"
+export SURF_WEBDAV_URL="https://uva.data.surf.nl/remote.php/dav/files/${SURF_USERNAME}/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper"
+```
+
+Then upload:
+
+```bash
+python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
+  --upload
+```
+
+If the archive is too large because it includes `topic_model/`, rerun with
+`--no-model` for a smaller upload, but keep a separate archived copy of
+`topic_model/` for maximum reproducibility.

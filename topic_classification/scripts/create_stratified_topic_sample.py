@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import ALL_COUNTRIES
+from topic_classification.scripts.reproducibility import write_run_manifest
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -253,6 +254,22 @@ def main() -> None:
     )
     diagnostics_path = output_path.with_name(output_path.name.replace(".csv.gz", "_strata.csv"))
     diagnostics.to_csv(diagnostics_path, index=False)
+
+    write_run_manifest(
+        args.output_dir,
+        script_name=Path(__file__).name,
+        args=args,
+        outputs={
+            "sample": output_path,
+            "strata_diagnostics": diagnostics_path,
+        },
+        extra={
+            "loaded_eligible_rows": int(len(data)),
+            "saved_sample_rows": int(len(sample)),
+            "nonempty_country_year_strata": int(diagnostics.shape[0]),
+        },
+        manifest_name=output_path.name.replace(".csv.gz", "_run_manifest.json"),
+    )
 
     print(f"Saved sample rows: {len(sample):,}", flush=True)
     print(f"Sample: {output_path}", flush=True)
