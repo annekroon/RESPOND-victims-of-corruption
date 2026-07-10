@@ -22,7 +22,7 @@ and over-time topic patterns.
 | `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
 | `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order coverage frames |
 | `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
-| `scripts/publish_topic_archive_to_surf.py` | Package final topic outputs, code, manifests, and manuscript tables for SURF archiving |
+| `scripts/publish_topic_archive_to_webdav.py` | Package final topic outputs, code, manifests, and manuscript tables for Research Drive/WebDAV archiving |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
 | `requirements-topic.txt` | Optional extra dependencies for BERTopic |
 
@@ -326,7 +326,7 @@ not guaranteed-regenerable outputs. Even with `temperature=0`, hosted LLMs can
 change over time. The audit files preserve the exact prompt and response for
 the published labels.
 
-## Publish Topic Archive To SURF
+## Publish Topic Archive To Research Drive
 
 Use the packaging script after the sample, BERTopic model, LLM labels/groups,
 notebook tables, and visualizations have been generated.
@@ -334,33 +334,35 @@ notebook tables, and visualizations have been generated.
 Create a local archive only:
 
 ```bash
-python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz
 ```
 
-The browser folder is:
+The browser folder is still visible at:
 
 ```text
 https://uva.data.surf.nl/apps/files/?dir=/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper
 ```
 
-For command-line upload, use the corresponding SURF/Nextcloud WebDAV collection
-URL and credentials. Set these environment variables on `annecuda`:
+For command-line upload, the script uses the same Research Drive/WebDAV settings
+as the rest of the repository: `BASE_URL`, `USER`, and `APP_PASSWORD` from
+`config_local.py`, or `RD_BASE_URL`, `RD_USER`, and `RD_PASS` from the
+environment.
+
+Upload the full topic archive:
 
 ```bash
-export SURF_USERNAME="your_uva_or_surf_username"
-export SURF_PASSWORD="your_surf_app_password"
-export SURF_WEBDAV_URL="https://uva.data.surf.nl/remote.php/dav/files/${SURF_USERNAME}/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper"
-```
-
-Then upload:
-
-```bash
-python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
   --upload
+```
+
+Default archive destination:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/topic_classification/
 ```
 
 If the archive is too large because it includes `topic_model/`, rerun with
@@ -368,13 +370,11 @@ If the archive is too large because it includes `topic_model/`, rerun with
 `topic_model/` for maximum reproducibility.
 
 To also push the manuscript-ready LaTeX tables to the paper output folder,
-set the WebDAV URL for the `output/tables` collection and ask the script to
-create a `topic models` subfolder:
+ask the script to create a `topic models` subfolder under the standard
+`output/tables` folder:
 
 ```bash
-export SURF_TABLES_WEBDAV_URL="https://uva.data.surf.nl/remote.php/dav/files/${SURF_USERNAME}/ASCOR-FMG-5580-RESPOND-news-data%20%28Projectfolder%29/victims-of-corruption-paper/output/tables"
-
-python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
+python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
   --upload-latex-tables \
   --tables-only \
@@ -384,6 +384,6 @@ python3 topic_classification/scripts/publish_topic_archive_to_surf.py \
 This uploads:
 
 ```text
-output/tables/topic models/table_topic_coverage_frame_summary.tex
-output/tables/topic models/table_all_topics_llm_coverage_frames.tex
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_topic_coverage_frame_summary.tex
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_all_topics_llm_coverage_frames.tex
 ```
