@@ -14,6 +14,8 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/compare_models.py` | Reproducible classifier comparison and validation |
 | `scripts/train_final_classifier.py` | Train/evaluate the final classifier and optionally score all cleaned country files |
 | `scripts/upload_manuscript_tables.py` | Upload generated LaTeX tables to Research Drive |
+| `scripts/archive_derived_data_to_webdav.py` | Archive expensive-to-recreate derived data and a manifest to Research Drive |
+| `scripts/restore_derived_data_from_webdav.py` | Restore archived derived data from Research Drive into the local pipeline folder |
 | `scripts/merge_uk_validation_annotations.py` | Save a merged annotation file with the reviewed UK supplement |
 | `tools/annotation_interface.py` | Streamlit UI for manual review |
 | `archive/` | Older notebook versions kept for provenance |
@@ -291,4 +293,74 @@ Upload them to Research Drive:
 
 ```bash
 python3 political_classifier/scripts/upload_manuscript_tables.py
+```
+
+## Reproducibility Archive
+
+GitHub should contain code, notebooks, and documentation. Large generated data
+belong on Research Drive/WebDAV. After rerunning the workflow or updating
+important outputs, archive the derived data with:
+
+```bash
+python3 political_classifier/scripts/archive_derived_data_to_webdav.py
+```
+
+To restore the archived outputs on a fresh or cleaned machine:
+
+```bash
+python3 political_classifier/scripts/restore_derived_data_from_webdav.py
+```
+
+This reads `derived_data_manifest.json` from Research Drive, downloads selected
+files into the expected local `political_corruption_pipeline` structure, and
+verifies SHA-256 checksums when they are present.
+
+Default destination:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/
+```
+
+The archive script uploads these groups:
+
+| Group | Contents |
+|---|---|
+| `cleaned_deduped` | Cleaned/deduplicated country files, minimal combined file, denominator tables |
+| `silver_training_data` | LLM-labelled silver-training-set source files and annotation input files |
+| `validation_data` | UK validation review files used as validation-only supplement |
+| `classifier_outputs` | Final classifier predictions, summaries, selected threshold, embedding model, and model artifact |
+| `classifier_comparison` | Validation comparison CSV outputs |
+| `attention_outputs` | Attention CSVs, generated LaTeX attention tables, figures, and classifier manuscript tables |
+
+The script writes and uploads:
+
+```text
+derived_data_manifest.json
+```
+
+The manifest records the selected files, Research Drive paths, file sizes,
+SHA-256 checksums by default, archive time, and git commit. For a faster dry run:
+
+```bash
+python3 political_classifier/scripts/archive_derived_data_to_webdav.py --dry-run --no-checksum
+```
+
+To archive only selected groups:
+
+```bash
+python3 political_classifier/scripts/archive_derived_data_to_webdav.py \
+  --groups classifier_outputs attention_outputs
+```
+
+To restore only selected groups:
+
+```bash
+python3 political_classifier/scripts/restore_derived_data_from_webdav.py \
+  --groups classifier_outputs attention_outputs
+```
+
+To preview a restore without downloading:
+
+```bash
+python3 political_classifier/scripts/restore_derived_data_from_webdav.py --dry-run
 ```
