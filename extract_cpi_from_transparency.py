@@ -38,6 +38,32 @@ DEFAULT_YEARS = list(range(2018, 2026))
 DEFAULT_OUTPUT = Path("output/cpi_country_year_scores.csv")
 PROJECT_COUNTRIES = {country.replace("_", " ") for country in ALL_COUNTRIES}
 PAGE_URL_TEMPLATE = "https://www.transparency.org/en/cpi/{year}/index"
+KNOWN_RESULT_URLS = {
+    2018: [
+        "https://images.transparencycdn.org/images/CPI2018_Full-Results_1801.xlsx",
+    ],
+    2019: [
+        "https://images.transparencycdn.org/images/CPI2019-1.xlsx",
+    ],
+    2020: [
+        "https://images.transparencycdn.org/images/CPI_FULL_DATA_2021-01-27-162209.zip",
+    ],
+    2021: [
+        "https://images.transparencycdn.org/images/CPI-2021-Full-Data-Set.zip",
+    ],
+    2022: [
+        "https://images.transparencycdn.org/images/CPI2022_GlobalResultsTrends.xlsx",
+    ],
+    2023: [
+        "https://images.transparencycdn.org/images/CPI2023_Global_Results__Trends.xlsx",
+    ],
+    2024: [
+        "https://images.transparencycdn.org/images/CPI2024-Results-and-trends.xlsx",
+    ],
+    2025: [
+        "https://files.transparencycdn.org/images/CPI2025_Results.xlsx",
+    ],
+}
 
 
 @dataclass(frozen=True)
@@ -202,7 +228,12 @@ def discover_result_urls(session, year: int) -> list[str]:
         candidates.append((score, link))
 
     candidates.sort(key=lambda item: item[0], reverse=True)
-    return [link for _, link in candidates]
+
+    urls: list[str] = []
+    for link in [*KNOWN_RESULT_URLS.get(year, []), *[link for _, link in candidates]]:
+        if link not in urls:
+            urls.append(link)
+    return urls
 
 
 def download_file(session, year: int, url: str, cache_dir: Path) -> DownloadedFile:
@@ -211,11 +242,17 @@ def download_file(session, year: int, url: str, cache_dir: Path) -> DownloadedFi
     name = Path(parsed.path).name or f"cpi_{year}_download"
     cache_path = cache_dir / name
     if cache_path.exists() and cache_path.stat().st_size > 0:
-        return DownloadedFile(year=year, url=url, name=name, data=cache_path.read_bytes())
+        data = cache_path.read_bytes()
+        if not data[:200].lstrip().lower().startswith(b"<!doctype html"):
+            return DownloadedFile(year=year, url=url, name=name, data=data)
 
     response = session.get(url, timeout=120)
     response.raise_for_status()
     data = response.content
+    final_name = Path(urlparse(response.url).path).name
+    if final_name and final_name != name:
+        name = final_name
+        cache_path = cache_dir / name
     cache_path.write_bytes(data)
     return DownloadedFile(year=year, url=url, name=name, data=data)
 
@@ -231,7 +268,7 @@ def read_downloaded_tables(download: DownloadedFile) -> list[tuple[str, object]]
         with zipfile.ZipFile(data) as archive:
             for member in archive.namelist():
                 lower = member.lower()
-                if not lower.endswith((".xlsx", ".xls", ".csv")):
+                if not lower.endswith((".xlsx", ".xlsm", ".xls", ".csv")):
                     continue
                 member_data = archive.read(member)
                 nested = DownloadedFile(
@@ -244,10 +281,10 @@ def read_downloaded_tables(download: DownloadedFile) -> list[tuple[str, object]]
         return tables
 
     if name.endswith(".csv"):
-        table = pd.read_csv(data, header=None)
+        table = pd.read_csv(data, header=None, sep=None, engine="python")
         return [(download.name, table)]
 
-    if name.endswith(".xlsx"):
+    if name.endswith((".xlsx", ".xlsm")):
         sheets = pd.read_excel(data, sheet_name=None, header=None, engine="openpyxl")
         return [(f"{download.name}:{sheet_name}", table) for sheet_name, table in sheets.items()]
 
@@ -283,7 +320,24 @@ def header_labels(table, row_index: int) -> list[str]:
     return labels
 
 
-def pick_labelled_number(row, labels: list[str], terms: tuple[str, ...]) -> int | None:
+def pick_labelled_number(
+    row,
+    labels: list[str],
+    terms: tuple[str, ...],
+    *,
+    year: int | None = None,
+) -> int | None:
+    if year is not None:
+        year_text = str(year)
+        for col, label in enumerate(labels):
+            if year_text not in label:
+                continue
+            if not all(term in label for term in terms):
+                continue
+            value = number_as_int(parse_number(row[col]))
+            if value is not None:
+                return value
+
     for col, label in enumerate(labels):
         if not all(term in label for term in terms):
             continue
@@ -307,7 +361,8 @@ def fallback_score_rank(row, country_col: int) -> tuple[int | None, int | None]:
     for _, value in numeric:
         if score is None and 0 <= value <= 100:
             score = value
-        elif rank is None and 1 <= value <= 220:
+            continue
+        if rank is None and 1 <= value <= 220:
             rank = value
     return score, rank
 
@@ -330,10 +385,14 @@ def parse_table_rows(
         country_col, country = country_match
         labels = header_labels(table, row_index)
         score = (
-            pick_labelled_number(row, labels, ("cpi", "score"))
+            pick_labelled_number(row, labels, ("cpi", "score"), year=year)
+            or pick_labelled_number(row, labels, ("score",), year=year)
+            or pick_labelled_number(row, labels, ("cpi", "score"))
             or pick_labelled_number(row, labels, ("score",))
         )
-        rank = pick_labelled_number(row, labels, ("rank",))
+        rank = pick_labelled_number(row, labels, ("rank",), year=year) or pick_labelled_number(
+            row, labels, ("rank",)
+        )
         if score is None:
             score, fallback_rank = fallback_score_rank(row, country_col)
             rank = rank or fallback_rank
