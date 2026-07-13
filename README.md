@@ -21,7 +21,8 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 | `config.py` | Shared non-secret paths and defaults |
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
-| `extract_cpi_from_pdfs.py` | Helper to parse CPI PDF reports from Research Drive/SURF into country-year scores |
+| `extract_cpi_from_transparency.py` | Preferred helper to download official Transparency International CPI full-results files into country-year scores |
+| `extract_cpi_from_pdfs.py` | Fallback helper to parse CPI PDF reports from Research Drive/SURF into country-year scores |
 | `upload_cpi_to_webdav.py` | Helper to upload extracted CPI country-year scores and extraction logs to Research Drive/SURF |
 | `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV helpers |
 | `requirements.txt` | Python dependencies |
@@ -89,16 +90,39 @@ silver-labelled training data, validation supplements, classifier outputs,
 attention outputs, and a `derived_data_manifest.json` with file sizes,
 checksums, destination paths, and the git commit used for the archive.
 
-## CPI / Corruption Perceptions Index PDFs
+## CPI / Corruption Perceptions Index
 
-The CPI PDF reports used as contextual country-year corruption-perception data
-are stored on Research Drive/SURF under:
+The preferred CPI source is Transparency International's official yearly CPI
+page and linked full-results spreadsheet/archive. This is more reproducible than
+parsing report PDFs because the score and rank columns are structured data:
+
+```bash
+python3 extract_cpi_from_transparency.py \
+  --years 2018 2019 2020 2021 2022 2023 2024 2025 \
+  --output output/cpi_country_year_scores.csv
+```
+
+By default the website extractor keeps only the project countries listed in
+`config.py` and drops any selected-country year unless all project countries
+were recovered. It writes:
+
+```text
+output/cpi_country_year_scores.csv
+output/cpi_country_year_scores_extraction_log.csv
+```
+
+The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_url`,
+`source_file`, and `extraction_method`. CPI scores are the Transparency
+International values from 0 to 100; ranks are stored separately. Use the log to
+verify the official source file used for each year.
+
+The CPI PDF reports are still stored on Research Drive/SURF under:
 
 ```text
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/CPI/
 ```
 
-Parse those PDFs into a tidy country-year CSV with:
+Use the PDF parser only as a fallback/audit route:
 
 ```bash
 python3 extract_cpi_from_pdfs.py \
@@ -106,20 +130,10 @@ python3 extract_cpi_from_pdfs.py \
   --output output/cpi_country_year_scores.csv
 ```
 
-By default the parser keeps only the project countries listed in `config.py`.
-For this selected-country mode, the tidy output drops sparse years by default:
-a year is kept only if all project countries were successfully extracted. This
-prevents a partially parsed PDF page, such as a one-country extraction, from
-being treated as valid data. Use `--min-selected-countries` only if you
-intentionally want to relax this completeness threshold, `--allow-partial-years`
-only for debugging PDF layouts, and `--country-scope all` only if you need every
+For the PDF parser, use `--min-selected-countries` only if you intentionally
+want to relax the completeness threshold, `--allow-partial-years` only for
+debugging PDF layouts, and `--country-scope all` only if you need every
 country/territory from the CPI PDFs.
-
-The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_pdf`,
-`source_page`, and `extraction_method`. CPI scores are the Transparency
-International values from 0 to 100; ranks are stored separately. The script also
-writes an extraction log next to the output CSV. Use the log to spot PDFs whose
-table layout needs manual checking.
 
 Upload the extracted scores and extraction log back to Research Drive/SURF with:
 

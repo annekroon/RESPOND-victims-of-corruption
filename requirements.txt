@@ -3,6 +3,7 @@ tqdm
 requests
 pdfplumber
 pypdf
+openpyxl
 openai
 streamlit
 scikit-learn
