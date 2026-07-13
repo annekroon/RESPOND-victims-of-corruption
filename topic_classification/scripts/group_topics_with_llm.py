@@ -1,9 +1,9 @@
-"""Assign inductive BERTopic topics to higher-level coverage frames with GPT.
+"""Assign inductive BERTopic topics to higher-order topics with GPT.
 
 This script reads a BERTopic output directory after `label_topics_with_llm.py`
 has created `topic_labels_llm.csv`. It asks GPT to assign each fine-grained
-topic to exactly one higher-level coverage frame, then writes an auditable
-topic-to-frame mapping with assignment rationales.
+topic to exactly one higher-order topic, then writes an auditable
+topic-to-higher-order-topic mapping with assignment rationales.
 """
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 from topic_classification.scripts.reproducibility import write_run_manifest
 
 
-PROMPT_VERSION = "coverage_frame_groups_v1"
+PROMPT_VERSION = "higher_order_topic_groups_v1"
 
-COVERAGE_FRAMES = [
+HIGHER_ORDER_TOPICS = [
     {
-        "frame_id": "individualized_elite_scandal",
+        "higher_order_topic_id": "individualized_elite_scandal",
         "label": "Individualized elite scandal",
         "short_label": "Elite scandals",
         "meaning": (
@@ -35,7 +35,7 @@ COVERAGE_FRAMES = [
         ),
     },
     {
-        "frame_id": "systemic_institutional_corruption",
+        "higher_order_topic_id": "systemic_institutional_corruption",
         "label": "Systemic institutional corruption",
         "short_label": "Systemic corruption",
         "meaning": (
@@ -44,7 +44,7 @@ COVERAGE_FRAMES = [
         ),
     },
     {
-        "frame_id": "transnational_investigative_corruption",
+        "higher_order_topic_id": "transnational_investigative_corruption",
         "label": "Transnational investigative corruption",
         "short_label": "Transnational probes",
         "meaning": (
@@ -53,7 +53,7 @@ COVERAGE_FRAMES = [
         ),
     },
     {
-        "frame_id": "boundary_or_nonpolitical_cases",
+        "higher_order_topic_id": "boundary_or_nonpolitical_cases",
         "label": "Boundary or less clearly political cases",
         "short_label": "Boundary cases",
         "meaning": (
@@ -62,7 +62,7 @@ COVERAGE_FRAMES = [
         ),
     },
     {
-        "frame_id": "local_sectoral_corruption",
+        "higher_order_topic_id": "local_sectoral_corruption",
         "label": "Local or sectoral corruption",
         "short_label": "Local/sectoral cases",
         "meaning": (
@@ -71,7 +71,7 @@ COVERAGE_FRAMES = [
         ),
     },
     {
-        "frame_id": "electoral_party_finance_scandal",
+        "higher_order_topic_id": "electoral_party_finance_scandal",
         "label": "Electoral or party-finance scandal",
         "short_label": "Elections & finance",
         "meaning": (
@@ -83,7 +83,7 @@ COVERAGE_FRAMES = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Assign GPT-labelled BERTopic topics to coverage frames.")
+    parser = argparse.ArgumentParser(description="Assign GPT-labelled BERTopic topics to higher-order topics.")
     parser.add_argument("--bertopic-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--model", default=LLMPROXY_MODEL)
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
         "--target-groups",
         type=int,
         default=12,
-        help="Kept for backward compatibility; coverage frames are fixed by the prompt.",
+        help="Kept for backward compatibility; higher-order topics are fixed by the prompt.",
     )
     parser.add_argument("--min-groups", type=int, default=8, help=argparse.SUPPRESS)
     parser.add_argument("--max-groups", type=int, default=16, help=argparse.SUPPRESS)
@@ -150,18 +150,18 @@ def load_topic_table(bertopic_dir: Path):
     return labels[keep_cols].sort_values("Count", ascending=False)
 
 
-def frame_rows(prompt_version: str) -> dict[str, dict]:
+def higher_order_topic_rows(prompt_version: str) -> dict[str, dict]:
     return {
-        frame["frame_id"]: {
+        topic_group["higher_order_topic_id"]: {
             "llm_group_prompt_version": prompt_version,
-            "topic_group_id": frame["frame_id"],
-            "topic_group_label": frame["label"],
-            "topic_group_short_label": frame["short_label"],
-            "topic_group_summary": frame["meaning"],
+            "topic_group_id": topic_group["higher_order_topic_id"],
+            "topic_group_label": topic_group["label"],
+            "topic_group_short_label": topic_group["short_label"],
+            "topic_group_summary": topic_group["meaning"],
             "topic_group_cross_country_comparability": "",
-            "topic_grouping_principle": frame["meaning"],
+            "topic_grouping_principle": topic_group["meaning"],
         }
-        for frame in COVERAGE_FRAMES
+        for topic_group in HIGHER_ORDER_TOPICS
     }
 
 
@@ -182,31 +182,31 @@ def build_prompt(topic_rows) -> str:
             )
         )
     topic_block = "\n\n".join(topic_lines)
-    frame_block = "\n".join(
+    higher_order_topic_block = "\n".join(
         (
-            f"- {frame['frame_id']} | {frame['label']} | "
-            f"{frame['meaning']} Chart label: {frame['short_label']}"
+            f"- {topic_group['higher_order_topic_id']} | {topic_group['label']} | "
+            f"{topic_group['meaning']} Chart label: {topic_group['short_label']}"
         )
-        for frame in COVERAGE_FRAMES
+        for topic_group in HIGHER_ORDER_TOPICS
     )
 
     return f"""
 You are helping interpret inductively discovered BERTopic clusters from multilingual political-corruption news.
 
 Task:
-Assign each fine-grained topic to exactly one higher-level coverage frame.
+Assign each fine-grained topic to exactly one higher-order topic.
 
 Important:
-- These are coverage frames: ways corruption is organized in the news coverage.
+- These are higher-order topics: ways corruption is organized in the news coverage.
 - They are not objective corruption-type labels.
-- Use the topic labels and summaries to decide which frame best describes how the topic is narratively organized.
+- Use the topic labels and summaries to decide which higher-order topic best describes how the topic is narratively organized.
 - Every topic must be assigned exactly once.
 - Do not assign the same topic id more than once.
-- If a topic could fit multiple frames, choose the dominant frame and mention the competing frame in the rationale.
-- Keep the frame labels exactly as listed; do not invent new frame ids.
+- If a topic could fit multiple higher-order topics, choose the dominant higher-order topic and mention the competing higher-order topic in the rationale.
+- Keep the higher-order topic labels exactly as listed; do not invent new higher-order topic ids.
 
-Coverage frames:
-{frame_block}
+Higher-order topics:
+{higher_order_topic_block}
 
 Topics:
 {topic_block}
@@ -214,18 +214,18 @@ Topics:
 Return valid JSON only with this structure:
 {{
   "prompt_version": "{PROMPT_VERSION}",
-  "frame_notes": [
+  "higher_order_topic_notes": [
     {{
-      "frame_id": "one frame_id from the coverage frames",
-      "frame_summary_for_this_solution": "1-2 sentences on how this frame appears in these topics",
+      "higher_order_topic_id": "one higher_order_topic_id from the higher-order topics",
+      "higher_order_topic_summary_for_this_solution": "1-2 sentences on how this higher-order topic appears in these topics",
       "cross_country_comparability": "high" | "medium" | "low"
     }}
   ],
   "assignments": [
     {{
       "topic_id": 1,
-      "frame_id": "one frame_id from the coverage frames",
-      "assignment_rationale": "brief reason this topic belongs in the selected frame"
+      "higher_order_topic_id": "one higher_order_topic_id from the higher-order topics",
+      "assignment_rationale": "brief reason this topic belongs in the selected higher-order topic"
     }}
   ]
 }}
@@ -255,29 +255,29 @@ def main() -> None:
     raw_response = response.choices[0].message.content
     parsed = extract_json(raw_response)
 
-    groups = frame_rows(parsed.get("prompt_version", PROMPT_VERSION))
-    for note in parsed.get("frame_notes", []):
-        frame_id = note.get("frame_id")
-        if frame_id in groups:
-            groups[frame_id]["topic_group_summary"] = note.get(
-                "frame_summary_for_this_solution",
-                groups[frame_id]["topic_group_summary"],
+    groups = higher_order_topic_rows(parsed.get("prompt_version", PROMPT_VERSION))
+    for note in parsed.get("higher_order_topic_notes", []):
+        higher_order_topic_id = note.get("higher_order_topic_id")
+        if higher_order_topic_id in groups:
+            groups[higher_order_topic_id]["topic_group_summary"] = note.get(
+                "higher_order_topic_summary_for_this_solution",
+                groups[higher_order_topic_id]["topic_group_summary"],
             )
-            groups[frame_id]["topic_group_cross_country_comparability"] = note.get(
+            groups[higher_order_topic_id]["topic_group_cross_country_comparability"] = note.get(
                 "cross_country_comparability",
                 "",
             )
 
     topic_to_group_rows = []
     for assignment in parsed.get("assignments", []):
-        if not isinstance(assignment, dict) or "topic_id" not in assignment or "frame_id" not in assignment:
+        if not isinstance(assignment, dict) or "topic_id" not in assignment or "higher_order_topic_id" not in assignment:
             continue
-        frame_id = assignment["frame_id"]
-        if frame_id not in groups:
-            raise RuntimeError(f"LLM returned unknown frame_id={frame_id!r} for topic {assignment['topic_id']}.")
+        higher_order_topic_id = assignment["higher_order_topic_id"]
+        if higher_order_topic_id not in groups:
+            raise RuntimeError(f"LLM returned unknown higher_order_topic_id={higher_order_topic_id!r} for topic {assignment['topic_id']}.")
         topic_to_group_rows.append(
             {
-                **groups[frame_id],
+                **groups[higher_order_topic_id],
                 "Topic": int(assignment["topic_id"]),
                 "topic_group_assignment_rationale": assignment.get("assignment_rationale", ""),
             }
@@ -303,11 +303,11 @@ def main() -> None:
 
     assigned_topic_ids = set(merged["Topic"].astype(int))
     group_rows = []
-    for frame_id, group_row in groups.items():
+    for higher_order_topic_id, group_row in groups.items():
         topic_ids = sorted(
             int(row["Topic"])
             for row in topic_to_group_rows
-            if row["topic_group_id"] == frame_id and int(row["Topic"]) in assigned_topic_ids
+            if row["topic_group_id"] == higher_order_topic_id and int(row["Topic"]) in assigned_topic_ids
         )
         if topic_ids:
             group_rows.append({**group_row, "topic_ids": json.dumps(topic_ids)})
@@ -322,7 +322,7 @@ def main() -> None:
                 "prompt_version": PROMPT_VERSION,
                 "model": args.model,
                 "temperature": 0,
-                "coverage_frames": COVERAGE_FRAMES,
+                "higher_order_topics": HIGHER_ORDER_TOPICS,
                 "prompt": prompt,
                 "raw_response": raw_response,
                 "parsed": parsed,
@@ -347,7 +347,7 @@ def main() -> None:
             "prompt_version": PROMPT_VERSION,
             "model": args.model,
             "temperature": 0,
-            "coverage_frames": COVERAGE_FRAMES,
+            "higher_order_topics": HIGHER_ORDER_TOPICS,
         },
         manifest_name="topic_groups_run_manifest.json",
     )

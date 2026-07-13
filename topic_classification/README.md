@@ -20,7 +20,7 @@ and over-time topic patterns.
 | `scripts/create_stratified_topic_sample.py` | Create balanced random samples across country and year |
 | `scripts/fit_multilingual_bertopic.py` | Fit BERTopic on a sample and export document-topic assignments |
 | `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
-| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order coverage frames |
+| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order topics |
 | `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
 | `scripts/publish_topic_archive_to_webdav.py` | Package final topic outputs, code, manifests, and manuscript tables for Research Drive/WebDAV archiving |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
@@ -177,16 +177,16 @@ The audit file contains one JSON record per labelled topic with the prompt,
 selected examples, raw LLM response, parsed response, model name, temperature,
 and prompt version. This is the archival source for reviewing what the LLM saw.
 
-## 4. Group Fine-Grained Topics Into Coverage Frames
+## 4. Group Fine-Grained Topics Into Higher-Order Topics
 
 For a many-topic solution, keep the fine-grained BERTopic clusters, then ask GPT
-5.1 to assign those discovered topics to higher-order coverage frames. These
+5.1 to assign those discovered topics to higher-order topics. These
 frames describe how corruption is organized in the news coverage rather than
 claiming to measure objective corruption types.
 
-Current coverage frames:
+Current higher-order topics:
 
-| Frame | Meaning |
+| Higher-order topic | Meaning |
 |---|---|
 | `individualized_elite_scandal` | Named politicians, leaders, trials, accusations, scandals, or personal misconduct |
 | `systemic_institutional_corruption` | Broader institutional dysfunction, governance crisis, state capture, anti-corruption politics, or abuse of power |
@@ -202,8 +202,8 @@ python3 topic_classification/scripts/group_topics_with_llm.py \
   --target-groups 12
 ```
 
-`--target-groups` is kept for command compatibility, but the frame set is fixed
-by the script. Each fine-grained topic is assigned to exactly one frame, with an
+`--target-groups` is kept for command compatibility, but the higher-order topic set is fixed
+by the script. Each fine-grained topic is assigned to exactly one higher-order topic, with an
 LLM rationale.
 
 Outputs:
@@ -215,8 +215,8 @@ topic_groups_llm_audit.json
 topic_groups_run_manifest.json
 ```
 
-The group audit file stores the full coverage-frame prompt, raw LLM response,
-parsed assignments, fixed frame definitions, model name, temperature, and prompt
+The group audit file stores the full higher-order-topic prompt, raw LLM response,
+parsed assignments, fixed higher-order topic definitions, model name, temperature, and prompt
 version.
 
 ## 5. Inspect Final Results In A Notebook
@@ -249,8 +249,8 @@ Recommended manuscript tables:
 
 | File | Use |
 |---|---|
-| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order topics, weighted shares, main contributing countries, and substantive interpretation |
-| `table_all_topics_llm_coverage_frames.tex` | Continued appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned higher-order topic, weighted articles / share, largest contributing country, and a short interpretive summary |
+| `table_topic_higher_order_summary.tex` | Main appendix table summarizing the higher-order topics, weighted shares, main contributing countries, and substantive interpretation |
+| `table_all_topics_llm_higher_order_topics.tex` | Continued appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned higher-order topic, weighted articles / share, largest contributing country, and a short interpretive summary |
 
 The LaTeX topic inventory is intentionally compact and uses `longtable` so that
 it continues across pages as one table instead of floating away from the topic
@@ -373,7 +373,7 @@ Face model files used by `intfloat/multilingual-e5-large` and archive the cache
 or record the model commit hash. The current script records the embedding model
 name, but not a pinned Hugging Face revision.
 
-LLM labels and coverage-frame groupings should be treated as archived outputs,
+LLM labels and higher-order-topic groupings should be treated as archived outputs,
 not guaranteed-regenerable outputs. Even with `temperature=0`, hosted LLMs can
 change over time. The audit files preserve the exact prompt and response for
 the published labels.
@@ -389,8 +389,8 @@ For the current manuscript workflow, the usual order is:
 2. Rerun `topic_classification/notebooks/01_inspect_topic_results.ipynb` using
    the final BERTopic directory.
 3. Confirm that `inspection_tables/latex/` contains
-   `table_topic_coverage_frame_summary.tex` and
-   `table_all_topics_llm_coverage_frames.tex`.
+   `table_topic_higher_order_summary.tex` and
+   `table_all_topics_llm_higher_order_topics.tex`.
 4. Upload the LaTeX tables to the paper output folder with
    `--upload-latex-tables --tables-only`.
 5. Optionally upload the full reproducibility archive with `--upload`.
@@ -448,6 +448,6 @@ python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
 This uploads:
 
 ```text
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_topic_coverage_frame_summary.tex
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_all_topics_llm_coverage_frames.tex
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_topic_higher_order_summary.tex
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_all_topics_llm_higher_order_topics.tex
 ```

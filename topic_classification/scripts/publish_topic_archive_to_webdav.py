@@ -154,8 +154,8 @@ def stage_archive_contents(args: argparse.Namespace, staging_dir: Path) -> None:
                 f"BERTopic directory: {bertopic_dir}",
                 "",
                 "Key manuscript tables:",
-                "- outputs/inspection_tables/latex/table_topic_coverage_frame_summary.tex",
-                "- outputs/inspection_tables/latex/table_all_topics_llm_coverage_frames.tex",
+                "- outputs/inspection_tables/latex/table_topic_higher_order_summary.tex",
+                "- outputs/inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex",
                 "",
                 "The CSV/JSON outputs are the archival source of truth for published topic labels and LLM group assignments.",
                 "The LLM audit files contain prompts and raw responses where available.",
@@ -236,8 +236,8 @@ def upload_bytes(rd_path: str, data: bytes, content_type: str) -> None:
 def latex_table_paths(bertopic_dir: Path) -> list[Path]:
     latex_dir = bertopic_dir / "inspection_tables" / "latex"
     paths = [
-        latex_dir / "table_topic_coverage_frame_summary.tex",
-        latex_dir / "table_all_topics_llm_coverage_frames.tex",
+        latex_dir / "table_topic_higher_order_summary.tex",
+        latex_dir / "table_all_topics_llm_higher_order_topics.tex",
     ]
     missing = [path for path in paths if not path.exists()]
     if missing:
