@@ -6,6 +6,7 @@ pypdf
 openpyxl
 openai
 streamlit
+flask
 scikit-learn
 sentence-transformers
 joblib

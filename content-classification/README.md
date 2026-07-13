@@ -20,6 +20,7 @@ substantive variables inside that corpus.
 | `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
 | `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
 | `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
+| `tools/annotation_flask_app.py` | Browser-based Flask app for manual coding with original and translated text |
 | `scripts/merge_content_labels.py` | one merged silver-labelled article-level dataset |
 
 Each classifier sends article text to the UvA LLM proxy with deterministic
@@ -137,6 +138,55 @@ nohup python3 -u content-classification/scripts/translate_validation_sample.py \
 The translation output preserves all original columns and adds
 `translated_text_en`, `translation_notes`, `translation_confidence`,
 `translation_model`, and `translation_error`. The script is resumable.
+
+### Manual Annotation Interface
+
+After translation, launch the Flask annotation app. It shows the English
+translation and original article side by side and keeps the codebook definitions
+visible while coding.
+
+For a local-only session on `annecuda`:
+
+```bash
+VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
+
+CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
+CONTENT_ANNOTATION_OUTPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_human_coded.csv.gz" \
+CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
+CONTENT_ANNOTATION_CODER_ID="anne" \
+flask --app content-classification/tools/annotation_flask_app.py run \
+  --host 127.0.0.1 \
+  --port 8502
+```
+
+If working through an SSH tunnel:
+
+```bash
+ssh -L 8502:127.0.0.1:8502 akroon@annecuda
+```
+
+Then open:
+
+```text
+http://localhost:8502
+```
+
+For external coders, run the app on a reachable host or behind a reverse proxy
+with `--host 0.0.0.0` and a strong `CONTENT_ANNOTATION_PASSWORD`. Prefer one
+output file per coder to avoid simultaneous writes to the same CSV:
+
+```bash
+CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
+CONTENT_ANNOTATION_OUTPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_coder01.csv.gz" \
+CONTENT_ANNOTATION_PASSWORD="strong-password-here" \
+CONTENT_ANNOTATION_CODER_ID="coder01" \
+flask --app content-classification/tools/annotation_flask_app.py run \
+  --host 0.0.0.0 \
+  --port 8502
+```
+
+The app saves the human codes in `human_*` columns and is safe to restart: if
+the output file already exists, it resumes from that reviewed file.
 
 After manual coding, the same sample can be sent through the GPT classifiers to
 compare GPT labels against human labels:
