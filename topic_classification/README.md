@@ -249,11 +249,16 @@ Recommended manuscript tables:
 
 | File | Use |
 |---|---|
-| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order coverage frames, weighted shares, number of fine-grained topics, country spread, example fine-grained topics, and substantive description |
-| `table_all_topics_llm_coverage_frames.tex` | Longer appendix table listing every fine-grained BERTopic topic with its LLM-assigned coverage frame and assignment rationale |
+| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order coverage frames, weighted shares, main contributing countries, and substantive interpretation |
+| `table_all_topics_llm_coverage_frames.tex` | Compact appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned coverage frame, weighted size, main countries, and a short interpretive summary |
 
-The CSV versions under `inspection_tables/` are easier to inspect, but the
-LaTeX files above are the ones intended for the journal appendix.
+The LaTeX topic inventory is intentionally compact so that it renders cleanly
+in the manuscript PDF. Full GPT-5.1 topic descriptions, inclusion rules,
+exclusion rules, assignment rationales, country/event-specificity assessments,
+and cross-country comparability notes remain in the CSV exports under
+`inspection_tables/`, especially `topic_group_assignment_explanation.csv`.
+Use those CSV files as the full audit/codebook version and the LaTeX files as
+the journal appendix version.
 
 ## 6. Optional: Export Standalone HTML Visualizations
 
@@ -369,6 +374,18 @@ the published labels.
 
 Use the packaging script after the sample, BERTopic model, LLM labels/groups,
 notebook tables, and visualizations have been generated.
+
+For the current manuscript workflow, the usual order is:
+
+1. Pull the latest repository code.
+2. Rerun `topic_classification/notebooks/01_inspect_topic_results.ipynb` using
+   the final BERTopic directory.
+3. Confirm that `inspection_tables/latex/` contains
+   `table_topic_coverage_frame_summary.tex` and
+   `table_all_topics_llm_coverage_frames.tex`.
+4. Upload the LaTeX tables to the paper output folder with
+   `--upload-latex-tables --tables-only`.
+5. Optionally upload the full reproducibility archive with `--upload`.
 
 Create a local archive only:
 
