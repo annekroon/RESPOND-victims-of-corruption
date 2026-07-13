@@ -107,10 +107,12 @@ python3 extract_cpi_from_pdfs.py \
 ```
 
 By default the parser keeps only the project countries listed in `config.py`.
-For this selected-country mode, the tidy output keeps only complete years, i.e.
-years where all project countries were successfully extracted. This prevents a
-partially parsed PDF page from being treated as a valid country-year panel. Use
-`--allow-partial-years` only for debugging PDF layouts, and use
+For this selected-country mode, the tidy output drops sparse years by default:
+a year is kept only if at least eight project countries were successfully
+extracted. This preserves the currently recoverable 2018-2020 CPI panel while
+preventing a partially parsed PDF page, such as a one-country extraction, from
+being treated as valid data. Use `--min-selected-countries` to change this
+threshold, `--allow-partial-years` only for debugging PDF layouts, and
 `--country-scope all` only if you need every country/territory from the CPI
 PDFs.
 

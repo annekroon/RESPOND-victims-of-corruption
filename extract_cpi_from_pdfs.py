@@ -51,6 +51,7 @@ DEFAULT_RD_CPI_DIR = posixpath.join(
 )
 DEFAULT_OUTPUT = Path("output/cpi_country_year_scores.csv")
 PROJECT_COUNTRIES = {country.replace("_", " ") for country in ALL_COUNTRIES}
+DEFAULT_MIN_SELECTED_COUNTRIES = min(8, len(PROJECT_COUNTRIES))
 
 
 @dataclass(frozen=True)
@@ -118,8 +119,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "With --country-scope selected, keep years even when not all project "
-            "countries were extracted. By default incomplete selected-country "
-            "years are dropped from the tidy output."
+            "countries were extracted. By default sparse selected-country years "
+            "are dropped from the tidy output."
+        ),
+    )
+    parser.add_argument(
+        "--min-selected-countries",
+        type=int,
+        default=DEFAULT_MIN_SELECTED_COUNTRIES,
+        help=(
+            "Minimum number of project countries required to keep a selected-country "
+            "year when --allow-partial-years is not set. Defaults to 8 because the "
+            "available CPI PDFs currently parse as an eight-country panel for "
+            "2018-2020."
         ),
     )
     return parser.parse_args()
@@ -509,30 +521,34 @@ def tidy_rows(rows: list[dict]) -> pd.DataFrame:
     return data
 
 
-def drop_incomplete_selected_years(data: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
+def drop_sparse_selected_years(
+    data: pd.DataFrame,
+    *,
+    min_selected_countries: int,
+) -> tuple[pd.DataFrame, list[dict]]:
     if data.empty:
         return data, []
 
-    complete_years: list[int] = []
+    kept_years: list[int] = []
     dropped: list[dict] = []
     for year, group in data.groupby("year"):
         present = set(group["country"])
         missing = sorted(PROJECT_COUNTRIES - present)
-        if missing:
+        if len(present) < min_selected_countries:
             dropped.append(
                 {
                     "year": int(year),
                     "countries_extracted": len(present),
-                    "countries_expected": len(PROJECT_COUNTRIES),
+                    "countries_required": min_selected_countries,
                     "missing_countries": "; ".join(missing),
                 }
             )
         else:
-            complete_years.append(int(year))
+            kept_years.append(int(year))
 
     if not dropped:
         return data, []
-    return data[data["year"].isin(complete_years)].reset_index(drop=True), dropped
+    return data[data["year"].isin(kept_years)].reset_index(drop=True), dropped
 
 
 def main() -> None:
@@ -567,21 +583,25 @@ def main() -> None:
     output = tidy_rows(all_rows)
     dropped_years: list[dict] = []
     if args.country_scope == "selected" and not args.allow_partial_years:
-        output, dropped_years = drop_incomplete_selected_years(output)
+        output, dropped_years = drop_sparse_selected_years(
+            output,
+            min_selected_countries=args.min_selected_countries,
+        )
         for item in dropped_years:
             print(
-                "Dropped incomplete selected-country CPI year "
+                "Dropped sparse selected-country CPI year "
                 f"{item['year']}: {item['countries_extracted']}/"
-                f"{item['countries_expected']} countries extracted; missing "
+                f"{item['countries_required']} required countries extracted; missing "
                 f"{item['missing_countries']}",
                 flush=True,
             )
 
     if output.empty:
         raise RuntimeError(
-            "No complete CPI country-year rows were extracted. Check the extraction "
-            "log, use --allow-partial-years for diagnostics, or inspect the PDF "
-            "layouts manually."
+            "No CPI country-year rows met the selected-country completeness "
+            "threshold. Check the extraction log, lower --min-selected-countries, "
+            "use --allow-partial-years for diagnostics, or inspect the PDF layouts "
+            "manually."
         )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
