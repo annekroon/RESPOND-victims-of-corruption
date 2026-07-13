@@ -18,6 +18,7 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 |---|---|
 | `political_classifier/` | Part 1 workflow: clean/dedupe, silver labels, classifier comparison, final scoring, attention tables |
 | `topic_classification/` | Inductive political-corruption topic discovery for appendix/exploratory interpretation and future coding-frame development |
+| `content-classification/` | Article-level GPT 5.1 zero-shot coding of victim visibility, corruption frames, case scope, and accused actors |
 | `config.py` | Shared non-secret paths and defaults |
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
