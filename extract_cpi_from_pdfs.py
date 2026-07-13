@@ -41,7 +41,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import RD_BASE_DIR
+from config import ALL_COUNTRIES, RD_BASE_DIR
 
 
 DEFAULT_RD_CPI_DIR = posixpath.join(
@@ -50,6 +50,7 @@ DEFAULT_RD_CPI_DIR = posixpath.join(
     "CPI",
 )
 DEFAULT_OUTPUT = Path("output/cpi_country_year_scores.csv")
+PROJECT_COUNTRIES = {country.replace("_", " ") for country in ALL_COUNTRIES}
 
 
 @dataclass(frozen=True)
@@ -100,8 +101,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-rows-per-pdf",
         type=int,
-        default=20,
+        default=5,
         help="Warn when fewer than this many country rows are extracted from a PDF.",
+    )
+    parser.add_argument(
+        "--country-scope",
+        choices=["selected", "all"],
+        default="selected",
+        help=(
+            "Keep only project countries by default. Use 'all' to keep every "
+            "country/territory row that can be parsed."
+        ),
     )
     return parser.parse_args()
 
@@ -136,9 +146,41 @@ def parse_int(value: object) -> int | None:
 
 
 def parse_year_from_name(name: str) -> int | None:
+    patterns = [
+        r"(?:^|[_\-\s])CPI[_\-\s]?(?P<year>(?:19|20)\d{2})",
+        r"(?P<year>(?:19|20)\d{2})[_\-\s]?CPI(?:[_\-\s]|$)",
+        r"Report[_\-\s]?CPI(?P<year>(?:19|20)\d{2})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, name, flags=re.IGNORECASE)
+        if match:
+            return int(match.group("year"))
+
     years = [int(match) for match in re.findall(r"(?:19|20)\d{2}", name)]
     plausible = [year for year in years if 1995 <= year <= 2100]
-    return plausible[-1] if plausible else None
+    return plausible[0] if plausible else None
+
+
+def normalize_country_name(country: object) -> str:
+    country = clean_country(country).replace("_", " ")
+    replacements = {
+        "UK": "United Kingdom",
+        "United States of America": "United States",
+        "Czech Republic": "Czechia",
+        "Korea, South": "South Korea",
+    }
+    return replacements.get(country, country)
+
+
+def keep_country(country: str, country_scope: str) -> bool:
+    country = normalize_country_name(country)
+    if not country or len(country) < 3:
+        return False
+    if re.search(r"[:@<>]|www\.|http|fax|phone", country, flags=re.IGNORECASE):
+        return False
+    if country_scope == "selected":
+        return country in PROJECT_COUNTRIES
+    return bool(re.search(r"[A-Za-z]", country))
 
 
 def normalized_header(cells: Iterable[object]) -> list[str]:
@@ -170,15 +212,18 @@ def row_from_columns(
     pdf_name: str,
     page_number: int,
     method: str,
+    country_scope: str,
 ) -> dict | None:
     if country_col >= len(row) or score_col >= len(row):
         return None
 
-    country = clean_country(row[country_col])
+    country = normalize_country_name(row[country_col])
     score = parse_int(row[score_col])
     rank = parse_int(row[rank_col]) if rank_col is not None and rank_col < len(row) else None
 
     if not country or score is None or not (0 <= score <= 100):
+        return None
+    if not keep_country(country, country_scope):
         return None
     if country.lower() in {"country", "country/territory", "countries"}:
         return None
@@ -200,6 +245,7 @@ def infer_row_without_header(
     year: int,
     pdf_name: str,
     page_number: int,
+    country_scope: str,
 ) -> dict | None:
     cells = [clean_cell(cell) for cell in row]
     if len([cell for cell in cells if cell]) < 2:
@@ -223,11 +269,14 @@ def infer_row_without_header(
         return None
 
     country_col, country = max(text_candidates, key=lambda item: len(item[1]))
+    country = normalize_country_name(country)
     score_col, score = score_candidates[-1]
     rank_values = [value for idx, value in numeric if idx != score_col and 1 <= value <= 200]
     rank = rank_values[0] if rank_values else None
 
     if country_col == score_col or not country or score is None:
+        return None
+    if not keep_country(country, country_scope):
         return None
 
     return {
@@ -241,7 +290,7 @@ def infer_row_without_header(
     }
 
 
-def extract_rows_with_pdfplumber(source: PdfSource, year: int) -> list[dict]:
+def extract_rows_with_pdfplumber(source: PdfSource, year: int, country_scope: str) -> list[dict]:
     try:
         import pdfplumber
     except ImportError as exc:
@@ -276,6 +325,7 @@ def extract_rows_with_pdfplumber(source: PdfSource, year: int) -> list[dict]:
                             pdf_name=source.name,
                             page_number=page_index,
                             method="pdfplumber_table",
+                            country_scope=country_scope,
                         )
                         if parsed:
                             table_rows.append(parsed)
@@ -285,6 +335,7 @@ def extract_rows_with_pdfplumber(source: PdfSource, year: int) -> list[dict]:
                             year=year,
                             pdf_name=source.name,
                             page_number=page_index,
+                            country_scope=country_scope,
                         )
                         if parsed:
                             inferred_rows.append(parsed)
@@ -292,7 +343,7 @@ def extract_rows_with_pdfplumber(source: PdfSource, year: int) -> list[dict]:
     return rows
 
 
-def extract_rows_with_text(source: PdfSource, year: int) -> list[dict]:
+def extract_rows_with_text(source: PdfSource, year: int, country_scope: str) -> list[dict]:
     try:
         from pypdf import PdfReader
     except ImportError:
@@ -310,18 +361,25 @@ def extract_rows_with_text(source: PdfSource, year: int) -> list[dict]:
             if not line:
                 continue
 
-            match = re.match(r"^(?P<rank>\d{1,3})\s+(?P<country>.+?)\s+(?P<score>\d{1,3})(?:\s|$)", line)
-            if not match:
-                match = re.match(r"^(?P<country>.+?)\s+(?P<score>\d{1,3})\s+(?P<rank>\d{1,3})(?:\s|$)", line)
-            if not match:
-                continue
+            parsed = None
+            patterns = [
+                r"^(?P<country>.+?)\s+(?P<rank>\d{1,3})\s+(?P<score>\d{1,3})(?:\s|$)",
+                r"^(?P<rank>\d{1,3})\s+(?P<country>.+?)\s+(?P<score>\d{1,3})(?:\s|$)",
+            ]
+            for pattern in patterns:
+                match = re.match(pattern, line)
+                if not match:
+                    continue
 
-            country = clean_country(match.group("country"))
-            score = int(match.group("score"))
-            rank = int(match.group("rank"))
-            if country and 0 <= score <= 100 and 1 <= rank <= 200:
-                rows.append(
-                    {
+                country = normalize_country_name(match.group("country"))
+                score = int(match.group("score"))
+                rank = int(match.group("rank"))
+                if (
+                    keep_country(country, country_scope)
+                    and 0 <= score <= 100
+                    and 1 <= rank <= 200
+                ):
+                    parsed = {
                         "year": year,
                         "country": country,
                         "cpi_score": score,
@@ -330,7 +388,10 @@ def extract_rows_with_text(source: PdfSource, year: int) -> list[dict]:
                         "source_page": page_index,
                         "extraction_method": "pypdf_text_regex",
                     }
-                )
+                    break
+            if parsed is None:
+                continue
+            rows.append(parsed)
     return rows
 
 
@@ -362,7 +423,7 @@ def cache_sources(sources: list[PdfSource], cache_dir: Path | None) -> None:
         (cache_dir / source.name).write_bytes(source.data)
 
 
-def extract_pdf(source: PdfSource, min_rows: int) -> tuple[list[dict], dict]:
+def extract_pdf(source: PdfSource, min_rows: int, country_scope: str) -> tuple[list[dict], dict]:
     year = parse_year_from_name(source.name)
     if year is None:
         return [], {
@@ -372,10 +433,10 @@ def extract_pdf(source: PdfSource, min_rows: int) -> tuple[list[dict], dict]:
             "status": "skipped_no_year_in_filename",
         }
 
-    rows = extract_rows_with_pdfplumber(source, year)
+    rows = extract_rows_with_pdfplumber(source, year, country_scope)
     method = "pdfplumber_table"
     if len(rows) < min_rows:
-        text_rows = extract_rows_with_text(source, year)
+        text_rows = extract_rows_with_text(source, year, country_scope)
         if len(text_rows) > len(rows):
             rows = text_rows
             method = "pypdf_text_regex"
@@ -431,7 +492,7 @@ def main() -> None:
     all_rows: list[dict] = []
     logs: list[dict] = []
     for source in sources:
-        rows, log = extract_pdf(source, args.min_rows_per_pdf)
+        rows, log = extract_pdf(source, args.min_rows_per_pdf, args.country_scope)
         all_rows.extend(rows)
         logs.append(log)
         print(

@@ -106,10 +106,12 @@ python3 extract_cpi_from_pdfs.py \
   --output output/cpi_country_year_scores.csv
 ```
 
-The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_pdf`,
-`source_page`, and `extraction_method`. The script also writes an extraction log
-next to the output CSV. Use the log to spot PDFs whose table layout needs manual
-checking.
+By default the parser keeps only the project countries listed in `config.py`.
+Use `--country-scope all` only if you need every country/territory from the CPI
+PDFs. The output contains `year`, `country`, `cpi_score`, `cpi_rank`,
+`source_pdf`, `source_page`, and `extraction_method`. The script also writes an
+extraction log next to the output CSV. Use the log to spot PDFs whose table
+layout needs manual checking.
 
 Upload the extracted scores and extraction log back to Research Drive/SURF with:
 
