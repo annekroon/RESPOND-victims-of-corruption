@@ -263,11 +263,23 @@ political-corruption corpus size, the political-corruption share within the
 query corpus, the total-news denominator, and the political-corruption share of
 total news.
 
+The data-pipeline figure is also generated as LaTeX/TikZ so that it can be
+included directly in the paper:
+
+```text
+figure_political_corruption_data_pipeline_tikz.tex
+```
+
+It shows the two separate NewsAPI routes: one route retrieves the
+corruption-query article corpus, and the other route retrieves weekly
+total-news counts used only as the denominator for relative attention.
+
 Recommended manuscript figures:
 
 ```latex
-% Method/data section
-\includegraphics[width=\textwidth]{figures/attention/political_corruption_data_pipeline.png}
+% Method/data section; requires \usepackage{tikz}
+% and \usetikzlibrary{arrows.meta, positioning}
+\input{tables/attention/latex/figure_political_corruption_data_pipeline_tikz}
 
 % Main results section
 \includegraphics[width=\textwidth]{figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png}
