@@ -1,6 +1,8 @@
 pandas
 tqdm
 requests
+pdfplumber
+pypdf
 openai
 streamlit
 scikit-learn

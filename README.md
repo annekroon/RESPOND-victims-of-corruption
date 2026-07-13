@@ -21,6 +21,7 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 | `config.py` | Shared non-secret paths and defaults |
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
+| `extract_cpi_from_pdfs.py` | Helper to parse CPI PDF reports from Research Drive/SURF into country-year scores |
 | `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV helpers |
 | `requirements.txt` | Python dependencies |
 | `src/` | Older exploratory scripts kept for provenance |
@@ -86,6 +87,37 @@ The archive contains cleaned/deduplicated files, denominator tables,
 silver-labelled training data, validation supplements, classifier outputs,
 attention outputs, and a `derived_data_manifest.json` with file sizes,
 checksums, destination paths, and the git commit used for the archive.
+
+## CPI / Corruption Perceptions Index PDFs
+
+The CPI PDF reports used as contextual country-year corruption-perception data
+are stored on Research Drive/SURF under:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/CPI/
+```
+
+Parse those PDFs into a tidy country-year CSV with:
+
+```bash
+python3 extract_cpi_from_pdfs.py \
+  --source webdav \
+  --output output/cpi_country_year_scores.csv
+```
+
+The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_pdf`,
+`source_page`, and `extraction_method`. The script also writes an extraction log
+next to the output CSV. Use the log to spot PDFs whose table layout needs manual
+checking.
+
+For local PDFs instead of WebDAV:
+
+```bash
+python3 extract_cpi_from_pdfs.py \
+  --source local \
+  --local-dir /path/to/CPI \
+  --output output/cpi_country_year_scores.csv
+```
 
 ## Current Main Commands
 
