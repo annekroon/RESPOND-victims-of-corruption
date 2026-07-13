@@ -107,11 +107,18 @@ python3 extract_cpi_from_pdfs.py \
 ```
 
 By default the parser keeps only the project countries listed in `config.py`.
-Use `--country-scope all` only if you need every country/territory from the CPI
-PDFs. The output contains `year`, `country`, `cpi_score`, `cpi_rank`,
-`source_pdf`, `source_page`, and `extraction_method`. The script also writes an
-extraction log next to the output CSV. Use the log to spot PDFs whose table
-layout needs manual checking.
+For this selected-country mode, the tidy output keeps only complete years, i.e.
+years where all project countries were successfully extracted. This prevents a
+partially parsed PDF page from being treated as a valid country-year panel. Use
+`--allow-partial-years` only for debugging PDF layouts, and use
+`--country-scope all` only if you need every country/territory from the CPI
+PDFs.
+
+The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_pdf`,
+`source_page`, and `extraction_method`. CPI scores are the Transparency
+International values from 0 to 100; ranks are stored separately. The script also
+writes an extraction log next to the output CSV. Use the log to spot PDFs whose
+table layout needs manual checking.
 
 Upload the extracted scores and extraction log back to Research Drive/SURF with:
 

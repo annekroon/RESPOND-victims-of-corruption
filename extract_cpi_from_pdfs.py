@@ -113,6 +113,15 @@ def parse_args() -> argparse.Namespace:
             "country/territory row that can be parsed."
         ),
     )
+    parser.add_argument(
+        "--allow-partial-years",
+        action="store_true",
+        help=(
+            "With --country-scope selected, keep years even when not all project "
+            "countries were extracted. By default incomplete selected-country "
+            "years are dropped from the tidy output."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -181,6 +190,50 @@ def keep_country(country: str, country_scope: str) -> bool:
     if country_scope == "selected":
         return country in PROJECT_COUNTRIES
     return bool(re.search(r"[A-Za-z]", country))
+
+
+def parse_text_line(
+    line: str,
+    *,
+    year: int,
+    pdf_name: str,
+    page_number: int,
+    country_scope: str,
+) -> dict | None:
+    """Parse CPI table lines extracted as text.
+
+    Older CPI reports often render selected rows as "Country Rank Score".
+    Keeping this as a named helper makes the rank/score convention explicit and
+    easy to test, which matters because both values are small integers.
+    """
+
+    line = clean_cell(line)
+    if not line:
+        return None
+
+    patterns = [
+        r"^(?P<country>.+?)\s+(?P<rank>\d{1,3})\s+(?P<score>\d{1,3})(?:\s|$)",
+        r"^(?P<rank>\d{1,3})\s+(?P<country>.+?)\s+(?P<score>\d{1,3})(?:\s|$)",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, line)
+        if not match:
+            continue
+
+        country = normalize_country_name(match.group("country"))
+        score = int(match.group("score"))
+        rank = int(match.group("rank"))
+        if keep_country(country, country_scope) and 0 <= score <= 100 and 1 <= rank <= 200:
+            return {
+                "year": year,
+                "country": country,
+                "cpi_score": score,
+                "cpi_rank": rank,
+                "source_pdf": pdf_name,
+                "source_page": page_number,
+                "extraction_method": "pypdf_text_regex",
+            }
+    return None
 
 
 def normalized_header(cells: Iterable[object]) -> list[str]:
@@ -357,41 +410,15 @@ def extract_rows_with_text(source: PdfSource, year: int, country_scope: str) -> 
     for page_index, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
         for line in text.splitlines():
-            line = clean_cell(line)
-            if not line:
-                continue
-
-            parsed = None
-            patterns = [
-                r"^(?P<country>.+?)\s+(?P<rank>\d{1,3})\s+(?P<score>\d{1,3})(?:\s|$)",
-                r"^(?P<rank>\d{1,3})\s+(?P<country>.+?)\s+(?P<score>\d{1,3})(?:\s|$)",
-            ]
-            for pattern in patterns:
-                match = re.match(pattern, line)
-                if not match:
-                    continue
-
-                country = normalize_country_name(match.group("country"))
-                score = int(match.group("score"))
-                rank = int(match.group("rank"))
-                if (
-                    keep_country(country, country_scope)
-                    and 0 <= score <= 100
-                    and 1 <= rank <= 200
-                ):
-                    parsed = {
-                        "year": year,
-                        "country": country,
-                        "cpi_score": score,
-                        "cpi_rank": rank,
-                        "source_pdf": source.name,
-                        "source_page": page_index,
-                        "extraction_method": "pypdf_text_regex",
-                    }
-                    break
-            if parsed is None:
-                continue
-            rows.append(parsed)
+            parsed = parse_text_line(
+                line,
+                year=year,
+                pdf_name=source.name,
+                page_number=page_index,
+                country_scope=country_scope,
+            )
+            if parsed:
+                rows.append(parsed)
     return rows
 
 
@@ -467,9 +494,45 @@ def tidy_rows(rows: list[dict]) -> pd.DataFrame:
             ]
         )
     data = pd.DataFrame(rows)
-    data = data.drop_duplicates(subset=["year", "country", "cpi_score", "cpi_rank"])
+    method_priority = {
+        "pdfplumber_table": 0,
+        "pdfplumber_table_inferred": 1,
+        "pypdf_text_regex": 2,
+    }
+    data["_method_priority"] = data["extraction_method"].map(method_priority).fillna(9)
+    data = data.sort_values(
+        ["year", "country", "_method_priority", "source_pdf", "source_page"]
+    )
+    data = data.drop_duplicates(subset=["year", "country"], keep="first")
+    data = data.drop(columns=["_method_priority"])
     data = data.sort_values(["year", "country", "source_pdf", "source_page"]).reset_index(drop=True)
     return data
+
+
+def drop_incomplete_selected_years(data: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
+    if data.empty:
+        return data, []
+
+    complete_years: list[int] = []
+    dropped: list[dict] = []
+    for year, group in data.groupby("year"):
+        present = set(group["country"])
+        missing = sorted(PROJECT_COUNTRIES - present)
+        if missing:
+            dropped.append(
+                {
+                    "year": int(year),
+                    "countries_extracted": len(present),
+                    "countries_expected": len(PROJECT_COUNTRIES),
+                    "missing_countries": "; ".join(missing),
+                }
+            )
+        else:
+            complete_years.append(int(year))
+
+    if not dropped:
+        return data, []
+    return data[data["year"].isin(complete_years)].reset_index(drop=True), dropped
 
 
 def main() -> None:
@@ -502,6 +565,25 @@ def main() -> None:
         )
 
     output = tidy_rows(all_rows)
+    dropped_years: list[dict] = []
+    if args.country_scope == "selected" and not args.allow_partial_years:
+        output, dropped_years = drop_incomplete_selected_years(output)
+        for item in dropped_years:
+            print(
+                "Dropped incomplete selected-country CPI year "
+                f"{item['year']}: {item['countries_extracted']}/"
+                f"{item['countries_expected']} countries extracted; missing "
+                f"{item['missing_countries']}",
+                flush=True,
+            )
+
+    if output.empty:
+        raise RuntimeError(
+            "No complete CPI country-year rows were extracted. Check the extraction "
+            "log, use --allow-partial-years for diagnostics, or inspect the PDF "
+            "layouts manually."
+        )
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     output.to_csv(args.output, index=False)
 
