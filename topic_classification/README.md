@@ -234,7 +234,7 @@ country-topic heatmap, topic shares over time, and faceted country trends. It
 also exports the summary tables under `inspection_tables/`.
 
 By default, the notebook plots `topic_group_short_label`, the higher-order
-coverage frame. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
+topic assigned by GPT-5.1. Set `ANALYSIS_LABEL_COLUMN = "topic_short_label"`
 in the first code cell to inspect the fine-grained BERTopic topics directly.
 It also includes lift diagnostics and country-specificity checks to evaluate
 whether the discovered topics capture variation across countries and over time.
@@ -249,16 +249,24 @@ Recommended manuscript tables:
 
 | File | Use |
 |---|---|
-| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order coverage frames, weighted shares, main contributing countries, and substantive interpretation |
-| `table_all_topics_llm_coverage_frames.tex` | Compact appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned coverage frame, weighted size, main countries, and a short interpretive summary |
+| `table_topic_coverage_frame_summary.tex` | Main appendix table summarizing the higher-order topics, weighted shares, main contributing countries, and substantive interpretation |
+| `table_all_topics_llm_coverage_frames.tex` | Continued appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned higher-order topic, weighted articles / share, largest contributing country, and a short interpretive summary |
 
-The LaTeX topic inventory is intentionally compact so that it renders cleanly
-in the manuscript PDF. Full GPT-5.1 topic descriptions, inclusion rules,
-exclusion rules, assignment rationales, country/event-specificity assessments,
-and cross-country comparability notes remain in the CSV exports under
+The LaTeX topic inventory is intentionally compact and uses `longtable` so that
+it continues across pages as one table instead of floating away from the topic
+appendix. `Weighted articles / share` means the estimated number of
+political-corruption articles represented by the topic after applying
+country-year sampling weights, followed by the topic's weighted share of the
+sampled political-corruption corpus. Full GPT-5.1 topic descriptions,
+inclusion rules, exclusion rules, assignment rationales,
+country/event-specificity assessments, and cross-country comparability notes
+remain in the CSV exports under
 `inspection_tables/`, especially `topic_group_assignment_explanation.csv`.
 Use those CSV files as the full audit/codebook version and the LaTeX files as
 the journal appendix version.
+
+The manuscript preamble needs `booktabs`, `tabularx`, and `longtable` for the
+generated appendix tables.
 
 ## 6. Optional: Export Standalone HTML Visualizations
 
