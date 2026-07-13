@@ -250,14 +250,16 @@ Recommended manuscript tables:
 | File | Use |
 |---|---|
 | `table_topic_higher_order_summary.tex` | Main appendix table summarizing the higher-order topics, weighted shares, main contributing countries, and substantive interpretation |
-| `table_all_topics_llm_higher_order_topics.tex` | Continued appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned higher-order topic, weighted articles / share, largest contributing country, and a short interpretive summary |
+| `table_all_topics_llm_higher_order_topics.tex` | Continued appendix inventory listing every fine-grained BERTopic topic with its LLM-assigned higher-order topic, weighted articles / share, largest contributing country name, and a broader short interpretive summary |
 
 The LaTeX topic inventory is intentionally compact and uses `longtable` so that
 it continues across pages as one table instead of floating away from the topic
 appendix. `Weighted articles / share` means the estimated number of
 political-corruption articles represented by the topic after applying
 country-year sampling weights, followed by the topic's weighted share of the
-sampled political-corruption corpus. Full GPT-5.1 topic descriptions,
+sampled political-corruption corpus. The appendix table reports only the name
+of the largest contributing country, without within-topic country percentages,
+so the interpretive summary column remains readable. Full GPT-5.1 topic descriptions,
 inclusion rules, exclusion rules, assignment rationales,
 country/event-specificity assessments, and cross-country comparability notes
 remain in the CSV exports under
