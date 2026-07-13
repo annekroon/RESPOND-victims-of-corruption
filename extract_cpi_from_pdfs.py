@@ -51,7 +51,7 @@ DEFAULT_RD_CPI_DIR = posixpath.join(
 )
 DEFAULT_OUTPUT = Path("output/cpi_country_year_scores.csv")
 PROJECT_COUNTRIES = {country.replace("_", " ") for country in ALL_COUNTRIES}
-DEFAULT_MIN_SELECTED_COUNTRIES = min(8, len(PROJECT_COUNTRIES))
+DEFAULT_MIN_SELECTED_COUNTRIES = len(PROJECT_COUNTRIES)
 
 
 @dataclass(frozen=True)
@@ -129,9 +129,8 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MIN_SELECTED_COUNTRIES,
         help=(
             "Minimum number of project countries required to keep a selected-country "
-            "year when --allow-partial-years is not set. Defaults to 8 because the "
-            "available CPI PDFs currently parse as an eight-country panel for "
-            "2018-2020."
+            "year when --allow-partial-years is not set. Defaults to the full "
+            "project-country list."
         ),
     )
     return parser.parse_args()
@@ -204,6 +203,30 @@ def keep_country(country: str, country_scope: str) -> bool:
     return bool(re.search(r"[A-Za-z]", country))
 
 
+def text_row(
+    *,
+    year: int,
+    country: str,
+    score: int,
+    rank: int,
+    pdf_name: str,
+    page_number: int,
+    country_scope: str,
+) -> dict | None:
+    country = normalize_country_name(country)
+    if keep_country(country, country_scope) and 0 <= score <= 100 and 1 <= rank <= 200:
+        return {
+            "year": year,
+            "country": country,
+            "cpi_score": score,
+            "cpi_rank": rank,
+            "source_pdf": pdf_name,
+            "source_page": page_number,
+            "extraction_method": "pypdf_text_regex",
+        }
+    return None
+
+
 def parse_text_line(
     line: str,
     *,
@@ -223,28 +246,52 @@ def parse_text_line(
     if not line:
         return None
 
-    patterns = [
+    spaced_patterns = [
         r"^(?P<country>.+?)\s+(?P<rank>\d{1,3})\s+(?P<score>\d{1,3})(?:\s|$)",
         r"^(?P<rank>\d{1,3})\s+(?P<country>.+?)\s+(?P<score>\d{1,3})(?:\s|$)",
     ]
-    for pattern in patterns:
+    for pattern in spaced_patterns:
         match = re.match(pattern, line)
         if not match:
             continue
 
-        country = normalize_country_name(match.group("country"))
-        score = int(match.group("score"))
-        rank = int(match.group("rank"))
-        if keep_country(country, country_scope) and 0 <= score <= 100 and 1 <= rank <= 200:
-            return {
-                "year": year,
-                "country": country,
-                "cpi_score": score,
-                "cpi_rank": rank,
-                "source_pdf": pdf_name,
-                "source_page": page_number,
-                "extraction_method": "pypdf_text_regex",
-            }
+        parsed = text_row(
+            year=year,
+            country=match.group("country"),
+            score=int(match.group("score")),
+            rank=int(match.group("rank")),
+            pdf_name=pdf_name,
+            page_number=page_number,
+            country_scope=country_scope,
+        )
+        if parsed:
+            return parsed
+
+    selected_countries = sorted(PROJECT_COUNTRIES, key=len, reverse=True)
+    for country in selected_countries:
+        country_pattern = re.escape(country).replace(r"\ ", r"\s*")
+        match = re.match(
+            rf"^(?P<country>{country_pattern})\s*(?P<rank_score>\d{{3,6}})(?:\s|$)",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+
+        rank_score = match.group("rank_score")
+        rank = int(rank_score[:-2])
+        score = int(rank_score[-2:])
+        parsed = text_row(
+            year=year,
+            country=country,
+            score=score,
+            rank=rank,
+            pdf_name=pdf_name,
+            page_number=page_number,
+            country_scope=country_scope,
+        )
+        if parsed:
+            return parsed
     return None
 
 
