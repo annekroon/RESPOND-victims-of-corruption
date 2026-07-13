@@ -266,6 +266,9 @@ total news.
 Recommended manuscript figures:
 
 ```latex
+% Method/data section
+\includegraphics[width=\textwidth]{figures/attention/political_corruption_data_pipeline.png}
+
 % Main results section
 \includegraphics[width=\textwidth]{figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png}
 
