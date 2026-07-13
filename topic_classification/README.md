@@ -8,7 +8,8 @@ The core idea is to avoid fitting one topic model to the full news corpus at
 once. The corpus is large and uneven across countries and time, so the first
 step is a reproducible stratified sample across `country x year` among
 political-corruption articles. The second step fits a multilingual BERTopic
-model with a deliberately small target number of topics. The third step asks
+model with enough fine-grained topics to preserve country and time variation.
+The third step asks
 GPT 5.1, through the same UvA LLM proxy used in Part 1, to name and interpret
 the topics. The final step exports interactive visualizations for cross-country
 and over-time topic patterns.
@@ -35,9 +36,14 @@ Main sample/model:
 - Sampling: balanced across `country x year`, with `analysis_weight` saved so
   visualizations can recover weighted article counts and shares.
 - Topic model: multilingual BERTopic using `intfloat/multilingual-e5-large`.
-- Interpretability: fit a somewhat granular raw topic model first, then use GPT
-  5.1 to label the discovered clusters inductively from representative
-  documents and topic keywords.
+- Final raw-topic specification: `political_corruption_country_year_sample_200.csv.gz`
+  with `--min-topic-size 10 --nr-topics auto`, producing 67 non-outlier
+  lower-level BERTopic topics in
+  `bertopic_political_corruption_200_min10`.
+- Interpretability: fit a granular raw topic model first, then use GPT 5.1 to
+  label the discovered clusters inductively from representative documents and
+  topic keywords. GPT 5.1 then groups the fine-grained topics into a smaller
+  set of higher-order topics for manuscript interpretation.
 - Visualizations: interactive country-topic heatmap, stacked topic shares over
   time, and faceted country-over-time topic trends.
 
@@ -119,7 +125,7 @@ python3 topic_classification/scripts/fit_multilingual_bertopic.py \
   --nr-topics auto
 ```
 
-Full run:
+Final manuscript run:
 
 ```bash
 TMPDIR=/home/akroon/data/1t_storage/tmp \
@@ -127,11 +133,11 @@ HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u topic_classification/scripts/fit_multilingual_bertopic.py \
-  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample.csv.gz \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption \
-  --min-topic-size 25 \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
+  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
+  --min-topic-size 10 \
   --nr-topics auto \
-  > bertopic_political_corruption.log 2>&1 &
+  > bertopic_political_corruption_200_min10.log 2>&1 &
 ```
 
 Main outputs:
@@ -146,6 +152,30 @@ run_manifest.json
 `run_manifest.json` records the command-line arguments, git commit, Python
 version, package versions, input/output checksums, random seed, embedding model,
 and relevant environment variables. Treat this file as part of the model output.
+
+### Final Topic-Number Choice
+
+The final manuscript appendix uses
+`bertopic_political_corruption_200_min10`, which has 67 non-outlier
+lower-level BERTopic topics. This is the preferred specification because it
+matches the substantive goal of the topic model: discover fine-grained,
+country- and time-varying patterns first, then use GPT 5.1 to aggregate those
+discovered topics into a smaller set of interpretable higher-order topics.
+
+Alternative specifications were inspected but rejected for the appendix:
+
+| Output directory | Non-outlier topics | Assessment |
+|---|---:|---|
+| `bertopic_political_corruption` | 7 | Too coarse; collapses distinct scandals, countries, and institutions into broad generic topics. |
+| `bertopic_political_corruption_granular` | 8 | Misleading directory name; also too coarse for the intended lower-level topic inventory. |
+| `bertopic_political_corruption_200_topics30` | 19 | More interpretable than the 7/8-topic runs, but still merges several event-, country-, and institution-specific patterns. |
+| `bertopic_political_corruption_200_min10` | 67 | Final choice; preserves inductive lower-level variation while remaining interpretable after GPT 5.1 grouping. |
+
+The 67-topic solution should therefore be understood as the lower-level
+BERTopic inventory, not the final substantive typology. The manuscript-facing
+typology is the GPT-assisted higher-order topic grouping. The lower-level
+topics remain useful because they show which events, countries, and issue areas
+compose each higher-order topic.
 
 ## 3. Label Topics With GPT 5.1
 
@@ -181,7 +211,7 @@ and prompt version. This is the archival source for reviewing what the LLM saw.
 
 For a many-topic solution, keep the fine-grained BERTopic clusters, then ask GPT
 5.1 to assign those discovered topics to higher-order topics. These
-frames describe how corruption is organized in the news coverage rather than
+higher-order topics describe how corruption is organized in the news coverage rather than
 claiming to measure objective corruption types.
 
 Current higher-order topics:
@@ -345,6 +375,42 @@ topic_classification/scripts/
 topic_classification/notebooks/
 topic_classification/requirements-topic.txt
 ```
+
+Final manuscript reproducibility checklist:
+
+- The final BERTopic directory is
+  `/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10`.
+- The final sample is
+  `political_corruption_country_year_sample_200.csv.gz`.
+- The final raw-topic model has 67 non-outlier lower-level BERTopic topics.
+  Check with:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import pandas as pd
+
+topic_dir = Path("/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10")
+topic_info = pd.read_csv(topic_dir / "topic_info.csv")
+print(topic_info[topic_info["Topic"].ne(-1)].shape[0])
+PY
+```
+
+- The final notebook table export should produce:
+
+```text
+inspection_tables/latex/table_topic_higher_order_summary.tex
+inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex
+```
+
+- The many-topic appendix table should be around 97 lines after export. If it
+  is around 36 lines, it is the stale 8-topic export from the wrong directory.
+- Archive both the compact LaTeX tables and the full CSV/JSON audit files. The
+  LaTeX tables are for the journal appendix; the CSV/JSON files are the
+  complete reproducibility record.
+- Treat `topic_groups_llm.csv` and `topic_groups_llm_audit.json` as published
+  outputs. Re-running GPT 5.1 years later may not produce byte-identical
+  assignments, even with `temperature=0`.
 
 For a full rerun from Research Drive rather than local `annecuda` paths, the
 recommended starting point is:
