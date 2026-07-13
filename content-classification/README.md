@@ -18,6 +18,7 @@ substantive variables inside that corpus.
 | `scripts/classify_corruption_frame.py` | `corruption_frame` |
 | `scripts/classify_abroad_case.py` | `case_location`, `abroad_case` |
 | `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
+| `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
 | `scripts/merge_content_labels.py` | one merged silver-labelled article-level dataset |
 
 Each classifier sends article text to the UvA LLM proxy with deterministic
@@ -83,6 +84,61 @@ content-classification/notebooks/01_inspect_content_classification.ipynb
 ```
 
 Set `CONTENT_DIR` in the first notebook cell to the pilot or full output folder.
+
+## Validation Sample
+
+For validation, create a smaller country-year stratified random sample from the
+political-corruption corpus. A 500-article sample gives roughly 6-7 articles per
+non-empty country-year stratum if the period has 72 strata (9 countries by 8
+years):
+
+```bash
+python3 content-classification/scripts/create_validation_sample.py \
+  --total-sample 500 \
+  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
+```
+
+This writes:
+
+```text
+content_validation_sample_500.csv.gz
+content_validation_sample_500_strata.csv
+```
+
+The sample includes the article text, stratum totals, sample counts,
+`validation_weight`, and blank human-coding columns for all four concepts.
+After manual coding, the same sample can be sent through the GPT classifiers to
+compare GPT labels against human labels:
+
+```bash
+VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
+SAMPLE="$VALIDATION_DIR/content_validation_sample_500.csv.gz"
+
+python3 content-classification/scripts/classify_victim_visibility.py \
+  --source csv \
+  --input "$SAMPLE" \
+  --output-dir "$VALIDATION_DIR/gpt_labels"
+
+python3 content-classification/scripts/classify_corruption_frame.py \
+  --source csv \
+  --input "$SAMPLE" \
+  --output-dir "$VALIDATION_DIR/gpt_labels"
+
+python3 content-classification/scripts/classify_abroad_case.py \
+  --source csv \
+  --input "$SAMPLE" \
+  --output-dir "$VALIDATION_DIR/gpt_labels"
+
+python3 content-classification/scripts/classify_accused_actor.py \
+  --source csv \
+  --input "$SAMPLE" \
+  --output-dir "$VALIDATION_DIR/gpt_labels"
+```
+
+This design keeps the expensive full-corpus GPT labelling separate from the
+validation exercise. If the 500-case validation shows weak agreement on a
+concept, revise the prompt version before running that concept on all 474,328
+political-corruption articles.
 
 ## Full Runs
 
