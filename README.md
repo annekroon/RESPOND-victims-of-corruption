@@ -22,6 +22,7 @@ https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collec
 | `config_local.example.py` | Template for ignored local credentials |
 | `dataloader.py` | Shared data-loading helpers |
 | `extract_cpi_from_pdfs.py` | Helper to parse CPI PDF reports from Research Drive/SURF into country-year scores |
+| `upload_cpi_to_webdav.py` | Helper to upload extracted CPI country-year scores and extraction logs to Research Drive/SURF |
 | `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV helpers |
 | `requirements.txt` | Python dependencies |
 | `src/` | Older exploratory scripts kept for provenance |
@@ -109,6 +110,25 @@ The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_pdf`,
 `source_page`, and `extraction_method`. The script also writes an extraction log
 next to the output CSV. Use the log to spot PDFs whose table layout needs manual
 checking.
+
+Upload the extracted scores and extraction log back to Research Drive/SURF with:
+
+```bash
+python3 upload_cpi_to_webdav.py
+```
+
+By default this uploads:
+
+```text
+output/cpi_country_year_scores.csv
+output/cpi_country_year_scores_extraction_log.csv
+```
+
+to:
+
+```text
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/cpi/
+```
 
 For local PDFs instead of WebDAV:
 
