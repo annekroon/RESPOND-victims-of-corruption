@@ -40,6 +40,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output-name", default="content_validation_sample_500.csv.gz")
     parser.add_argument("--total-sample", type=int, default=500)
+    parser.add_argument(
+        "--per-country",
+        type=int,
+        default=None,
+        help=(
+            "Sample this many articles per country, stratified across years "
+            "within country. If set, overrides --total-sample."
+        ),
+    )
     parser.add_argument("--min-words", type=int, default=30)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
@@ -69,6 +78,37 @@ def sample_total(data, total_sample: int, random_state: int):
 
     if not sampled:
         raise ValueError("No rows were sampled. Increase --total-sample or check filters.")
+    return pd.concat(sampled, ignore_index=True)
+
+
+def sample_per_country(data, per_country: int, random_state: int):
+    import pandas as pd
+
+    sampled = []
+    for country_index, (country, country_data) in enumerate(data.groupby("country", dropna=False)):
+        strata = list(country_data.groupby("year", dropna=False).groups)
+        if not strata:
+            continue
+
+        base_n = per_country // len(strata)
+        remainder = per_country % len(strata)
+        country_sampled = []
+        for year_index, (_, group) in enumerate(country_data.groupby("year", dropna=False)):
+            target = base_n + int(year_index < remainder)
+            if target <= 0:
+                continue
+            country_sampled.append(
+                group.sample(
+                    n=min(len(group), target),
+                    random_state=random_state + country_index * 1000 + year_index,
+                )
+            )
+
+        if country_sampled:
+            sampled.append(pd.concat(country_sampled, ignore_index=True))
+
+    if not sampled:
+        raise ValueError("No rows were sampled. Check --per-country and input filters.")
     return pd.concat(sampled, ignore_index=True)
 
 
@@ -121,7 +161,12 @@ def main() -> None:
     data = load_input(args)
     print(f"Eligible political-corruption rows: {len(data):,}", flush=True)
 
-    sample = sample_total(data, args.total_sample, args.random_state)
+    if args.per_country is not None:
+        sample = sample_per_country(data, args.per_country, args.random_state)
+        if args.output_name == "content_validation_sample_500.csv.gz":
+            args.output_name = f"content_validation_sample_{args.per_country}_per_country.csv.gz"
+    else:
+        sample = sample_total(data, args.total_sample, args.random_state)
     sample = add_stratum_weights(data, sample)
     sample = add_human_validation_columns(sample)
 

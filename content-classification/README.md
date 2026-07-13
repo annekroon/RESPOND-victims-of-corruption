@@ -19,6 +19,7 @@ substantive variables inside that corpus.
 | `scripts/classify_abroad_case.py` | `case_location`, `abroad_case` |
 | `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
 | `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
+| `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
 | `scripts/merge_content_labels.py` | one merged silver-labelled article-level dataset |
 
 Each classifier sends article text to the UvA LLM proxy with deterministic
@@ -107,6 +108,36 @@ content_validation_sample_500_strata.csv
 
 The sample includes the article text, stratum totals, sample counts,
 `validation_weight`, and blank human-coding columns for all four concepts.
+For a balanced country validation design, use 100 articles per country:
+
+```bash
+python3 content-classification/scripts/create_validation_sample.py \
+  --per-country 100 \
+  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
+```
+
+This writes:
+
+```text
+content_validation_sample_100_per_country.csv.gz
+content_validation_sample_100_per_country_strata.csv
+```
+
+Translate the 900 sampled articles to English for human coding:
+
+```bash
+VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
+
+nohup python3 -u content-classification/scripts/translate_validation_sample.py \
+  --input "$VALIDATION_DIR/content_validation_sample_100_per_country.csv.gz" \
+  --output "$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
+  > content_validation_translation.log 2>&1 &
+```
+
+The translation output preserves all original columns and adds
+`translated_text_en`, `translation_notes`, `translation_confidence`,
+`translation_model`, and `translation_error`. The script is resumable.
+
 After manual coding, the same sample can be sent through the GPT classifiers to
 compare GPT labels against human labels:
 
