@@ -389,13 +389,16 @@ For the current manuscript workflow, the usual order is:
 
 1. Pull the latest repository code.
 2. Rerun `topic_classification/notebooks/01_inspect_topic_results.ipynb` using
-   the final BERTopic directory.
+   the final many-topic BERTopic directory,
+   `/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10`.
 3. Confirm that `inspection_tables/latex/` contains
    `table_topic_higher_order_summary.tex` and
    `table_all_topics_llm_higher_order_topics.tex`.
-4. Upload the LaTeX tables to the paper output folder with
+4. Confirm that the all-topics table is the many-topic export, not a stale
+   8-topic export.
+5. Upload the LaTeX tables to the paper output folder with
    `--upload-latex-tables --tables-only`.
-5. Optionally upload the full reproducibility archive with `--upload`.
+6. Optionally upload the full reproducibility archive with `--upload`.
 
 Create a local archive only:
 
@@ -435,9 +438,18 @@ If the archive is too large because it includes `topic_model/`, rerun with
 `--no-model` for a smaller upload, but keep a separate archived copy of
 `topic_model/` for maximum reproducibility.
 
-To also push the manuscript-ready LaTeX tables to the paper output folder,
-ask the script to create a `topic models` subfolder under the standard
-`output/tables` folder:
+To push the manuscript-ready LaTeX tables to the paper output folder, first
+make sure the notebook has exported tables from the many-topic model. The
+all-topics table should be substantially longer than the stale 8-topic export
+(the 8-topic table is only about 36 lines):
+
+```bash
+wc -l /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10/inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex
+```
+
+For the current 67-topic model, this should be around 97 lines after the
+notebook export cell has been rerun. Then upload the tables to a `topic models`
+subfolder under the standard `output/tables` folder:
 
 ```bash
 python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
@@ -453,3 +465,14 @@ This uploads:
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_topic_higher_order_summary.tex
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/topic models/table_all_topics_llm_higher_order_topics.tex
 ```
+
+After downloading the tables from Research Drive/SURF, verify that
+`table_all_topics_llm_higher_order_topics.tex` is the many-topic export:
+
+```bash
+wc -l "table_all_topics_llm_higher_order_topics.tex"
+```
+
+If it is still around 36 lines, the uploaded file is stale and was generated
+from the old 8-topic directory rather than from
+`bertopic_political_corruption_200_min10`.
