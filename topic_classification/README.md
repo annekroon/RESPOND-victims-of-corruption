@@ -401,7 +401,7 @@ Create a local archive only:
 
 ```bash
 python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz
 ```
 
@@ -420,7 +420,7 @@ Upload the full topic archive:
 
 ```bash
 python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
   --upload
 ```
@@ -441,7 +441,7 @@ ask the script to create a `topic models` subfolder under the standard
 
 ```bash
 python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_granular \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --upload-latex-tables \
   --tables-only \
   --tables-folder-name "topic models"
