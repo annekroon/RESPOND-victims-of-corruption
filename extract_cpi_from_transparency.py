@@ -22,6 +22,7 @@ import posixpath
 import re
 import sys
 import zipfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -285,8 +286,13 @@ def read_downloaded_tables(download: DownloadedFile) -> list[tuple[str, object]]
         return [(download.name, table)]
 
     if name.endswith((".xlsx", ".xlsm")):
-        sheets = pd.read_excel(data, sheet_name=None, header=None, engine="openpyxl")
-        return [(f"{download.name}:{sheet_name}", table) for sheet_name, table in sheets.items()]
+        try:
+            sheets = pd.read_excel(data, sheet_name=None, header=None, engine="openpyxl")
+            tables = [(f"{download.name}:{sheet_name}", table) for sheet_name, table in sheets.items()]
+        except Exception:
+            tables = []
+        xml_tables = read_xlsx_tables_with_xml(download)
+        return [*tables, *xml_tables]
 
     if name.endswith(".xls"):
         sheets = pd.read_excel(data, sheet_name=None, header=None)
@@ -294,6 +300,117 @@ def read_downloaded_tables(download: DownloadedFile) -> list[tuple[str, object]]
 
     content_type = mimetypes.guess_type(download.name)[0]
     raise ValueError(f"Unsupported CPI result file type: {download.name} ({content_type})")
+
+
+def xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def xml_children(element: ET.Element, name: str) -> list[ET.Element]:
+    return [child for child in element if xml_local_name(child.tag) == name]
+
+
+def xml_descendants(element: ET.Element, name: str) -> list[ET.Element]:
+    return [child for child in element.iter() if xml_local_name(child.tag) == name]
+
+
+def excel_column_index(cell_ref: str) -> int:
+    match = re.match(r"([A-Z]+)", cell_ref)
+    if not match:
+        return 0
+    value = 0
+    for char in match.group(1):
+        value = value * 26 + ord(char) - ord("A") + 1
+    return value - 1
+
+
+def xlsx_cell_value(cell: ET.Element, shared_strings: list[str]) -> str:
+    text_nodes = [node.text or "" for node in xml_descendants(cell, "t")]
+    if cell.attrib.get("t") == "inlineStr" or text_nodes:
+        return "".join(text_nodes)
+
+    values = xml_children(cell, "v")
+    if not values:
+        return ""
+
+    value = values[0].text or ""
+    if cell.attrib.get("t") == "s":
+        return shared_strings[int(value)]
+    return value
+
+
+def read_xlsx_tables_with_xml(download: DownloadedFile) -> list[tuple[str, list[list[str]]]]:
+    tables: list[tuple[str, list[list[str]]]] = []
+    with zipfile.ZipFile(io.BytesIO(download.data)) as workbook:
+        names = set(workbook.namelist())
+        if "xl/workbook.xml" not in names or "xl/_rels/workbook.xml.rels" not in names:
+            return tables
+
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            shared_root = ET.fromstring(workbook.read("xl/sharedStrings.xml"))
+            for item in xml_descendants(shared_root, "si"):
+                shared_strings.append("".join(node.text or "" for node in xml_descendants(item, "t")))
+
+        rel_root = ET.fromstring(workbook.read("xl/_rels/workbook.xml.rels"))
+        relationship_targets = {
+            rel.attrib["Id"]: rel.attrib["Target"]
+            for rel in xml_children(rel_root, "Relationship")
+            if "Id" in rel.attrib and "Target" in rel.attrib
+        }
+
+        workbook_root = ET.fromstring(workbook.read("xl/workbook.xml"))
+        for sheet in xml_descendants(workbook_root, "sheet"):
+            relationship_id = next(
+                (
+                    value
+                    for key, value in sheet.attrib.items()
+                    if key.endswith("}id") or key == "id"
+                ),
+                None,
+            )
+            if relationship_id is None or relationship_id not in relationship_targets:
+                continue
+
+            target = relationship_targets[relationship_id]
+            sheet_path = posixpath.normpath(posixpath.join("xl", target.lstrip("/")))
+            if sheet_path not in names:
+                continue
+
+            sheet_root = ET.fromstring(workbook.read(sheet_path))
+            rows: list[list[str]] = []
+            for row in xml_descendants(sheet_root, "row"):
+                values: list[str] = []
+                for cell in xml_children(row, "c"):
+                    column = excel_column_index(cell.attrib.get("r", "A"))
+                    while len(values) <= column:
+                        values.append("")
+                    values[column] = xlsx_cell_value(cell, shared_strings)
+                rows.append(values)
+
+            tables.append((f"{download.name}:{sheet.attrib.get('name', sheet_path)}:xml", rows))
+    return tables
+
+
+def table_shape(table) -> tuple[int, int]:
+    if hasattr(table, "shape"):
+        return int(table.shape[0]), int(table.shape[1])
+    row_count = len(table)
+    column_count = max((len(row) for row in table), default=0)
+    return row_count, column_count
+
+
+def table_row(table, row_index: int) -> list[object]:
+    if hasattr(table, "iloc"):
+        return list(table.iloc[row_index])
+    return list(table[row_index])
+
+
+def table_cell(table, row_index: int, column_index: int) -> object:
+    if hasattr(table, "iat"):
+        return table.iat[row_index, column_index]
+    row = table[row_index]
+    return row[column_index] if column_index < len(row) else ""
 
 
 def row_country(row: Iterable[object], country_scope: str) -> tuple[int, str] | None:
@@ -307,10 +424,11 @@ def row_country(row: Iterable[object], country_scope: str) -> tuple[int, str] | 
 def header_labels(table, row_index: int) -> list[str]:
     labels: list[str] = []
     start = max(0, row_index - 8)
-    for col in range(table.shape[1]):
+    _, column_count = table_shape(table)
+    for col in range(column_count):
         bits = []
         for prior_row in range(start, row_index):
-            value = clean_text(table.iat[prior_row, col])
+            value = clean_text(table_cell(table, prior_row, col))
             if not value:
                 continue
             if re.fullmatch(r"-?\d+(?:\.\d+)?", value):
@@ -376,8 +494,9 @@ def parse_table_rows(
     country_scope: str,
 ) -> list[dict]:
     rows: list[dict] = []
-    for row_index in range(table.shape[0]):
-        row = list(table.iloc[row_index])
+    row_count, _ = table_shape(table)
+    for row_index in range(row_count):
+        row = table_row(table, row_index)
         country_match = row_country(row, country_scope)
         if country_match is None:
             continue
@@ -458,13 +577,34 @@ def extract_year(session, year: int, cache_dir: Path, country_scope: str) -> tup
 def tidy_rows(rows: list[dict]) -> list[dict]:
     seen = set()
     tidy = []
-    for row in sorted(rows, key=lambda item: (item["year"], item["country"], item["source_file"])):
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            item["year"],
+            item["country"],
+            source_priority(item["source_file"]),
+            item["source_file"],
+        ),
+    ):
         key = (row["year"], row["country"])
         if key in seen:
             continue
         seen.add(key)
         tidy.append(row)
     return tidy
+
+
+def source_priority(source_file: str) -> int:
+    source = source_file.lower()
+    if any(term in source for term in ["significant", "regional"]):
+        return 4
+    if "trend" in source:
+        return 3
+    if "historical" in source:
+        return 2
+    if "timeseries" in source or "time series" in source:
+        return 1
+    return 0
 
 
 def drop_incomplete_selected_years(rows: list[dict]) -> tuple[list[dict], list[dict]]:
