@@ -251,6 +251,17 @@ The attention notebook writes LaTeX tables from the saved CSV outputs into:
 ```
 
 The upload script sends both the CSV intermediates and the generated LaTeX files.
+The main method/descriptive attention table is:
+
+```text
+table_attention_corpus_construction_country_summary.tex
+```
+
+It is generated from the saved attention CSVs and reports, by country, the
+cleaned/deduplicated corruption-query corpus size, the final classified
+political-corruption corpus size, the political-corruption share within the
+query corpus, the total-news denominator, and the political-corruption share of
+total news.
 
 Recommended manuscript figures:
 
