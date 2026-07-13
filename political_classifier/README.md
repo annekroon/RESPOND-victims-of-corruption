@@ -278,7 +278,7 @@ Recommended manuscript figures:
 
 ```latex
 % Method/data section; requires \usepackage{tikz}
-% and \usetikzlibrary{arrows.meta, positioning}
+% and \usetikzlibrary{arrows.meta, positioning, calc}
 \input{tables/attention/latex/figure_political_corruption_data_pipeline_tikz}
 
 % Main results section
