@@ -231,6 +231,13 @@ The notebook writes attention tables, LaTeX summaries, and figures under:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
 ```
 
+Regenerate the manuscript data-pipeline TikZ figure by rerunning the notebook
+cell titled:
+
+```text
+# Method figure: final TikZ data-pipeline figure.
+```
+
 Upload generated attention figures and tables to Research Drive:
 
 ```bash
@@ -273,6 +280,11 @@ figure_political_corruption_data_pipeline_tikz.tex
 It shows the two separate NewsAPI routes: one route retrieves the
 corruption-query article corpus, and the other route retrieves weekly
 total-news counts used only as the denominator for relative attention.
+Regenerate it by rerunning the notebook cell:
+
+```text
+# Method figure: final TikZ data-pipeline figure.
+```
 
 Recommended manuscript figures:
 
