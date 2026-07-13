@@ -596,7 +596,7 @@ def tidy_rows(rows: list[dict]) -> list[dict]:
 
 def source_priority(source_file: str) -> int:
     source = source_file.lower()
-    if any(term in source for term in ["significant", "regional"]):
+    if any(term in source for term in ["change", "significant", "regional"]):
         return 4
     if "trend" in source:
         return 3
