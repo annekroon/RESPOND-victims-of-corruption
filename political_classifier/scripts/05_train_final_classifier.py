@@ -7,4 +7,7 @@ from pathlib import Path
 
 
 if __name__ == "__main__":
-    runpy.run_path(str(Path(__file__).with_name("train_final_classifier.py")), run_name="__main__")
+    runpy.run_path(
+        str(Path(__file__).with_name("_impl") / "train_final_classifier.py"),
+        run_name="__main__",
+    )

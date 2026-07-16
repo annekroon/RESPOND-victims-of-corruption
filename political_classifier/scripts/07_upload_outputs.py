@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+IMPL_DIR = SCRIPT_DIR / "_impl"
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,7 +19,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def run_script(script_name: str) -> None:
-    command = [sys.executable, str(SCRIPT_DIR / script_name)]
+    command = [sys.executable, str(IMPL_DIR / script_name)]
     print("Running:", " ".join(command), flush=True)
     subprocess.run(command, check=True)
 

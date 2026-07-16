@@ -11,4 +11,7 @@ from pathlib import Path
 
 
 if __name__ == "__main__":
-    runpy.run_path(str(Path(__file__).with_name("prepare_classifier_training_sample.py")), run_name="__main__")
+    runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "_impl" / "prepare_classifier_training_sample.py"),
+        run_name="__main__",
+    )

@@ -12,13 +12,14 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/00_download_source_workbook.py` | Download the reviewed source workbook from Research Drive/WebDAV |
 | `scripts/01_clean_dedupe_data.py` | Reproducibly clean and deduplicate raw corruption-query files |
 | `scripts/02_prepare_classifier_training_sample.py` | Prepare the source-filtered classifier training sample |
-| `scripts/03_label_silver_batch.py` | Numbered wrapper for UvA LLM proxy silver labelling |
-| `scripts/04_compare_models.py` | Numbered wrapper for classifier comparison and validation |
-| `scripts/05_train_final_classifier.py` | Numbered wrapper for final classifier training/scoring |
+| `scripts/03_label_silver_batch.py` | UvA LLM proxy silver labelling entry point |
+| `scripts/04_compare_models.py` | Classifier comparison and validation entry point |
+| `scripts/05_train_final_classifier.py` | Final classifier training/scoring entry point |
 | `scripts/06_build_attention_outputs.py` | Execute the attention notebook to rebuild CSVs, figures, and LaTeX tables |
 | `scripts/07_upload_outputs.py` | Upload manuscript tables and attention outputs |
 | `scripts/08_archive_derived_data.py` | Archive expensive-to-recreate derived data |
-| unnumbered scripts | Implementation helpers/backwards-compatible entry points used by the numbered pipeline |
+| `scripts/_impl/` | Internal implementation scripts called by the numbered entry points |
+| `scripts/legacy/` | Older exploratory/compatibility scripts kept for provenance, not part of the current run order |
 | `scripts/reset_rebuild_outputs.py` | Maintenance helper for deleting old generated outputs before a clean rebuild |
 | `scripts/filter_classified_outputs.py` | Maintenance helper for post-filtering already classified files |
 | `scripts/restore_derived_data_from_webdav.py` | Restore archived derived data from Research Drive into the local pipeline folder |

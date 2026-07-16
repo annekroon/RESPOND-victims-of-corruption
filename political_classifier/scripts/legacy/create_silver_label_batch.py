@@ -5,7 +5,7 @@ articles from the cleaned corpus, and samples rows focused on weaker countries
 and articles near the selected decision threshold.
 
 Example:
-    python3 political_classifier/scripts/create_silver_label_batch.py
+    python3 political_classifier/scripts/legacy/create_silver_label_batch.py
 
 Then label the resulting source file with:
     nohup python3 -u political_classifier/scripts/03_label_silver_batch.py \
