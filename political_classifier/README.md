@@ -270,6 +270,19 @@ political-corruption corpus size, the political-corruption share within the
 query corpus, the total-news denominator, and the political-corruption share of
 total news.
 
+The same notebook also writes outlet/source descriptives for the classified
+political-corruption corpus:
+
+```text
+political_corruption_source_summary.csv
+political_corruption_source_country_summary.csv
+political_corruption_top_sources_by_country.csv
+political_corruption_source_concentration_by_country.csv
+latex/table_attention_top_sources_overall.tex
+latex/table_attention_top_sources_by_country.tex
+latex/table_attention_source_concentration_by_country.tex
+```
+
 The data-pipeline figure is also generated as LaTeX/TikZ so that it can be
 included directly in the paper:
 
