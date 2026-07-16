@@ -64,34 +64,41 @@ For the clean end-to-end rebuild after source review, use:
 political_classifier/REBUILD_WORKFLOW.md
 ```
 
-### Optional GPT-5.1 Source Verification
+### Optional GPT-5.1 Source Assessment
 
-To independently audit the source workbook against the three outlet criteria
-in the method section, run:
+To audit the source workbook against the three outlet criteria in the method
+section using model knowledge, run:
 
 ```bash
 nohup python3 -u political_classifier/scripts/verify_source_workbook_with_llm.py \
   --model gpt-5.1 \
   --save-every 25 \
-  > source_workbook_gpt51_verification.log 2>&1 &
+  > source_workbook_llm_assessment.log 2>&1 &
 ```
 
 Monitor:
 
 ```bash
-tail -f source_workbook_gpt51_verification.log
+tail -f source_workbook_llm_assessment.log
 ```
+
+This is not live web verification. The model receives only `source_domain` and
+`assigned_country`; prior workbook fields such as `conventional_journalism`,
+`source_type`, and `publication_country_match` are not passed to the prompt.
+The output is provisional and intended for triage. `review` means insufficient
+model knowledge, not exclusion. High-impact disagreements should be checked
+manually or with live web research before changing source decisions.
 
 This does not overwrite the original source workbook. It writes:
 
 ```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_gpt51_verified.xlsx
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_gpt51_verified_checkpoint.csv
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_llm_assessed.xlsx
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_llm_assessed_checkpoint.csv
 ```
 
 The active pipeline still uses
 `political_corruption_all_sources_classified.xlsx` and keeps only rows where
-`conventional_journalism == Yes`. Use the GPT-5.1 verification workbook as an
+`conventional_journalism == Yes`. Use the LLM assessment workbook as an
 audit/review aid before deciding whether to update the active workbook.
 
 ### Quick Rebuild Checklist After Source Review
