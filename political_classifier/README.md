@@ -62,6 +62,36 @@ For the clean end-to-end rebuild after source review, use:
 political_classifier/REBUILD_WORKFLOW.md
 ```
 
+### Optional GPT-5.1 Source Verification
+
+To independently audit the source workbook against the three outlet criteria
+in the method section, run:
+
+```bash
+nohup python3 -u political_classifier/scripts/verify_source_workbook_with_llm.py \
+  --model gpt-5.1 \
+  --save-every 25 \
+  > source_workbook_gpt51_verification.log 2>&1 &
+```
+
+Monitor:
+
+```bash
+tail -f source_workbook_gpt51_verification.log
+```
+
+This does not overwrite the original source workbook. It writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_gpt51_verified.xlsx
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_gpt51_verified_checkpoint.csv
+```
+
+The active pipeline still uses
+`political_corruption_all_sources_classified.xlsx` and keeps only rows where
+`conventional_journalism == Yes`. Use the GPT-5.1 verification workbook as an
+audit/review aid before deciding whether to update the active workbook.
+
 ### Quick Rebuild Checklist After Source Review
 
 Use this when the source inclusion workbook changes and the silver-labelled
