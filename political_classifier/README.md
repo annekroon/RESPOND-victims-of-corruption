@@ -26,6 +26,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/restore_derived_data_from_webdav.py` | Restore archived derived data from Research Drive into the local pipeline folder |
 | `scripts/merge_uk_validation_annotations.py` | Save a merged annotation file with the reviewed UK supplement |
 | `tools/annotation_interface.py` | Streamlit UI for manual review |
+| `tools/lookup_unknown_sources_web.py` | Optional live-web evidence collection for LLM unknown/review source cases |
 | `archive/` | Older notebook versions kept for provenance |
 
 ## Final Classifier Decision
@@ -100,6 +101,25 @@ The active pipeline still uses
 `political_corruption_all_sources_classified.xlsx` and keeps only rows where
 `conventional_journalism == Yes`. Use the LLM assessment workbook as an
 audit/review aid before deciding whether to update the active workbook.
+
+For sources where the LLM has a knowledge gap, collect live-web evidence for
+manual review with:
+
+```bash
+python3 political_classifier/tools/lookup_unknown_sources_web.py \
+  --limit 200 \
+  --min-articles 50
+```
+
+This writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/source_unknown_web_lookup_evidence.xlsx
+```
+
+The lookup file stores search queries, result URLs/snippets, homepage metadata,
+timestamps, and fetch errors. It is evidence collection only; it does not update
+the source workbook or final inclusion decisions.
 
 ### Quick Rebuild Checklist After Source Review
 
