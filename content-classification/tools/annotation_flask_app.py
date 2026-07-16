@@ -3,17 +3,18 @@
 Run on a remote server with:
 
     CONTENT_ANNOTATION_INPUT=/path/to/content_validation_sample_100_per_country_english.csv.gz \
-    CONTENT_ANNOTATION_OUTPUT=/path/to/content_validation_sample_100_per_country_human_coded.csv.gz \
+    CONTENT_ANNOTATION_OUTPUT_TEMPLATE=/path/to/content_validation_sample_100_per_country_{coder_id}.csv.gz \
     CONTENT_ANNOTATION_PASSWORD='choose-a-password' \
     flask --app content-classification/tools/annotation_flask_app.py run --host 0.0.0.0 --port 8502
 
-For multiple external coders, give each coder a distinct output file to avoid
-simultaneous writes to the same CSV.
+For multiple external coders, prefer CONTENT_ANNOTATION_OUTPUT_TEMPLATE so each
+coder writes to a distinct CSV while reading the same translated input file.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from functools import wraps
 from pathlib import Path
@@ -35,6 +36,7 @@ DEFAULT_OUTPUT_PATH = DEFAULT_VALIDATION_DIR / "content_validation_sample_100_pe
 
 INPUT_PATH = Path(os.environ.get("CONTENT_ANNOTATION_INPUT", DEFAULT_INPUT_PATH))
 OUTPUT_PATH = Path(os.environ.get("CONTENT_ANNOTATION_OUTPUT", DEFAULT_OUTPUT_PATH))
+OUTPUT_TEMPLATE = os.environ.get("CONTENT_ANNOTATION_OUTPUT_TEMPLATE", "")
 APP_PASSWORD = os.environ.get("CONTENT_ANNOTATION_PASSWORD", "")
 SECRET_KEY = os.environ.get("CONTENT_ANNOTATION_SECRET_KEY", "dev-change-me")
 CODER_ID = os.environ.get("CONTENT_ANNOTATION_CODER_ID", "coder")
@@ -115,18 +117,31 @@ def ensure_columns(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def load_data() -> pd.DataFrame:
-    path = OUTPUT_PATH if OUTPUT_PATH.exists() else INPUT_PATH
+def safe_coder_id(coder_id: str) -> str:
+    coder_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", coder_id.strip())
+    return coder_id or CODER_ID
+
+
+def current_coder_id() -> str:
+    return safe_coder_id(session.get("coder_id") or CODER_ID)
+
+
+def output_path_for_coder(coder_id: str) -> Path:
+    if OUTPUT_TEMPLATE:
+        return Path(OUTPUT_TEMPLATE.format(coder_id=safe_coder_id(coder_id)))
+    return OUTPUT_PATH
+
+
+def load_data(coder_id: str) -> pd.DataFrame:
+    output_path = output_path_for_coder(coder_id)
+    path = output_path if output_path.exists() else INPUT_PATH
     if not path.exists():
         raise FileNotFoundError(path)
     return ensure_columns(read_csv(path))
 
 
-def save_data(data: pd.DataFrame) -> None:
-    write_csv_atomic(data, OUTPUT_PATH)
-
-
-DATA = load_data()
+def save_data(data: pd.DataFrame, coder_id: str) -> None:
+    write_csv_atomic(data, output_path_for_coder(coder_id))
 
 
 def value(row: pd.Series, column: str, default: str = "") -> str:
@@ -185,9 +200,10 @@ def login():
     if request.method == "POST":
         if request.form.get("password", "") == APP_PASSWORD:
             session["authenticated"] = True
+            session["coder_id"] = safe_coder_id(request.form.get("coder_id", CODER_ID))
             return redirect(request.args.get("next") or url_for("index"))
         error = "Incorrect password."
-    return render_template_string(LOGIN_TEMPLATE, error=error)
+    return render_template_string(LOGIN_TEMPLATE, error=error, default_coder_id=CODER_ID)
 
 
 @app.route("/logout")
@@ -199,32 +215,40 @@ def logout():
 @app.route("/")
 @require_login
 def index():
-    indices = filtered_indices(DATA)
+    coder_id = current_coder_id()
+    data = load_data(coder_id)
+    indices = filtered_indices(data)
     pos = max(0, min(int(request.args.get("pos", 0)), max(len(indices) - 1, 0)))
-    reviewed = int(reviewed_mask(DATA).sum())
-    countries = sorted(DATA["country"].dropna().astype(str).unique()) if "country" in DATA.columns else []
+    reviewed = int(reviewed_mask(data).sum())
+    countries = sorted(data["country"].dropna().astype(str).unique()) if "country" in data.columns else []
     if not indices:
         return render_template_string(
             APP_TEMPLATE,
             no_rows=True,
-            total=len(DATA),
+            total=len(data),
             reviewed=reviewed,
             countries=countries,
             filters=current_filters(),
+            coder_id=coder_id,
+            output_path=output_path_for_coder(coder_id),
         )
     row_index = indices[pos]
-    row = DATA.loc[row_index]
+    row = data.loc[row_index]
+    translated_text = value(row, "translated_text_en") or value(row, "translated_text")
     return render_template_string(
         APP_TEMPLATE,
         no_rows=False,
         row=row,
+        translated_text=translated_text,
         row_index=row_index,
         pos=pos,
         n_filtered=len(indices),
-        total=len(DATA),
+        total=len(data),
         reviewed=reviewed,
         countries=countries,
         filters=current_filters(),
+        coder_id=coder_id,
+        output_path=output_path_for_coder(coder_id),
         prev_url=nav_url(max(pos - 1, 0)),
         next_url=nav_url(min(pos + 1, len(indices) - 1)),
         save_url=url_for("save", row_index=row_index, **current_filters()),
@@ -240,7 +264,9 @@ def index():
 @app.route("/save/<int:row_index>", methods=["POST"])
 @require_login
 def save(row_index: int):
-    if row_index not in DATA.index:
+    coder_id = current_coder_id()
+    data = load_data(coder_id)
+    if row_index not in data.index:
         return "Unknown row", 404
 
     import datetime as dt
@@ -248,10 +274,10 @@ def save(row_index: int):
     for column in HUMAN_COLUMNS:
         if column in {"human_coder_id", "human_coded_at"}:
             continue
-        DATA.loc[row_index, column] = request.form.get(column, "")
-    DATA.loc[row_index, "human_coder_id"] = request.form.get("human_coder_id", CODER_ID)
-    DATA.loc[row_index, "human_coded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    save_data(DATA)
+        data.loc[row_index, column] = request.form.get(column, "")
+    data.loc[row_index, "human_coder_id"] = request.form.get("human_coder_id", coder_id)
+    data.loc[row_index, "human_coded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    save_data(data, coder_id)
 
     action = request.form.get("action", "save")
     pos = int(request.form.get("pos", 0))
@@ -277,17 +303,26 @@ LOGIN_TEMPLATE = """
 <!doctype html>
 <title>RESPOND Annotation Login</title>
 <style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 3rem auto; max-width: 420px; }
-input, button { width: 100%; padding: .75rem; margin-top: .5rem; font-size: 1rem; }
-.error { color: #a40000; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f5f7fb; color: #172033; }
+main { margin: 8vh auto; max-width: 440px; background: white; border: 1px solid #d8deea; border-radius: 10px; padding: 1.5rem; box-shadow: 0 10px 30px rgba(20, 35, 60, .08); }
+input, button { width: 100%; box-sizing: border-box; padding: .75rem; margin-top: .45rem; font-size: 1rem; border: 1px solid #c9d2e3; border-radius: 7px; }
+button { cursor: pointer; background: #244f86; color: white; border-color: #244f86; margin-top: 1rem; font-weight: 700; }
+label { display: block; margin-top: .85rem; font-weight: 700; }
+.hint { color: #5c6678; line-height: 1.45; }
+.error { color: #a40000; font-weight: 700; }
 </style>
-<h1>RESPOND Annotation</h1>
-<form method="post">
-  <label>Password</label>
-  <input type="password" name="password" autofocus>
-  <button type="submit">Log in</button>
-</form>
-{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<main>
+  <h1>RESPOND Annotation</h1>
+  <p class="hint">Log in with your coder ID. Your annotations are saved under that ID.</p>
+  <form method="post">
+    <label>Coder ID</label>
+    <input name="coder_id" value="{{ default_coder_id }}" autocomplete="username" autofocus>
+    <label>Password</label>
+    <input type="password" name="password" autocomplete="current-password">
+    <button type="submit">Log in</button>
+  </form>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+</main>
 """
 
 
@@ -295,35 +330,61 @@ APP_TEMPLATE = """
 <!doctype html>
 <title>RESPOND Content Annotation</title>
 <style>
-:root { --border: #d7d7d7; --muted: #666; --bg: #f7f7f7; --accent: #1f5f8b; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #1b1b1b; }
-header { position: sticky; top: 0; background: white; border-bottom: 1px solid var(--border); padding: .75rem 1rem; z-index: 2; }
-main { padding: 1rem; }
+:root {
+  --border: #d7dde8;
+  --muted: #637083;
+  --bg: #f4f6fa;
+  --ink: #172033;
+  --accent: #244f86;
+  --accent-soft: #e8f0fb;
+  --warn: #fff4d8;
+}
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--ink); background: var(--bg); }
+header { position: sticky; top: 0; background: white; border-bottom: 1px solid var(--border); padding: .85rem 1.25rem; z-index: 2; box-shadow: 0 2px 12px rgba(20, 35, 60, .05); }
+main { padding: 1rem 1.25rem 2rem; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .filters { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
-select, input, textarea, button { font: inherit; padding: .45rem; border: 1px solid var(--border); border-radius: 6px; background: white; }
-button { cursor: pointer; background: var(--accent); color: white; border-color: var(--accent); }
-.ghost { color: var(--accent); background: white; }
+select, input, textarea, button { font: inherit; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 7px; background: white; }
+button, .button { cursor: pointer; background: var(--accent); color: white; border: 1px solid var(--accent); border-radius: 7px; font-weight: 700; padding: .55rem .65rem; text-decoration: none; display: inline-block; }
+.ghost { color: var(--accent); background: white; border-color: var(--border); }
 .meta { color: var(--muted); font-size: .9rem; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); gap: 1rem; align-items: start; }
 .panel { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; background: white; }
-.text { white-space: pre-wrap; line-height: 1.45; max-height: 58vh; overflow: auto; }
-.codebook { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
-.codebook .panel { background: var(--bg); font-size: .92rem; }
-.codebook h3 { margin-top: 0; font-size: 1rem; }
-.codebook ul { padding-left: 1.1rem; }
-.form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
-.form-grid label { display: flex; flex-direction: column; gap: .3rem; font-weight: 600; }
-textarea { width: 100%; min-height: 90px; box-sizing: border-box; }
-.actions { display: flex; gap: .5rem; margin-top: .75rem; }
-.progress { font-weight: 700; }
-@media (max-width: 1100px) { .grid, .codebook, .form-grid { grid-template-columns: 1fr; } }
+.codebook { position: sticky; top: 6.6rem; max-height: calc(100vh - 7.5rem); overflow: auto; }
+.codebook h2, .panel h2 { margin: 0 0 .6rem; font-size: 1.15rem; }
+.codebook h3 { margin: 1rem 0 .35rem; font-size: .98rem; }
+.codebook p, .codebook li { line-height: 1.35; }
+.codebook ul { padding-left: 1.1rem; margin: .35rem 0; }
+.definition { border-top: 1px solid var(--border); padding-top: .65rem; margin-top: .65rem; }
+.definition:first-of-type { border-top: 0; padding-top: 0; }
+.tag { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--accent-soft); color: #163d6f; border-radius: 5px; padding: .08rem .28rem; font-size: .82rem; }
+.hint { background: var(--warn); border: 1px solid #ead79a; border-radius: 8px; padding: .75rem; margin-bottom: .9rem; line-height: 1.4; }
+.article-meta { display: flex; flex-wrap: wrap; gap: .45rem .9rem; margin-bottom: .75rem; }
+.reader-toolbar { display: flex; gap: .45rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.reader-button { color: var(--accent); background: white; border-color: var(--border); }
+.reader-button.active { background: var(--accent); color: white; border-color: var(--accent); }
+.text-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.text-grid.side-by-side { grid-template-columns: 1fr 1fr; }
+.text-panel[data-hidden="true"] { display: none; }
+.text { white-space: pre-wrap; line-height: 1.52; max-height: 64vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: .9rem; background: #fbfcfe; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.form-grid label { display: flex; flex-direction: column; gap: .3rem; font-weight: 700; }
+.field-help { color: var(--muted); font-weight: 400; font-size: .86rem; line-height: 1.35; }
+textarea { width: 100%; min-height: 96px; }
+.actions { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+.progress { font-weight: 800; }
+.savebar { position: sticky; bottom: 0; background: rgba(244, 246, 250, .96); border-top: 1px solid var(--border); padding: .75rem 0 0; }
+@media (max-width: 1180px) {
+  .layout, .text-grid.side-by-side, .form-grid { grid-template-columns: 1fr; }
+  .codebook { position: static; max-height: none; }
+}
 </style>
 <header>
   <div class="top">
     <div>
       <div class="progress">RESPOND content annotation</div>
-      <div class="meta">Reviewed {{ reviewed }} / {{ total }}{% if not no_rows %} · Filtered row {{ pos + 1 }} / {{ n_filtered }}{% endif %}</div>
+      <div class="meta">Coder {{ coder_id }} · Reviewed {{ reviewed }} / {{ total }}{% if not no_rows %} · Filtered row {{ pos + 1 }} / {{ n_filtered }}{% endif %}</div>
     </div>
     <div><a href="{{ url_for('logout') }}">Log out</a></div>
   </div>
@@ -348,124 +409,191 @@ textarea { width: 100%; min-height: 90px; box-sizing: border-box; }
 {% if no_rows %}
   <div class="panel">No rows match the current filters.</div>
 {% else %}
-  <section class="codebook">
-    <div class="panel">
-      <h3>Victim Visibility</h3>
-      <ul>
-        <li><b>no_victim:</b> corruption/scandal only; no harmed party.</li>
-        <li><b>concrete_victim:</b> harmed people, groups, firms, voters, taxpayers, residents, patients, students, workers, communities.</li>
-        <li><b>institutional_societal_victim:</b> harm to democracy, rule of law, public trust, state, institutions, society, development, EU accession, economy.</li>
-        <li><b>unclear:</b> too incomplete or ambiguous.</li>
-      </ul>
-    </div>
-    <div class="panel">
-      <h3>Corruption Frame</h3>
-      <ul>
-        <li><b>individualized:</b> named/identifiable actors, allegations, trials, scandals, resignations.</li>
-        <li><b>systemic:</b> institutions, state capture, rule of law, clientelism, democratic backsliding, recurring abuse.</li>
-        <li><b>other_or_mixed:</b> both central, procedural, technical, local/sectoral, election-finance, unclear fit.</li>
-      </ul>
-    </div>
-    <div class="panel">
-      <h3>Domestic / Abroad</h3>
-      <ul>
-        <li><b>domestic:</b> case mainly concerns publication country.</li>
-        <li><b>abroad:</b> case mainly concerns another country, foreign actors, offshore schemes, sanctions, cross-border probes centered elsewhere.</li>
-        <li>EU funds in domestic misuse still count as domestic.</li>
-      </ul>
-    </div>
-    <div class="panel">
-      <h3>Accused Actor</h3>
-      <ul>
-        <li>Code visible if a person, organization, company, party, institution, officeholder, or group is accused/investigated/charged/linked.</li>
-        <li>Conviction is not required.</li>
-        <li><b>no_accused_actor:</b> corruption discussed generally but no actor identified.</li>
-      </ul>
-    </div>
-  </section>
+  <div class="layout">
+    <aside class="panel codebook">
+      <h2>Codebook</h2>
+      <div class="hint"><b>Code what is substantively present in the article.</b> Use the English translation by default. Check the original when wording, names, or ambiguity matter.</div>
 
-  <div class="meta">
-    <b>{{ value(row, "country") }}</b> · {{ value(row, "year") }} · URI: {{ value(row, "uri") }} · Source: {{ value(row, "source_uri") }}
-  </div>
-  <div class="actions">
-    <a href="{{ prev_url }}"><button class="ghost">Previous</button></a>
-    <a href="{{ next_url }}"><button class="ghost">Next</button></a>
-  </div>
-
-  <section class="grid" style="margin-top: 1rem;">
-    <div class="panel">
-      <h2>English Translation</h2>
-      <div class="text">{{ value(row, "translated_text_en", value(row, "translated_text", "")) }}</div>
-      <p class="meta">{{ value(row, "translation_notes") }}</p>
-    </div>
-    <div class="panel">
-      <h2>Original Article</h2>
-      <div class="text">{{ value(row, "article_text") }}</div>
-    </div>
-  </section>
-
-  <form method="post" action="{{ save_url }}" style="margin-top: 1rem;">
-    <input type="hidden" name="pos" value="{{ pos }}">
-    <section class="panel">
-      <h2>Human Codes</h2>
-      <div class="form-grid">
-        <label>Victim visibility
-          <select name="human_victim_visibility">
-            {% for option in victim_options %}
-            <option value="{{ option }}" {% if value(row, "human_victim_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Corruption frame
-          <select name="human_corruption_frame">
-            {% for option in frame_options %}
-            <option value="{{ option }}" {% if value(row, "human_corruption_frame") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Case location
-          <select name="human_case_location">
-            {% for option in case_location_options %}
-            <option value="{{ option }}" {% if value(row, "human_case_location") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Abroad case
-          <select name="human_abroad_case">
-            {% for option in yes_no_unclear_options %}
-            <option value="{{ option }}" {% if value(row, "human_abroad_case") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Accused actor visibility
-          <select name="human_accused_actor_visibility">
-            {% for option in accused_options %}
-            <option value="{{ option }}" {% if value(row, "human_accused_actor_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Accused actor visible
-          <select name="human_accused_actor_visible">
-            {% for option in yes_no_unclear_options %}
-            <option value="{{ option }}" {% if value(row, "human_accused_actor_visible") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-            {% endfor %}
-          </select>
-        </label>
+      <div class="definition">
+        <h3>Victim visibility</h3>
+        <p>Who or what is described as harmed by corruption?</p>
+        <ul>
+          <li><span class="tag">no_victim</span> No harmed person, group, institution, or public interest is made visible.</li>
+          <li><span class="tag">concrete_victim</span> Identifiable people or groups are harmed, such as citizens, voters, taxpayers, residents, patients, students, workers, firms, or communities.</li>
+          <li><span class="tag">institutional_societal_victim</span> Harm is framed at the level of democracy, rule of law, public trust, state capacity, institutions, society, the economy, development, or EU accession.</li>
+          <li><span class="tag">unclear</span> The article is too incomplete, ambiguous, or translation-problematic to decide.</li>
+        </ul>
       </div>
-      <label style="display:block; margin-top:.75rem; font-weight:600;">Notes
-        <textarea name="human_notes">{{ value(row, "human_notes") }}</textarea>
-      </label>
-      <label style="display:block; margin-top:.75rem; font-weight:600;">Coder ID
-        <input name="human_coder_id" value="{{ value(row, 'human_coder_id', 'coder') }}">
-      </label>
-      <div class="actions">
-        <button type="submit" name="action" value="save">Save</button>
-        <button type="submit" name="action" value="save_next">Save + Next</button>
+
+      <div class="definition">
+        <h3>Corruption frame</h3>
+        <p>How is the corruption problem represented?</p>
+        <ul>
+          <li><span class="tag">individualized</span> Centered on named or identifiable actors, personal misconduct, accusations, trials, resignations, or scandal episodes.</li>
+          <li><span class="tag">systemic</span> Centered on institutional dysfunction, state capture, clientelism, rule-of-law conflict, democratic backsliding, recurring abuse, or corruption as a governance pattern.</li>
+          <li><span class="tag">other_or_mixed</span> Both frames are equally central, or the article is mainly procedural, sectoral, technical, election-finance-specific, or otherwise outside the two-way distinction.</li>
+          <li><span class="tag">unclear</span> Not enough information to classify the frame.</li>
+        </ul>
       </div>
+
+      <div class="definition">
+        <h3>Case location</h3>
+        <p>Where is the corruption case primarily located?</p>
+        <ul>
+          <li><span class="tag">domestic</span> The case mainly concerns the publication country or domestic actors/institutions.</li>
+          <li><span class="tag">abroad</span> The case mainly concerns another country, foreign actors, foreign institutions, offshore schemes, sanctions, or cross-border probes centered elsewhere.</li>
+          <li><span class="tag">unclear</span> Location cannot be determined.</li>
+        </ul>
+        <p class="meta">EU funds misused domestically still count as domestic. For <span class="tag">abroad_case</span>, use yes only when the main case is abroad.</p>
+      </div>
+
+      <div class="definition">
+        <h3>Accused actor visibility</h3>
+        <p>Is a suspected or accused actor visible?</p>
+        <ul>
+          <li><span class="tag">no_accused_actor</span> Corruption is discussed generally but no accused actor is identified.</li>
+          <li><span class="tag">individual_actor</span> A person or officeholder is accused, investigated, charged, convicted, or explicitly linked.</li>
+          <li><span class="tag">organizational_or_institutional_actor</span> A party, company, agency, office, court, ministry, police unit, or other collective actor is implicated.</li>
+          <li><span class="tag">both_individual_and_organizational</span> Both individual and collective accused actors are visible.</li>
+          <li><span class="tag">unclear</span> Not enough information to decide.</li>
+        </ul>
+        <p class="meta">Conviction is not required. Allegation, investigation, charge, sanction, or strong linkage is enough.</p>
+      </div>
+    </aside>
+
+    <section>
+      <div class="panel">
+        <div class="article-meta">
+          <span><b>{{ value(row, "country") }}</b></span>
+          <span>{{ value(row, "year") }}</span>
+          <span>Article {{ pos + 1 }} / {{ n_filtered }}</span>
+          <span>Output: {{ output_path.name }}</span>
+        </div>
+        <div class="meta">URI: {{ value(row, "uri") }}{% if value(row, "source_uri") %} · Source: {{ value(row, "source_uri") }}{% endif %}</div>
+        <div class="actions">
+          <a class="button ghost" href="{{ prev_url }}">Previous</a>
+          <a class="button ghost" href="{{ next_url }}">Next</a>
+        </div>
+      </div>
+
+      <section class="panel" style="margin-top: 1rem;">
+        <h2>Article Text</h2>
+        <div class="reader-toolbar" aria-label="Text view">
+          <button class="reader-button active" type="button" data-view="translated">Translation</button>
+          <button class="reader-button" type="button" data-view="original">Original</button>
+          <button class="reader-button" type="button" data-view="both">Side by side</button>
+        </div>
+        <div id="text-grid" class="text-grid">
+          <div id="translated-panel" class="text-panel">
+            <h3>English Translation</h3>
+            <div class="text">{{ translated_text or "No translation available for this row." }}</div>
+            {% if value(row, "translation_notes") %}<p class="meta">{{ value(row, "translation_notes") }}</p>{% endif %}
+          </div>
+          <div id="original-panel" class="text-panel" data-hidden="true">
+            <h3>Original Article</h3>
+            <div class="text">{{ value(row, "article_text") }}</div>
+          </div>
+        </div>
+      </section>
+
+      <form method="post" action="{{ save_url }}" style="margin-top: 1rem;">
+        <input type="hidden" name="pos" value="{{ pos }}">
+        <section class="panel">
+          <h2>Human Codes</h2>
+          <div class="form-grid">
+            <label>Victim visibility
+              <span class="field-help">Code the visibility of harmed people, groups, institutions, or public interests.</span>
+              <select name="human_victim_visibility" required>
+                {% for option in victim_options %}
+                <option value="{{ option }}" {% if value(row, "human_victim_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Corruption frame
+              <span class="field-help">Choose whether corruption is mainly individualized, systemic, mixed/other, or unclear.</span>
+              <select name="human_corruption_frame" required>
+                {% for option in frame_options %}
+                <option value="{{ option }}" {% if value(row, "human_corruption_frame") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Case location
+              <span class="field-help">Domestic if centered in the publication country; abroad if centered elsewhere.</span>
+              <select name="human_case_location" required>
+                {% for option in case_location_options %}
+                <option value="{{ option }}" {% if value(row, "human_case_location") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Abroad case
+              <span class="field-help">Yes only if the main corruption case is abroad.</span>
+              <select name="human_abroad_case">
+                {% for option in yes_no_unclear_options %}
+                <option value="{{ option }}" {% if value(row, "human_abroad_case") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Accused actor visibility
+              <span class="field-help">Who is visibly accused, investigated, sanctioned, or linked?</span>
+              <select name="human_accused_actor_visibility" required>
+                {% for option in accused_options %}
+                <option value="{{ option }}" {% if value(row, "human_accused_actor_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Accused actor visible
+              <span class="field-help">Binary summary: is any accused actor visible?</span>
+              <select name="human_accused_actor_visible">
+                {% for option in yes_no_unclear_options %}
+                <option value="{{ option }}" {% if value(row, "human_accused_actor_visible") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <label style="display:block; margin-top:.75rem; font-weight:700;">Notes
+            <textarea name="human_notes" placeholder="Optional: record ambiguity, translation issues, or why a difficult choice was made.">{{ value(row, "human_notes") }}</textarea>
+          </label>
+          <label style="display:block; margin-top:.75rem; font-weight:700;">Coder ID
+            <input name="human_coder_id" value="{{ value(row, 'human_coder_id', coder_id) }}">
+          </label>
+          <div class="savebar">
+            <div class="actions">
+              <button type="submit" name="action" value="save">Save</button>
+              <button type="submit" name="action" value="save_next">Save + Next</button>
+            </div>
+          </div>
+        </section>
+      </form>
     </section>
-  </form>
+  </div>
 {% endif %}
 </main>
+<script>
+const buttons = document.querySelectorAll(".reader-button");
+const grid = document.getElementById("text-grid");
+const translated = document.getElementById("translated-panel");
+const original = document.getElementById("original-panel");
+buttons.forEach((button) => {
+  button.addEventListener("click", () => {
+    buttons.forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    const view = button.dataset.view;
+    if (view === "translated") {
+      grid.classList.remove("side-by-side");
+      translated.dataset.hidden = "false";
+      original.dataset.hidden = "true";
+    } else if (view === "original") {
+      grid.classList.remove("side-by-side");
+      translated.dataset.hidden = "true";
+      original.dataset.hidden = "false";
+    } else {
+      grid.classList.add("side-by-side");
+      translated.dataset.hidden = "false";
+      original.dataset.hidden = "false";
+    }
+  });
+});
+</script>
 """
 
 
