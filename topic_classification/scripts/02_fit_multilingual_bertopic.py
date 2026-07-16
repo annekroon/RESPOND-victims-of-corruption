@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from topic_classification.scripts.reproducibility import write_run_manifest
+from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large"

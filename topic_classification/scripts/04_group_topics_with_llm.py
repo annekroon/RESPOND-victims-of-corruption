@@ -1,6 +1,6 @@
 """Assign inductive BERTopic topics to higher-order topics with GPT.
 
-This script reads a BERTopic output directory after `label_topics_with_llm.py`
+This script reads a BERTopic output directory after `03_label_topics_with_llm.py`
 has created `topic_labels_llm.csv`. It asks GPT to assign each fine-grained
 topic to exactly one higher-order topic, then writes an auditable
 topic-to-higher-order-topic mapping with assignment rationales.
@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
-from topic_classification.scripts.reproducibility import write_run_manifest
+from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
 PROMPT_VERSION = "higher_order_topic_groups_v1"
@@ -123,7 +123,7 @@ def load_topic_table(bertopic_dir: Path):
 
     labels_path = bertopic_dir / "topic_labels_llm.csv"
     if not labels_path.exists():
-        raise FileNotFoundError(f"Run label_topics_with_llm.py first. Missing: {labels_path}")
+        raise FileNotFoundError(f"Run 03_label_topics_with_llm.py first. Missing: {labels_path}")
 
     labels = pd.read_csv(labels_path)
     labels = labels[labels["Topic"].ne(-1)].copy()

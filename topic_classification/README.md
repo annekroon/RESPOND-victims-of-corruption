@@ -18,12 +18,13 @@ and over-time topic patterns.
 
 | Path | Purpose |
 |---|---|
-| `scripts/create_stratified_topic_sample.py` | Create balanced random samples across country and year |
-| `scripts/fit_multilingual_bertopic.py` | Fit BERTopic on a sample and export document-topic assignments |
-| `scripts/label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
-| `scripts/group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order topics |
-| `scripts/build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
-| `scripts/publish_topic_archive_to_webdav.py` | Package final topic outputs, code, manifests, and manuscript tables for Research Drive/WebDAV archiving |
+| `scripts/01_create_stratified_topic_sample.py` | Create balanced random samples across country and year |
+| `scripts/02_fit_multilingual_bertopic.py` | Fit BERTopic on a sample and export document-topic assignments |
+| `scripts/03_label_topics_with_llm.py` | Ask GPT 5.1 to create human-readable topic labels and coding rules |
+| `scripts/04_group_topics_with_llm.py` | Ask GPT 5.1 to assign fine-grained topics to higher-order topics |
+| `scripts/05_build_topic_visualizations.py` | Build interactive Plotly country/time topic graphs |
+| `scripts/06_publish_topic_archive_to_webdav.py` | Package final topic outputs, code, manifests, and manuscript tables for Research Drive/WebDAV archiving |
+| `scripts/_impl/` | Internal helper code used by the numbered scripts |
 | `notebooks/01_inspect_topic_results.ipynb` | Read final outputs and inspect topic tables, examples, and country/time graphs |
 | `requirements-topic.txt` | Optional extra dependencies for BERTopic |
 
@@ -31,7 +32,10 @@ and over-time topic patterns.
 
 Main sample/model:
 
-- Input: country files from `political_classifier/scripts/train_final_classifier.py --score-corpus`.
+- Input: final classified country files created by
+  `political_classifier/scripts/06_train_final_classifier.py --score-corpus`.
+  Those files should be based on the cleaned, deduplicated, source-filtered
+  corruption-query corpus from Part 1.
 - Filter: `pred_political_corruption == 1`.
 - Sampling: balanced across `country x year`, with `analysis_weight` saved so
   visualizations can recover weighted article counts and shares.
@@ -47,9 +51,11 @@ Main sample/model:
 - Visualizations: interactive country-topic heatmap, stacked topic shares over
   time, and faceted country-over-time topic trends.
 
-BERTopic is useful for discovering structure, but corruption type should
-probably become a supervised or human-in-the-loop coding task after the first
-topic map is inspected. Topic clusters are not the same as valid corruption-type
+BERTopic is useful for discovering structure, but it is not the main
+classification workflow. In this project, topic modelling is a separate,
+inductive appendix step used to inspect recurring themes and to inspire later
+substantive coding decisions, especially around victim visibility and
+corruption type. Topic clusters are not the same as validated corruption-type
 labels.
 
 ## Install Optional Topic Dependencies
@@ -76,7 +82,7 @@ This reads the classified country files created by
 keeps only rows with `pred_political_corruption == 1`.
 
 ```bash
-python3 topic_classification/scripts/create_stratified_topic_sample.py \
+python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified \
   --political-only \
   --per-country-year 100 \
@@ -100,16 +106,17 @@ The command uses the same WebDAV credentials as the rest of the repository
 (`config_local.py`, or `RD_USER`/`RD_PASS` environment variables):
 
 ```bash
-python3 topic_classification/scripts/create_stratified_topic_sample.py \
+python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified-webdav \
   --political-only \
   --per-country-year 200 \
   --output-name political_corruption_country_year_sample_200.csv.gz
 ```
 
-If the cleaned/deduplicated country files need to be sampled directly from the
-archive, use `--source cleaned-webdav`. Local sources remain available through
-`--source classified` and `--source cleaned`.
+If the cleaned/deduplicated/source-filtered country files need to be sampled
+directly before political-corruption classification, use
+`--source source-filtered` or `--source source-filtered-webdav`. For the topic
+model used in the appendix, use the classified source with `--political-only`.
 
 ## 2. Fit Multilingual BERTopic
 
@@ -117,7 +124,7 @@ Small test run:
 
 ```bash
 CUDA_VISIBLE_DEVICES=1 \
-python3 topic_classification/scripts/fit_multilingual_bertopic.py \
+python3 topic_classification/scripts/02_fit_multilingual_bertopic.py \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample.csv.gz \
   --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_test \
   --max-docs 2000 \
@@ -132,7 +139,7 @@ TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u topic_classification/scripts/fit_multilingual_bertopic.py \
+nohup python3 -u topic_classification/scripts/02_fit_multilingual_bertopic.py \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
   --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --min-topic-size 10 \
@@ -184,7 +191,7 @@ This uses the same `LLMPROXY_BASE_URL`, `LLMPROXY_API_KEY`, and
 `LLMPROXY_MODEL` is `gpt-5.1`.
 
 ```bash
-python3 topic_classification/scripts/label_topics_with_llm.py \
+python3 topic_classification/scripts/03_label_topics_with_llm.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption \
   --model gpt-5.1
 ```
@@ -226,7 +233,7 @@ Current higher-order topics:
 | `electoral_party_finance_scandal` | Campaign finance, party funding, vote manipulation, electoral control, or election-centered corruption allegations |
 
 ```bash
-python3 topic_classification/scripts/group_topics_with_llm.py \
+python3 topic_classification/scripts/04_group_topics_with_llm.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --model gpt-5.1 \
   --target-groups 12
@@ -303,7 +310,7 @@ generated appendix tables.
 ## 6. Optional: Export Standalone HTML Visualizations
 
 ```bash
-python3 topic_classification/scripts/build_topic_visualizations.py \
+python3 topic_classification/scripts/05_build_topic_visualizations.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption \
   --top-n 12 \
   --time-unit year
@@ -416,7 +423,7 @@ For a full rerun from Research Drive rather than local `annecuda` paths, the
 recommended starting point is:
 
 ```bash
-python3 topic_classification/scripts/create_stratified_topic_sample.py \
+python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified-webdav \
   --political-only \
   --per-country-year 200 \
@@ -469,7 +476,7 @@ For the current manuscript workflow, the usual order is:
 Create a local archive only:
 
 ```bash
-python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
+python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz
 ```
@@ -488,7 +495,7 @@ environment.
 Upload the full topic archive:
 
 ```bash
-python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
+python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
   --upload
@@ -518,7 +525,7 @@ notebook export cell has been rerun. Then upload the tables to a `topic models`
 subfolder under the standard `output/tables` folder:
 
 ```bash
-python3 topic_classification/scripts/publish_topic_archive_to_webdav.py \
+python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
   --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
   --upload-latex-tables \
   --tables-only \

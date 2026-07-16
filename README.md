@@ -325,3 +325,14 @@ appendix/discovery step before building final substantive variables. They can
 help inspire later coding of victim visibility, victim type, corruption domain,
 and case scope, but they are not treated as final measurement of those
 variables.
+
+Numbered topic workflow:
+
+```bash
+python3 topic_classification/scripts/01_create_stratified_topic_sample.py --source classified --political-only
+python3 topic_classification/scripts/02_fit_multilingual_bertopic.py --sample <sample.csv.gz> --output-dir <bertopic-dir>
+python3 topic_classification/scripts/03_label_topics_with_llm.py --bertopic-dir <bertopic-dir>
+python3 topic_classification/scripts/04_group_topics_with_llm.py --bertopic-dir <bertopic-dir>
+python3 topic_classification/scripts/05_build_topic_visualizations.py --bertopic-dir <bertopic-dir>
+python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py --bertopic-dir <bertopic-dir> --sample <sample.csv.gz>
+```

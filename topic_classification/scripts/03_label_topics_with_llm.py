@@ -19,7 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
-from topic_classification.scripts.reproducibility import write_run_manifest
+from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
 PROMPT_VERSION = "inductive_topic_labels_v1"

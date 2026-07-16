@@ -1,11 +1,12 @@
 """Create country-year stratified samples for topic modeling.
 
 Examples:
-    python3 topic_classification/scripts/create_stratified_topic_sample.py --source cleaned
+    python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
+      --source classified --political-only
 
-    python3 topic_classification/scripts/create_stratified_topic_sample.py \
-      --source classified --political-only \
-      --output-name political_corruption_country_year_sample.csv.gz
+    python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
+      --source source-filtered \
+      --output-name source_filtered_country_year_sample.csv.gz
 """
 
 from __future__ import annotations
@@ -22,13 +23,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import ALL_COUNTRIES, RD_BASE_DIR
-from topic_classification.scripts.reproducibility import write_run_manifest
+from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
 DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline"
 )
+DEFAULT_SOURCE_FILTERED_DIR = DEFAULT_PIPELINE_DIR / "cleaned_deduped_source_filtered"
 DEFAULT_CLASSIFIED_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier" / "classified_country_files"
 DEFAULT_OUTPUT_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
@@ -47,7 +49,7 @@ DEFAULT_RD_CLEANED_DIR = posixpath.join(
     "victims-of-corruption-paper",
     "derived_data",
     "political_classifier",
-    "cleaned_deduped",
+    "cleaned_deduped_source_filtered",
 )
 
 KEEP_COLUMNS = [
@@ -78,19 +80,28 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--source",
-        choices=["cleaned", "classified", "cleaned-webdav", "classified-webdav"],
-        default="cleaned",
+        choices=[
+            "source-filtered",
+            "classified",
+            "source-filtered-webdav",
+            "classified-webdav",
+        ],
+        default="classified",
         help=(
-            "Use local cleaned/classified files, or archived Research Drive/WebDAV "
-            "cleaned/classified files."
+            "Use local source-filtered cleaned files or classified files, or archived "
+            "Research Drive/WebDAV equivalents. Topic modelling of political-corruption "
+            "articles should normally use --source classified --political-only."
         ),
     )
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
+    parser.add_argument("--source-filtered-dir", type=Path, default=DEFAULT_SOURCE_FILTERED_DIR)
     parser.add_argument("--classified-dir", type=Path, default=DEFAULT_CLASSIFIED_DIR)
     parser.add_argument(
+        "--source-filtered-rd-dir",
         "--cleaned-rd-dir",
+        dest="source_filtered_rd_dir",
         default=DEFAULT_RD_CLEANED_DIR,
-        help="Research Drive directory containing archived cleaned/deduped country files.",
+        help="Research Drive directory containing archived cleaned/deduped/source-filtered country files.",
     )
     parser.add_argument(
         "--classified-rd-dir",
@@ -144,14 +155,14 @@ def choose_text(data):
 
 
 def country_path(args: argparse.Namespace, country: str) -> Path:
-    if args.source == "cleaned":
-        return args.pipeline_dir / f"{country}_cleaned_deduped.csv.gz"
+    if args.source == "source-filtered":
+        return args.source_filtered_dir / f"{country}_cleaned_deduped_source_filtered.csv.gz"
     return args.classified_dir / f"{country}_classified.csv.gz"
 
 
 def country_rd_path(args: argparse.Namespace, country: str) -> str:
-    if args.source == "cleaned-webdav":
-        return posixpath.join(args.cleaned_rd_dir, f"{country}_cleaned_deduped.csv.gz")
+    if args.source == "source-filtered-webdav":
+        return posixpath.join(args.source_filtered_rd_dir, f"{country}_cleaned_deduped_source_filtered.csv.gz")
     if args.source == "classified-webdav":
         return posixpath.join(args.classified_rd_dir, f"{country}_classified.csv.gz")
     raise ValueError(f"Source is not a WebDAV source: {args.source}")
