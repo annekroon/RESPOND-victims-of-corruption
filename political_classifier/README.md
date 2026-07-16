@@ -27,6 +27,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/merge_uk_validation_annotations.py` | Save a merged annotation file with the reviewed UK supplement |
 | `tools/annotation_interface.py` | Streamlit UI for manual review |
 | `tools/lookup_unknown_sources_web.py` | Optional live-web evidence collection for LLM unknown/review source cases |
+| `tools/classify_unknown_sources_with_web_evidence.py` | Optional live-web evidence collection plus LLM provisional source decisions |
 | `archive/` | Older notebook versions kept for provenance |
 
 ## Final Classifier Decision
@@ -120,6 +121,26 @@ This writes:
 The lookup file stores search queries, result URLs/snippets, homepage metadata,
 timestamps, and fetch errors. It is evidence collection only; it does not update
 the source workbook or final inclusion decisions.
+
+If you want provisional decisions rather than evidence only, run the web+LLM
+review helper:
+
+```bash
+python3 political_classifier/tools/classify_unknown_sources_with_web_evidence.py \
+  --limit 50 \
+  --min-articles 100 \
+  --save-every 10
+```
+
+This searches/fetches evidence first, then asks the LLM to decide C1/C2/C3 from
+that evidence. It writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/source_unknown_web_llm_decisions.xlsx
+```
+
+These are still provisional review labels. They should be used to update the
+manual workbook only after inspection.
 
 ### Quick Rebuild Checklist After Source Review
 
