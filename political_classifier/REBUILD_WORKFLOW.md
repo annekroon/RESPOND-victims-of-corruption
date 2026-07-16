@@ -38,7 +38,7 @@ inspection and sanity checks.
 ```bash
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
 python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_create_source_filtered_silver_seed.py --overwrite
+python3 political_classifier/scripts/02_prepare_classifier_training_sample.py --overwrite
 python3 political_classifier/scripts/03_label_silver_batch.py --overwrite
 python3 political_classifier/scripts/04_compare_models.py
 python3 political_classifier/scripts/05_train_final_classifier.py --score-corpus
@@ -105,14 +105,14 @@ denominator_country_week.csv
 denominator_country_year_source.csv
 ```
 
-## 3. Create A Fresh Source-Filtered Silver-Training Input
+## 3. Prepare The Source-Filtered Classifier Training Sample
 
 This samples from the cleaned/deduplicated corpus after applying the
 `conventional_journalism == Yes` source filter. It does not use previous silver
 labels or provisional classifier scores.
 
 ```bash
-python3 political_classifier/scripts/02_create_source_filtered_silver_seed.py \
+python3 political_classifier/scripts/02_prepare_classifier_training_sample.py \
   --overwrite \
   --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```

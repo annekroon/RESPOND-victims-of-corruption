@@ -1,8 +1,4 @@
-"""Compatibility wrapper for the renamed classifier-training sample script.
-
-Prefer:
-    python3 political_classifier/scripts/02_prepare_classifier_training_sample.py
-"""
+"""Numbered pipeline wrapper for preparing the classifier training sample."""
 
 from __future__ import annotations
 

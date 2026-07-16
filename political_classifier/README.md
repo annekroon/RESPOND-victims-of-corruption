@@ -11,7 +11,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time |
 | `scripts/00_download_source_workbook.py` | Download the reviewed source workbook from Research Drive/WebDAV |
 | `scripts/01_clean_dedupe_data.py` | Reproducibly clean and deduplicate raw corruption-query files |
-| `scripts/02_create_source_filtered_silver_seed.py` | Numbered wrapper for creating a fresh source-filtered silver-label annotation file |
+| `scripts/02_prepare_classifier_training_sample.py` | Prepare the source-filtered classifier training sample |
 | `scripts/03_label_silver_batch.py` | Numbered wrapper for UvA LLM proxy silver labelling |
 | `scripts/04_compare_models.py` | Numbered wrapper for classifier comparison and validation |
 | `scripts/05_train_final_classifier.py` | Numbered wrapper for final classifier training/scoring |
@@ -87,10 +87,10 @@ training set should be rebuilt from scratch:
    python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
    ```
 
-4. Create a fresh source-filtered silver annotation input:
+4. Prepare the source-filtered classifier training sample:
 
    ```bash
-   python3 political_classifier/scripts/02_create_source_filtered_silver_seed.py \
+   python3 political_classifier/scripts/02_prepare_classifier_training_sample.py \
      --overwrite \
      --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
    ```
@@ -187,7 +187,7 @@ or a provisional classifier.
 Create the fresh source-filtered annotation input:
 
 ```bash
-python3 political_classifier/scripts/02_create_source_filtered_silver_seed.py \
+python3 political_classifier/scripts/02_prepare_classifier_training_sample.py \
   --overwrite \
   --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```
