@@ -19,6 +19,9 @@ Important methodological guardrails:
   manual source decisions are changed.
 - Political orientation, tabloid style, or perceived outlet quality are not
   source-inclusion criteria.
+- Professional news agencies and wire services count as journalistic when they
+  employ journalists and produce or edit original reporting. Syndication is not
+  the same as aggregation.
 
 Example test run:
     python3 political_classifier/scripts/verify_source_workbook_with_llm.py \
@@ -106,6 +109,7 @@ LLM_COLUMNS = [
     "llm_evidence",
     "llm_confidence",
     "llm_review_priority",
+    "llm_comparison",
     "llm_response_format_supported",
     "llm_model",
     "llm_checked_at",
@@ -127,6 +131,7 @@ DISAGREEMENT_COLUMNS = [
     "llm_knowledge_status",
     "llm_confidence",
     "llm_review_priority",
+    "llm_comparison",
     "llm_reason",
     "llm_evidence",
 ]
@@ -149,6 +154,15 @@ Do not exclude an outlet merely because it is:
 - publicly funded;
 - a news agency or wire service with editorial news production;
 - critical of mainstream institutions.
+
+News agencies and wire services:
+- A professional news agency that employs journalists and produces or edits
+  original reporting qualifies as journalism.
+- Syndicating or distributing its own reporting does not make it an aggregator,
+  press-release distributor, or repository.
+- Do not require the outlet to be primarily public-facing.
+- Distinguish a journalistic wire service from a service that merely republishes
+  press releases or official documents.
 
 Political orientation and perceived quality are descriptive only and are not inclusion criteria.
 
@@ -193,16 +207,21 @@ Is the source primarily a journalistic outlet rather than:
 - a portal that mainly republishes third-party material without substantial editorial processing?
 
 Answer:
-- yes: primarily journalistic;
+- yes: primarily journalistic, including newspapers, broadcasters, digital
+  newsrooms, professional news agencies and wire services, and editorially
+  curated specialist publications;
 - no: primarily one of the non-journalistic functions above;
 - unclear: mixed or insufficiently known.
 
-Important distinction: an editorial news agency or wire service that produces
-and distributes journalistic news reports counts as primarily journalistic. Do
-not classify a news agency as non-journalistic merely because it distributes
-news to subscribers or other outlets. Exclude only press-release distributors,
-official bulletins, repositories, or automated redistribution services that lack
-substantial journalistic editorial production.
+Important distinction: an editorial news agency or wire service that employs
+journalists and produces or edits original news reports counts as primarily
+journalistic. Distribution of its own journalistic reporting to other media is
+not grounds for exclusion. Do not classify a news agency as a press-release
+distributor, repository, or aggregator merely because syndication and
+distribution are central to its business model. Exclude only press-release
+distributors, official bulletins, repositories, data platforms with incidental
+news, or automated redistribution services that lack substantial journalistic
+editorial production.
 
 Decision rule:
 - include: C1, C2, and C3 are all yes;
@@ -240,6 +259,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=None, help="Process only the first N unfinished rows.")
     parser.add_argument("--start-row", type=int, default=0, help="Skip input rows before this zero-based position.")
+    parser.add_argument(
+        "--source-domains",
+        nargs="+",
+        default=None,
+        help="Optional diagnostic subset of source_clean domains to process.",
+    )
     parser.add_argument("--save-every", type=int, default=25)
     parser.add_argument("--sleep", type=float, default=0.1)
     parser.add_argument("--retries", type=int, default=3)
@@ -414,6 +439,22 @@ def derive_review_priority(result: dict[str, Any], manual: str) -> str:
     return "medium"
 
 
+def derive_comparison(manual_status: str, llm_decision: str) -> str:
+    """Separate hard manual/LLM contradictions from model knowledge gaps."""
+    manual = str(manual_status).strip().lower()
+    llm = str(llm_decision).strip().lower()
+
+    if llm == "review":
+        return "knowledge_gap"
+    if manual == "include" and llm == "exclude":
+        return "hard_disagreement"
+    if manual == "exclude" and llm == "include":
+        return "hard_disagreement"
+    if manual == llm:
+        return "agreement"
+    return "other"
+
+
 def normalize_result(parsed: dict[str, Any], model: str, response_format_supported: bool | None, manual: str) -> dict[str, Any]:
     c1 = normalize_choice(parsed.get("c1"), VALID_CRITERIA, "unclear")
     c2 = normalize_choice(parsed.get("c2"), VALID_CRITERIA, "unclear")
@@ -440,6 +481,7 @@ def normalize_result(parsed: dict[str, Any], model: str, response_format_support
         "llm_error": "",
     }
     result["llm_review_priority"] = derive_review_priority(result, manual)
+    result["llm_comparison"] = derive_comparison(manual, result["llm_decision"])
     return result
 
 
@@ -463,6 +505,7 @@ def failure_result(model: str, error: Exception | str, manual: str) -> dict[str,
         "llm_error": repr(error),
     }
     result["llm_review_priority"] = derive_review_priority(result, manual)
+    result["llm_comparison"] = derive_comparison(manual, result["llm_decision"])
     return result
 
 
@@ -537,7 +580,7 @@ def disagreement_frame(merged: Any):
     data["_manual_include"] = data["_manual_status"].map({"Include": "Yes", "Exclude": "No", "Review": "Review"})
     disagreements = data[
         data["llm_include"].isin(["Yes", "No", "Review"])
-        & data["_manual_include"].ne(data["llm_include"])
+        & data["llm_comparison"].eq("hard_disagreement")
     ].copy()
     if "political_corruption_articles" in disagreements.columns:
         disagreements["_sort_articles"] = pd.to_numeric(disagreements["political_corruption_articles"], errors="coerce").fillna(0)
@@ -554,7 +597,7 @@ def summary_frames(merged: Any) -> dict[str, Any]:
     frames: dict[str, Any] = {}
     assessed = merged[merged["llm_decision"].notna()].copy() if "llm_decision" in merged.columns else merged.iloc[0:0].copy()
     summaries = []
-    for column in ["llm_decision", "llm_knowledge_status", "llm_c1", "llm_c2", "llm_c3", "llm_review_priority", "llm_error"]:
+    for column in ["llm_decision", "llm_comparison", "llm_knowledge_status", "llm_c1", "llm_c2", "llm_c3", "llm_review_priority", "llm_error"]:
         if column in assessed.columns:
             table = assessed[column].fillna("").astype(str).value_counts(dropna=False).rename_axis("value").reset_index(name="n")
             table.insert(0, "field", column)
@@ -618,8 +661,10 @@ def print_run_summary(source_data: Any, checkpoint_rows: list[dict[str, Any]], d
     merged = source_data.merge(checkpoint, on="_source_assessment_key", how="inner")
     if not merged.empty:
         merged["manual_status"] = merged.apply(manual_status, axis=1)
-        print("\nDisagreement table against manual status:", flush=True)
+        print("\nLLM include table against manual status:", flush=True)
         print(pd.crosstab(merged["manual_status"], merged["llm_include"], dropna=False), flush=True)
+        print("\nComparison categories:", flush=True)
+        print(merged["llm_comparison"].fillna("").astype(str).value_counts(dropna=False), flush=True)
         high_priority = merged[merged["llm_review_priority"].eq("high")]
         print(f"\nHigh-priority review cases: {len(high_priority):,}", flush=True)
 
@@ -655,6 +700,9 @@ def main() -> None:
     source_data["_manual_status"] = source_data.apply(manual_status, axis=1)
     statuses = {status.strip().lower() for status in args.statuses}
     source_data = source_data[source_data["_manual_status"].str.lower().isin(statuses)].copy()
+    if args.source_domains:
+        source_domains = {normalize_source(source) for source in args.source_domains}
+        source_data = source_data[source_data["source_clean"].map(normalize_source).isin(source_domains)].copy()
     source_data = source_data.iloc[args.start_row :].copy()
 
     if args.overwrite or not args.checkpoint.exists():
@@ -673,6 +721,8 @@ def main() -> None:
     print(f"Checkpoint: {args.checkpoint}", flush=True)
     print(f"Model:      {args.model}", flush=True)
     print(f"Statuses:   {', '.join(args.statuses)}", flush=True)
+    if args.source_domains:
+        print(f"Source diagnostic subset: {', '.join(args.source_domains)}", flush=True)
     print("Model is not browsing the web; results are provisional audit/triage labels.", flush=True)
     print(f"Rows total after filters:   {len(source_data):,}", flush=True)
     print(f"Already done:               {len(done_ids):,}", flush=True)
