@@ -4,7 +4,7 @@ Run this after political_classifier/notebooks/03_analyze_political_corruption_at
 has generated the local attention figures and tables.
 
 Example:
-    python3 political_classifier/scripts/upload_attention_outputs.py
+    python3 political_classifier/scripts/07_upload_outputs.py
 """
 
 from __future__ import annotations

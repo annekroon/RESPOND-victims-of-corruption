@@ -1,7 +1,7 @@
 """Run LLM proxy translations and suggestions for silver-training-set rows.
 
 Example:
-    nohup python3 -u political_classifier/scripts/label_silver_batch.py \
+    nohup python3 -u political_classifier/scripts/03_label_silver_batch.py \
       > llm_silver_label.log 2>&1 &
 """
 

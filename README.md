@@ -87,7 +87,7 @@ ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/der
 Create/update that archive from `annecuda` with:
 
 ```bash
-python3 political_classifier/scripts/archive_derived_data_to_webdav.py
+python3 political_classifier/scripts/08_archive_derived_data.py
 ```
 
 Restore the archived derived data into the expected local folder with:
@@ -183,32 +183,41 @@ cd ~/RESPOND-victims-of-corruption
 git pull
 ```
 
-Compare candidate political-corruption classifiers:
+The reproducible Part 1 political-corruption pipeline is:
 
 ```bash
-python3 political_classifier/scripts/compare_models.py \
+python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
+python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
+python3 political_classifier/scripts/02_create_source_filtered_silver_seed.py --overwrite
+nohup python3 -u political_classifier/scripts/03_label_silver_batch.py --overwrite \
+  > llm_silver_training_source_filtered.log 2>&1 &
+python3 political_classifier/scripts/04_compare_models.py \
   --embedding-models intfloat/multilingual-e5-large \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
 ```
 
-Train/evaluate and score the cleaned corpus with the final classifier:
+After accepting classifier performance, score the cleaned/source-filtered
+corpus:
 
 ```bash
 TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/train_final_classifier.py \
+nohup python3 -u political_classifier/scripts/05_train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &
 ```
 
-Inspect political-corruption attention over time:
+Then rebuild and upload attention outputs:
 
-```text
-political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
+```bash
+python3 political_classifier/scripts/06_build_attention_outputs.py
+python3 political_classifier/scripts/07_upload_outputs.py
+python3 political_classifier/scripts/08_archive_derived_data.py \
+  --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
 ```
 
 ## Part 2: Topic Classification And Discovery

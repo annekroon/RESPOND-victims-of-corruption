@@ -5,7 +5,7 @@ political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 has generated local .tex files.
 
 Example:
-    python3 political_classifier/scripts/upload_manuscript_tables.py
+    python3 political_classifier/scripts/07_upload_outputs.py --skip-attention-outputs
 """
 
 from __future__ import annotations

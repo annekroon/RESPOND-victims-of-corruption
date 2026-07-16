@@ -4,7 +4,7 @@ This is the restart path for the political-corruption classifier. It does not
 use previous silver labels or a provisional classifier. Instead, it samples from
 the cleaned corruption-query corpus after applying the source-inclusion scheme.
 
-The output is intended for political_classifier/scripts/label_silver_batch.py.
+The output is intended for political_classifier/scripts/03_label_silver_batch.py.
 """
 
 from __future__ import annotations

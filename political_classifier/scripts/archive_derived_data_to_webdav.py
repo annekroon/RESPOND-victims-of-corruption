@@ -5,7 +5,7 @@ the RESPOND victims-of-corruption workflow. It is meant for reproducibility:
 GitHub keeps the code and notebooks; Research Drive keeps the generated data.
 
 Example:
-    python3 political_classifier/scripts/archive_derived_data_to_webdav.py
+    python3 political_classifier/scripts/08_archive_derived_data.py
 
 Default Research Drive target:
     ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/

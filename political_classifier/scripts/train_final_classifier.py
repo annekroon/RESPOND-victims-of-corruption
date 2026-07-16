@@ -5,9 +5,9 @@ embedding classifier on those silver labels, validates against the human-labelle
 set, and can optionally classify the cleaned country files.
 
 Examples:
-    python3 political_classifier/scripts/train_final_classifier.py
+    python3 political_classifier/scripts/05_train_final_classifier.py
 
-    nohup python3 -u political_classifier/scripts/train_final_classifier.py --score-corpus \
+    nohup python3 -u political_classifier/scripts/05_train_final_classifier.py --score-corpus \
       > silver_classifier_final_scoring.log 2>&1 &
 """
 
