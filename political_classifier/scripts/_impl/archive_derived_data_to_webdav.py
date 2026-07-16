@@ -65,6 +65,7 @@ ARCHIVE_GROUPS = [
         patterns=(
             "*_cleaned_deduped.csv.gz",
             "all_countries_cleaned_deduped_minimal.csv.gz",
+            "cleaned_deduped_source_filtered/*.csv.gz",
             "denominator_country_year.csv",
             "denominator_country_month.csv",
             "denominator_country_week.csv",

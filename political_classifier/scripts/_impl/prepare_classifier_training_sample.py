@@ -2,7 +2,8 @@
 
 This is the restart path for the political-corruption classifier. It does not
 use previous silver labels or a provisional classifier. Instead, it samples from
-the cleaned corruption-query corpus after applying the source-inclusion scheme.
+the full cleaned/deduplicated/source-filtered corpus created by
+``02_create_source_filtered_corpus.py``.
 
 The output is intended for political_classifier/scripts/03_label_silver_batch.py.
 """
@@ -19,13 +20,7 @@ PROJECT_ROOT = next(
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from political_classifier.source_filter import (
-    DEFAULT_PIPELINE_DIR,
-    DEFAULT_SOURCE_DECISION_FILE,
-    apply_source_inclusion_filter,
-    load_source_decisions,
-    source_filter_summary,
-)
+from political_classifier.source_filter import DEFAULT_PIPELINE_DIR
 
 
 DEFAULT_OUTPUT_PATH = (
@@ -33,6 +28,7 @@ DEFAULT_OUTPUT_PATH = (
     / "active_learning"
     / "silver_training_source_filtered_for_annotation.csv"
 )
+DEFAULT_INPUT_DIR = DEFAULT_PIPELINE_DIR / "cleaned_deduped_source_filtered"
 DEFAULT_COUNTRY_TARGETS = {
     "Bulgaria": 500,
     "France": 500,
@@ -76,7 +72,12 @@ def parse_args() -> argparse.Namespace:
         description="Prepare a fresh source-filtered classifier training sample."
     )
     parser.add_argument("--pipeline-dir", type=Path, default=DEFAULT_PIPELINE_DIR)
-    parser.add_argument("--source-decision-file", type=Path, default=DEFAULT_SOURCE_DECISION_FILE)
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=DEFAULT_INPUT_DIR,
+        help="Directory containing *_cleaned_deduped_source_filtered.csv.gz files.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument(
         "--country-targets",
@@ -98,8 +99,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def cleaned_country_path(pipeline_dir: Path, country: str) -> Path:
-    return pipeline_dir / f"{country}_cleaned_deduped.csv.gz"
+def source_filtered_country_path(input_dir: Path, country: str) -> Path:
+    return input_dir / f"{country}_cleaned_deduped_source_filtered.csv.gz"
 
 
 def infer_year(data):
@@ -171,8 +172,6 @@ def main() -> None:
     import pandas as pd
 
     country_targets = parse_country_targets(args.country_targets)
-    decisions = load_source_decisions(args.source_decision_file)
-
     columns = [
         "uri",
         "country",
@@ -188,11 +187,11 @@ def main() -> None:
     ]
 
     batches = []
-    filter_summaries = []
+    sample_summaries = []
     for country, target_n in country_targets.items():
-        path = cleaned_country_path(args.pipeline_dir, country)
+        path = source_filtered_country_path(args.input_dir, country)
         if not path.exists():
-            print(f"Skipping missing cleaned file for {country}: {path}", flush=True)
+            print(f"Skipping missing source-filtered file for {country}: {path}", flush=True)
             continue
 
         print(f"\nLoading {country}: {path}", flush=True)
@@ -201,13 +200,8 @@ def main() -> None:
         if "source_uri" not in data.columns and "source.uri" in data.columns:
             data["source_uri"] = data["source.uri"]
 
-        filtered, merged = apply_source_inclusion_filter(data, decisions, country_column="country")
-        summary = source_filter_summary(merged, group_columns=["country"])
-        filter_summaries.append(summary)
-        print(summary, flush=True)
-
         sampled = sample_country(
-            filtered,
+            data,
             country=country,
             target_n=target_n,
             max_per_source=args.max_per_source,
@@ -215,6 +209,15 @@ def main() -> None:
         )
         print(f"{country}: sampled {len(sampled):,} / target {target_n:,}", flush=True)
         batches.append(sampled)
+        sample_summaries.append(
+            {
+                "country": country,
+                "source_filtered_rows": len(data),
+                "sampled_rows": len(sampled),
+                "target_rows": target_n,
+                "input_file": path.name,
+            }
+        )
 
     if not batches:
         raise RuntimeError("No silver-label seed rows were sampled.")
@@ -224,12 +227,12 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     batch[output_columns].to_csv(args.output, index=False)
 
-    summary_path = args.output.with_name(args.output.stem + "_source_filter_summary.csv")
-    pd.concat(filter_summaries, ignore_index=True).to_csv(summary_path, index=False)
+    summary_path = args.output.with_name(args.output.stem + "_sample_summary.csv")
+    pd.DataFrame(sample_summaries).to_csv(summary_path, index=False)
 
     print(f"\nSaved source-filtered classifier training sample: {args.output}", flush=True)
     print(f"Rows: {len(batch):,}", flush=True)
-    print(f"Saved source-filter summary: {summary_path}", flush=True)
+    print(f"Saved sample summary: {summary_path}", flush=True)
     print("\nBy country:", flush=True)
     print(batch["country"].value_counts(), flush=True)
     print("\nTop sampled sources:", flush=True)

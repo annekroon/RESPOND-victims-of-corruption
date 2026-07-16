@@ -28,6 +28,7 @@ DELETE_PATHS = [
     "silver_classifier",
     "attention_tables",
     "attention_figures",
+    "cleaned_deduped_source_filtered",
 ]
 
 DELETE_GLOBS = [

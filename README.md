@@ -71,7 +71,8 @@ Then run the rebuild in this order:
 ```bash
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
 python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_prepare_classifier_training_sample.py \
+python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
+python3 political_classifier/scripts/03_prepare_classifier_training_sample.py \
   --overwrite \
   --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```
@@ -79,7 +80,7 @@ python3 political_classifier/scripts/02_prepare_classifier_training_sample.py \
 Label the fresh source-filtered silver set with the UvA LLM proxy:
 
 ```bash
-nohup python3 -u political_classifier/scripts/03_label_silver_batch.py \
+nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
   --max-chars 3000 \
@@ -92,7 +93,7 @@ tail -f llm_silver_training_source_filtered.log
 After the LLM labelling finishes, compare and inspect the classifier:
 
 ```bash
-python3 political_classifier/scripts/04_compare_models.py \
+python3 political_classifier/scripts/05_compare_models.py \
   --embedding-models intfloat/multilingual-e5-large \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
@@ -112,7 +113,7 @@ TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/05_train_final_classifier.py \
+nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &
@@ -123,9 +124,9 @@ tail -f silver_classifier_final_scoring.log
 After full scoring finishes, rebuild, upload, and archive outputs:
 
 ```bash
-python3 political_classifier/scripts/06_build_attention_outputs.py
-python3 political_classifier/scripts/07_upload_outputs.py
-python3 political_classifier/scripts/08_archive_derived_data.py \
+python3 political_classifier/scripts/07_build_attention_outputs.py
+python3 political_classifier/scripts/08_upload_outputs.py
+python3 political_classifier/scripts/09_archive_derived_data.py \
   --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
 ```
 
@@ -173,7 +174,7 @@ ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/der
 Create/update that archive from `annecuda` with:
 
 ```bash
-python3 political_classifier/scripts/08_archive_derived_data.py
+python3 political_classifier/scripts/09_archive_derived_data.py
 ```
 
 Restore the archived derived data into the expected local folder with:
@@ -274,10 +275,11 @@ The reproducible Part 1 political-corruption pipeline is:
 ```bash
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
 python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_prepare_classifier_training_sample.py --overwrite
-nohup python3 -u political_classifier/scripts/03_label_silver_batch.py --overwrite \
+python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
+python3 political_classifier/scripts/03_prepare_classifier_training_sample.py --overwrite
+nohup python3 -u political_classifier/scripts/04_label_silver_batch.py --overwrite \
   > llm_silver_training_source_filtered.log 2>&1 &
-python3 political_classifier/scripts/04_compare_models.py \
+python3 political_classifier/scripts/05_compare_models.py \
   --embedding-models intfloat/multilingual-e5-large \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
@@ -291,7 +293,7 @@ TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/05_train_final_classifier.py \
+nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
   --score-corpus \
   > silver_classifier_final_scoring.log 2>&1 &
@@ -300,9 +302,9 @@ nohup python3 -u political_classifier/scripts/05_train_final_classifier.py \
 Then rebuild and upload attention outputs:
 
 ```bash
-python3 political_classifier/scripts/06_build_attention_outputs.py
-python3 political_classifier/scripts/07_upload_outputs.py
-python3 political_classifier/scripts/08_archive_derived_data.py \
+python3 political_classifier/scripts/07_build_attention_outputs.py
+python3 political_classifier/scripts/08_upload_outputs.py
+python3 political_classifier/scripts/09_archive_derived_data.py \
   --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
 ```
 
