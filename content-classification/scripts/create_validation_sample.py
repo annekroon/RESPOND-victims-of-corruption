@@ -1,9 +1,13 @@
-"""Create a stratified validation sample from political-corruption articles.
+"""Create a stratified sample from political-corruption articles.
 
 The default sample is 500 articles allocated as evenly as possible across
 non-empty country-year strata. The output is intended for human validation of
 the article-level content variables and can also be passed to the GPT content
 classifiers with `--source csv --input`.
+
+Use `--sample-purpose codebook_development` for small development samples that
+are read while refining the codebook or prompts. Keep those samples separate
+from final held-out validation data.
 """
 
 from __future__ import annotations
@@ -40,6 +44,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output-name", default="content_validation_sample_500.csv.gz")
     parser.add_argument("--total-sample", type=int, default=500)
+    parser.add_argument(
+        "--sample-purpose",
+        default="final_validation",
+        help=(
+            "Stored in the sample_purpose column. Use codebook_development for "
+            "samples used to refine definitions/prompts; use final_validation "
+            "for held-out validation samples."
+        ),
+    )
     parser.add_argument(
         "--per-country",
         type=int,
@@ -131,8 +144,9 @@ def add_stratum_weights(data, sample):
     return sample
 
 
-def add_human_validation_columns(sample):
+def add_human_validation_columns(sample, sample_purpose: str):
     sample = sample.copy()
+    sample["sample_purpose"] = sample_purpose
     for column in [
         "human_victim_visibility",
         "human_corruption_frame",
@@ -168,7 +182,7 @@ def main() -> None:
     else:
         sample = sample_total(data, args.total_sample, args.random_state)
     sample = add_stratum_weights(data, sample)
-    sample = add_human_validation_columns(sample)
+    sample = add_human_validation_columns(sample, args.sample_purpose)
 
     preferred_columns = [
         "article_id",
@@ -185,6 +199,7 @@ def main() -> None:
         "stratum_total_rows",
         "stratum_sample_rows",
         "validation_weight",
+        "sample_purpose",
         "article_text",
         "human_victim_visibility",
         "human_corruption_frame",

@@ -87,12 +87,74 @@ content-classification/notebooks/01_inspect_content_classification.ipynb
 
 Set `CONTENT_DIR` in the first notebook cell to the pilot or full output folder.
 
+## Codebook Development Sample
+
+Before final validation, use a small country-year stratified random sample to
+read cases, refine the codebook, check category boundaries, and test the manual
+annotation interface. This is a development sample, not a held-out validation
+set. Any article read while changing the codebook or prompts should be excluded
+from the final validation logic.
+
+Create an `N=100` stratified random sample from the political-corruption corpus:
+
+```bash
+CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/codebook_development
+
+python3 content-classification/scripts/create_validation_sample.py \
+  --total-sample 100 \
+  --sample-purpose codebook_development \
+  --output-name content_codebook_dev_sample_100.csv.gz \
+  --output-dir "$CODEBOOK_DIR"
+```
+
+This writes:
+
+```text
+content_codebook_dev_sample_100.csv.gz
+content_codebook_dev_sample_100_strata.csv
+```
+
+The file includes `sample_purpose = codebook_development`, country-year stratum
+diagnostics, `validation_weight`, article text, and blank `human_*` columns.
+Use it for codebook development, category clarification, coder training, and
+interface testing only.
+
+Translate the same `N=100` development sample to English:
+
+```bash
+nohup python3 -u content-classification/scripts/translate_validation_sample.py \
+  --input "$CODEBOOK_DIR/content_codebook_dev_sample_100.csv.gz" \
+  --output "$CODEBOOK_DIR/content_codebook_dev_sample_100_english.csv.gz" \
+  --model gpt-5.1 \
+  --max-chars 20000 \
+  > content_codebook_dev_translation.log 2>&1 &
+```
+
+Monitor translation progress with:
+
+```bash
+tail -f content_codebook_dev_translation.log
+```
+
+To test the annotation interface on this development sample:
+
+```bash
+CONTENT_ANNOTATION_INPUT="$CODEBOOK_DIR/content_codebook_dev_sample_100_english.csv.gz" \
+CONTENT_ANNOTATION_OUTPUT="$CODEBOOK_DIR/content_codebook_dev_sample_100_human_notes.csv.gz" \
+CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
+CONTENT_ANNOTATION_CODER_ID="anne_codebook_dev" \
+flask --app content-classification/tools/annotation_flask_app.py run \
+  --host 127.0.0.1 \
+  --port 8502
+```
+
 ## Validation Sample
 
 For validation, create a smaller country-year stratified random sample from the
-political-corruption corpus. A 500-article sample gives roughly 6-7 articles per
-non-empty country-year stratum if the period has 72 strata (9 countries by 8
-years):
+political-corruption corpus after the codebook and GPT prompts are frozen. Do
+not use the codebook-development sample as final validation evidence. A
+500-article sample gives roughly 6-7 articles per non-empty country-year stratum
+if the period has 72 strata (9 countries by 8 years):
 
 ```bash
 python3 content-classification/scripts/create_validation_sample.py \
