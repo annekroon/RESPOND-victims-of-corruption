@@ -67,6 +67,16 @@ The main derived outputs are stored on `annecuda` under:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/
 ```
 
+The final political-corruption analytical sample applies an additional
+source-inclusion screen. The reviewed workbook is expected at:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_classified.xlsx
+```
+
+Only sources marked `Yes` in the `conventional_journalism` column are retained
+for final political-corruption attention tables and figures.
+
 The reproducibility archive for expensive-to-recreate derived data is stored on
 Research Drive/WebDAV under:
 

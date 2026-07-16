@@ -89,6 +89,15 @@ ARCHIVE_GROUPS = [
         destination_subdir="validation_data",
     ),
     ArchiveGroup(
+        name="source_inclusion",
+        source_dir=DEFAULT_PIPELINE_DIR / "source_inclusion",
+        patterns=(
+            "*.xlsx",
+            "*.csv",
+        ),
+        destination_subdir="source_inclusion",
+    ),
+    ArchiveGroup(
         name="classifier_outputs",
         source_dir=DEFAULT_PIPELINE_DIR / "silver_classifier",
         patterns=(
@@ -96,6 +105,7 @@ ARCHIVE_GROUPS = [
             "*.txt",
             "*.joblib",
             "classified_country_files/*.csv.gz",
+            "classified_country_files_source_filtered/*.csv.gz",
         ),
         destination_subdir="classifier_outputs",
     ),

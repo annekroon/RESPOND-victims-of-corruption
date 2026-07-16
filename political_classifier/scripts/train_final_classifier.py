@@ -22,6 +22,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from political_classifier.source_filter import (
+    DEFAULT_SOURCE_DECISION_FILE,
+    apply_source_inclusion_filter,
+    load_source_decisions,
+    source_filter_summary,
+)
+
 
 DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
@@ -31,8 +38,7 @@ DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
 DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
-    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
-    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "silver_training_source_filtered_with_llm_suggestions.csv",
 ]
 DEFAULT_COUNTRIES = [
     "Bulgaria",
@@ -147,6 +153,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--countries", nargs="+", default=DEFAULT_COUNTRIES)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--source-decision-file",
+        type=Path,
+        default=DEFAULT_SOURCE_DECISION_FILE,
+        help="Source inclusion workbook/CSV. Only conventional_journalism == Yes is retained.",
+    )
+    parser.add_argument(
+        "--no-source-filter",
+        action="store_true",
+        help="Do not apply the source inclusion filter.",
+    )
     return parser.parse_args()
 
 
@@ -163,7 +180,15 @@ def choose_text_series(data):
     return title + "\n" + body
 
 
-def load_silver_labels(paths):
+def filter_frame_by_source(data, decisions, label):
+    filtered, merged = apply_source_inclusion_filter(data, decisions, country_column="country")
+    summary = source_filter_summary(merged, group_columns=["country"])
+    print(f"\nSource filter for {label}: {len(filtered):,} / {len(data):,} rows retained", flush=True)
+    print(summary, flush=True)
+    return filtered
+
+
+def load_silver_labels(paths, source_decisions=None):
     import pandas as pd
 
     frames = []
@@ -188,6 +213,8 @@ def load_silver_labels(paths):
     silver["y"] = silver["llm_label_suggestion"].map(SILVER_LABEL_MAP).astype(int)
     silver["model_text"] = choose_text_series(silver).fillna("").astype(str).map(normalize_text)
     silver = silver[silver["model_text"].str.strip().ne("")].copy()
+    if source_decisions is not None:
+        silver = filter_frame_by_source(silver, source_decisions, "silver training")
     return silver
 
 
@@ -217,7 +244,7 @@ def prepare_human_validation_frame(data, source_name):
     return data
 
 
-def load_human_validation(extra_paths=None):
+def load_human_validation(extra_paths=None, source_decisions=None):
     import pandas as pd
     from dataloader import load_human_annotated_for_translation_webdav
 
@@ -238,6 +265,8 @@ def load_human_validation(extra_paths=None):
         dropped = before - len(combined)
         if dropped:
             print(f"Dropped duplicate human-validation URIs: {dropped:,}", flush=True)
+    if source_decisions is not None:
+        combined = filter_frame_by_source(combined, source_decisions, "human validation")
     return combined
 
 
@@ -335,6 +364,7 @@ def score_country_file(
     embedding_model: str,
     threshold: float,
     batch_size: int,
+    source_decisions=None,
 ):
     import pandas as pd
 
@@ -344,6 +374,12 @@ def score_country_file(
 
     print(f"\nScoring {country}: {path}", flush=True)
     data = pd.read_csv(path)
+    if source_decisions is not None:
+        data, merged = apply_source_inclusion_filter(data, source_decisions, country_column="country")
+        summary = source_filter_summary(merged, group_columns=["country"])
+        print(f"Source filter before scoring {country}: {len(data):,} rows retained", flush=True)
+        print(summary, flush=True)
+
     data["model_text"] = data["article_text"].fillna("").astype(str).map(normalize_text)
     probs = score_texts(data["model_text"].tolist(), embedder, clf, embedding_model, batch_size)
 
@@ -371,7 +407,7 @@ def score_country_file(
     return summary
 
 
-def score_corpus(args, embedder, clf, threshold: float) -> None:
+def score_corpus(args, embedder, clf, threshold: float, source_decisions=None) -> None:
     import pandas as pd
 
     classified_dir = args.output_dir / "classified_country_files"
@@ -386,6 +422,7 @@ def score_corpus(args, embedder, clf, threshold: float) -> None:
             embedding_model=args.embedding_model,
             threshold=threshold,
             batch_size=args.batch_size,
+            source_decisions=source_decisions,
         )
         if summary:
             summaries.append(summary)
@@ -432,11 +469,16 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    silver_df = load_silver_labels(args.silver_labels)
+    source_decisions = None
+    if not args.no_source_filter:
+        source_decisions = load_source_decisions(args.source_decision_file)
+        print(f"Loaded source decisions: {args.source_decision_file}", flush=True)
+
+    silver_df = load_silver_labels(args.silver_labels, source_decisions=source_decisions)
     print(f"Silver training rows: {len(silver_df):,}", flush=True)
     print(silver_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
-    valid_df = load_human_validation(args.extra_human_validation)
+    valid_df = load_human_validation(args.extra_human_validation, source_decisions=source_decisions)
     print(f"\nHuman validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
@@ -507,7 +549,7 @@ def main() -> None:
     print(f"\nSaved validation/model outputs to: {args.output_dir}", flush=True)
 
     if args.score_corpus:
-        score_corpus(args, embedder, clf, threshold)
+        score_corpus(args, embedder, clf, threshold, source_decisions=source_decisions)
         print(f"\nSaved corpus classifications to: {args.output_dir}", flush=True)
 
 

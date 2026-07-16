@@ -9,10 +9,13 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `notebooks/01_clean_dedupe_data.ipynb` | Load raw country files, clean text, deduplicate, and write denominator tables |
 | `notebooks/02_inspect_classifier_comparison.ipynb` | Inspect saved classifier comparison outputs and generate manuscript tables |
 | `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time |
+| `scripts/create_source_filtered_silver_seed.py` | Create a fresh source-filtered silver-label annotation file from cleaned data |
 | `scripts/create_silver_label_batch.py` | Create targeted source files for the silver-labelled training set |
 | `scripts/label_silver_batch.py` | Send silver-training-set source files to the UvA LLM proxy |
 | `scripts/compare_models.py` | Reproducible classifier comparison and validation |
 | `scripts/train_final_classifier.py` | Train/evaluate the final classifier and optionally score all cleaned country files |
+| `scripts/filter_classified_outputs.py` | Apply the source-inclusion scheme to already classified files |
+| `scripts/reset_rebuild_outputs.py` | Delete old generated outputs before a clean rebuild |
 | `scripts/upload_manuscript_tables.py` | Upload generated LaTeX tables to Research Drive |
 | `scripts/archive_derived_data_to_webdav.py` | Archive expensive-to-recreate derived data and a manifest to Research Drive |
 | `scripts/restore_derived_data_from_webdav.py` | Restore archived derived data from Research Drive into the local pipeline folder |
@@ -23,6 +26,9 @@ This folder contains the workflow for identifying which cleaned news articles ar
 ## Final Classifier Decision
 
 The final political-corruption classifier uses one combined LLM silver-labelled training set. The manually reviewed UK supplement is used only for validation, not for training.
+The metrics below describe the last completed classifier run; after rebuilding
+the source-filtered silver-labelled set, rerun the comparison notebook and
+update these values from the generated tables.
 
 | Metric | Value |
 |---|---|
@@ -46,6 +52,87 @@ The final political-corruption classifier uses one combined LLM silver-labelled 
 Run commands from the repository root on `annecuda`.
 
 The notebooks include a small bootstrap cell that finds the repository root and adds it to `sys.path`. This keeps imports such as `from config import RD_BASE_DIR` and `from dataloader import ...` working even though the notebooks live in `political_classifier/notebooks/`.
+
+For the clean end-to-end rebuild after source review, use:
+
+```text
+political_classifier/REBUILD_WORKFLOW.md
+```
+
+### Quick Rebuild Checklist After Source Review
+
+Use this when the source inclusion workbook changes and the silver-labelled
+training set should be rebuilt from scratch:
+
+1. Put the reviewed workbook here:
+
+   ```text
+   /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_classified.xlsx
+   ```
+
+2. Delete old generated outputs:
+
+   ```bash
+   python3 political_classifier/scripts/reset_rebuild_outputs.py
+   python3 political_classifier/scripts/reset_rebuild_outputs.py \
+     --confirm DELETE_OLD_POLITICAL_CLASSIFIER_OUTPUTS
+   ```
+
+3. Create a fresh source-filtered silver annotation input:
+
+   ```bash
+   python3 political_classifier/scripts/create_source_filtered_silver_seed.py \
+     --overwrite \
+     --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
+   ```
+
+4. Label the fresh silver set:
+
+   ```bash
+   nohup python3 -u political_classifier/scripts/label_silver_batch.py \
+     --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
+     --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
+     --max-chars 3000 \
+     --overwrite \
+     > llm_silver_training_source_filtered.log 2>&1 &
+   ```
+
+5. Rerun classifier comparison on the included-source validation universe:
+
+   ```bash
+   python3 political_classifier/scripts/compare_models.py \
+     --embedding-models intfloat/multilingual-e5-large \
+     --batch-size 32 \
+     --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
+   ```
+
+6. If you do not want to rerun expensive full-corpus scoring, post-filter the
+   already classified files:
+
+   ```bash
+   python3 political_classifier/scripts/filter_classified_outputs.py
+   ```
+
+7. Rerun `political_classifier/notebooks/02_inspect_classifier_comparison.ipynb`
+   to regenerate classifier validation tables.
+
+8. Rerun `political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb`
+   from section 3 onward to regenerate final attention tables/figures using
+   included sources only.
+
+9. Upload updated tables and figures:
+
+   ```bash
+   python3 political_classifier/scripts/upload_manuscript_tables.py
+   python3 political_classifier/scripts/upload_attention_outputs.py
+   ```
+
+10. Archive the updated derived data:
+
+   ```bash
+   python3 political_classifier/scripts/archive_derived_data_to_webdav.py \
+     --groups source_inclusion silver_training_data classifier_comparison classifier_outputs attention_outputs
+   ```
 
 ### 1. Clean And Dedupe
 
@@ -71,23 +158,42 @@ denominator_country_month.csv
 denominator_country_week.csv
 ```
 
-### 2. Create And Label Silver Data
+### 2. Create And Label Fresh Source-Filtered Silver Data
 
-Create targeted files for the silver-labelled training set:
+The current reproducible route starts the classifier training data from
+scratch. The seed file is sampled from the cleaned corruption-query corpus after
+applying the source-inclusion workbook. It does not use previous silver labels
+or a provisional classifier.
+
+Create the fresh source-filtered annotation input:
 
 ```bash
-python3 political_classifier/scripts/create_silver_label_batch.py \
-  --country-targets Sweden:540,United_Kingdom:540,Ukraine:540,Netherlands:420,Serbia:360,Hungary:180,Bulgaria:180,Italy:120,France:120
+python3 political_classifier/scripts/create_source_filtered_silver_seed.py \
+  --overwrite \
+  --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```
 
-Label each file with the UvA LLM proxy:
+This writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv
+```
+
+Label it with the UvA LLM proxy:
 
 ```bash
 nohup python3 -u political_classifier/scripts/label_silver_batch.py \
-  --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_for_annotation.csv \
-  --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/active_learning_batch_2_with_llm_suggestions.csv \
+  --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
+  --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
   --max-chars 3000 \
-  > llm_silver_label_batch_2.log 2>&1 &
+  --overwrite \
+  > llm_silver_training_source_filtered.log 2>&1 &
+```
+
+Monitor:
+
+```bash
+tail -f llm_silver_training_source_filtered.log
 ```
 
 ### 3. UK Validation Supplement
@@ -124,13 +230,29 @@ The original annotation file is not overwritten.
 
 ### 4. Compare Candidate Models
 
-Run the final comparison:
+The final analytical sample uses the source-inclusion workbook:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_classified.xlsx
+```
+
+Only country/source rows with `conventional_journalism == Yes` are retained.
+Rows marked `No`, missing, or anything else are excluded. Place the workbook at
+the path above before rerunning classifier validation or attention outputs.
+
+Run the final comparison on the included-source validation universe:
 
 ```bash
 python3 political_classifier/scripts/compare_models.py \
   --embedding-models intfloat/multilingual-e5-large \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
+```
+
+By default this reads:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv
 ```
 
 For a broader embedding comparison:
@@ -147,6 +269,8 @@ python3 political_classifier/scripts/compare_models.py \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
 ```
+
+Pass `--no-source-filter` only for legacy/unfiltered diagnostics.
 
 Main outputs:
 
@@ -204,6 +328,24 @@ Outputs are written to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/
 ```
 
+If the classifier has already been scored and only the source-inclusion scheme
+changed, do **not** rerun the expensive embedding scoring. Instead, post-filter
+the existing classified outputs:
+
+```bash
+python3 political_classifier/scripts/filter_classified_outputs.py
+```
+
+This writes filtered classified files to:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered/
+```
+
+The attention notebook also applies the same source filter when it loads
+classified files, so this post-filtered directory is mainly a reproducible
+archive/checkpoint.
+
 ### 6. Attention Over Time
 
 After full scoring, run:
@@ -211,6 +353,12 @@ After full scoring, run:
 ```text
 political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
 ```
+
+Section 3 of the notebook applies the source-inclusion workbook to the
+classified political-corruption articles. The final analytical numerator is
+therefore the classified political-corruption sample restricted to explicitly
+included sources. The total-news denominator remains the separate country-period
+NewsAPI count series; the available denominator is not source-specific.
 
 Relative political-corruption attention is defined as:
 
@@ -229,6 +377,13 @@ The notebook writes attention tables, LaTeX summaries, and figures under:
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_figures/
+```
+
+It also writes source-filter diagnostics:
+
+```text
+political_corruption_source_filter_summary_by_country.csv
+political_corruption_source_filter_decision_counts.csv
 ```
 
 Regenerate the manuscript data-pipeline TikZ figure by rerunning the notebook
@@ -271,7 +426,7 @@ query corpus, the total-news denominator, and the political-corruption share of
 total news.
 
 The same notebook also writes outlet/source descriptives for the classified
-political-corruption corpus:
+political-corruption corpus after source filtering:
 
 ```text
 political_corruption_source_summary.csv
@@ -379,7 +534,8 @@ The archive script uploads these groups:
 | `cleaned_deduped` | Cleaned/deduplicated country files, minimal combined file, denominator tables |
 | `silver_training_data` | LLM-labelled silver-training-set source files and annotation input files |
 | `validation_data` | UK validation review files used as validation-only supplement |
-| `classifier_outputs` | Final classifier predictions, summaries, selected threshold, embedding model, and model artifact |
+| `source_inclusion` | Source inclusion/exclusion workbook and source-filter diagnostics |
+| `classifier_outputs` | Final classifier predictions, source-filtered classifier files, summaries, selected threshold, embedding model, and model artifact |
 | `classifier_comparison` | Validation comparison CSV outputs |
 | `attention_outputs` | Attention CSVs, generated LaTeX attention tables, figures, and classifier manuscript tables |
 

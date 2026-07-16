@@ -25,8 +25,8 @@ DEFAULT_SILVER_LABEL_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline/active_learning"
 )
-DEFAULT_INPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_for_annotation.csv"
-DEFAULT_OUTPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv"
+DEFAULT_INPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "silver_training_source_filtered_for_annotation.csv"
+DEFAULT_OUTPUT_PATH = DEFAULT_SILVER_LABEL_DIR / "silver_training_source_filtered_with_llm_suggestions.csv"
 
 
 def build_annotation_prompt(article_text: str) -> str:
@@ -151,6 +151,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Reprocess existing output rows with a non-empty llm_error.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Start from scratch and overwrite any existing output file.",
+    )
     return parser.parse_args()
 
 
@@ -172,7 +177,11 @@ def main() -> None:
     print(f"Model:  {args.model}", flush=True)
     print(f"Loaded {len(al_df):,} silver-label rows.", flush=True)
 
-    if args.output.exists():
+    if args.overwrite and args.output.exists():
+        print(f"Overwriting existing output: {args.output}", flush=True)
+        existing = pd.DataFrame()
+        done_uris = set()
+    elif args.output.exists():
         existing = pd.read_csv(args.output)
         if args.retry_errors and "llm_error" in existing.columns and "uri" in existing.columns:
             ok_existing = existing[existing["llm_error"].fillna("").astype(str).str.strip().eq("")]

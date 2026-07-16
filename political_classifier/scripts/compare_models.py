@@ -24,6 +24,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from political_classifier.source_filter import (
+    DEFAULT_SOURCE_DECISION_FILE,
+    apply_source_inclusion_filter,
+    load_source_decisions,
+    source_filter_summary,
+)
+
 
 DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
@@ -33,8 +40,7 @@ DEFAULT_SILVER_LABEL_DIR = DEFAULT_PIPELINE_DIR / "active_learning"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "classifier_comparison"
 DEFAULT_UK_REVIEWED_VALIDATION_PATH = DEFAULT_SILVER_LABEL_DIR / "uk_human_validation_reviewed.csv"
 DEFAULT_SILVER_LABEL_PATHS = [
-    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_with_llm_suggestions.csv",
-    DEFAULT_SILVER_LABEL_DIR / "active_learning_batch_2_with_llm_suggestions.csv",
+    DEFAULT_SILVER_LABEL_DIR / "silver_training_source_filtered_with_llm_suggestions.csv",
 ]
 DEFAULT_EMBEDDING_MODELS = [
     "intfloat/multilingual-e5-large",
@@ -135,6 +141,17 @@ def parse_args() -> argparse.Namespace:
             "for diagnostics only; manuscript tables use the pooled silver-labelled set."
         ),
     )
+    parser.add_argument(
+        "--source-decision-file",
+        type=Path,
+        default=DEFAULT_SOURCE_DECISION_FILE,
+        help="Source inclusion workbook/CSV. Only conventional_journalism == Yes is retained.",
+    )
+    parser.add_argument(
+        "--no-source-filter",
+        action="store_true",
+        help="Do not apply the source inclusion filter.",
+    )
     return parser.parse_args()
 
 
@@ -177,7 +194,15 @@ def prepare_human_validation_frame(data, source_name):
     return data
 
 
-def load_human_validation(extra_paths=None):
+def filter_frame_by_source(data, decisions, label):
+    filtered, merged = apply_source_inclusion_filter(data, decisions, country_column="country")
+    summary = source_filter_summary(merged, group_columns=["country"])
+    print(f"\nSource filter for {label}: {len(filtered):,} / {len(data):,} rows retained", flush=True)
+    print(summary, flush=True)
+    return filtered
+
+
+def load_human_validation(extra_paths=None, source_decisions=None):
     import pandas as pd
     from dataloader import load_human_annotated_for_translation_webdav
 
@@ -198,10 +223,12 @@ def load_human_validation(extra_paths=None):
         dropped = before - len(combined)
         if dropped:
             print(f"Dropped duplicate human-validation URIs: {dropped:,}", flush=True)
+    if source_decisions is not None:
+        combined = filter_frame_by_source(combined, source_decisions, "human validation")
     return combined
 
 
-def load_one_silver_file(path: Path):
+def load_one_silver_file(path: Path, source_decisions=None):
     import pandas as pd
 
     data = pd.read_csv(path)
@@ -210,10 +237,12 @@ def load_one_silver_file(path: Path):
     data["y"] = data["llm_label_suggestion"].map(SILVER_LABEL_MAP).astype(int)
     data["model_text"] = choose_text_series(data).fillna("").astype(str).map(normalize_text)
     data = data[data["model_text"].str.strip().ne("")].copy()
+    if source_decisions is not None:
+        data = filter_frame_by_source(data, source_decisions, path.name)
     return data
 
 
-def load_silver_variants(paths, include_source_diagnostics=False):
+def load_silver_variants(paths, include_source_diagnostics=False, source_decisions=None):
     import pandas as pd
 
     variants = {}
@@ -222,7 +251,7 @@ def load_silver_variants(paths, include_source_diagnostics=False):
         if not path.exists():
             print(f"Skipping missing silver-label file: {path}", flush=True)
             continue
-        data = load_one_silver_file(path)
+        data = load_one_silver_file(path, source_decisions=source_decisions)
         if include_source_diagnostics:
             variants[f"silver_source_file_{idx}"] = data
         frames.append(data)
@@ -520,13 +549,19 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     embedding_models = resolve_embedding_models(args)
 
-    valid_df = load_human_validation(args.extra_human_validation)
+    source_decisions = None
+    if not args.no_source_filter:
+        source_decisions = load_source_decisions(args.source_decision_file)
+        print(f"Loaded source decisions: {args.source_decision_file}", flush=True)
+
+    valid_df = load_human_validation(args.extra_human_validation, source_decisions=source_decisions)
     print(f"Human validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
     silver_variants = load_silver_variants(
         args.silver_labels,
         include_source_diagnostics=args.include_silver_source_diagnostics,
+        source_decisions=source_decisions,
     )
     for name, data in silver_variants.items():
         print(f"{name}: {len(data):,} rows", flush=True)
