@@ -147,6 +147,7 @@ Do not exclude an outlet merely because it is:
 - regional or local;
 - specialist, financial, trade, or sectoral;
 - publicly funded;
+- a news agency or wire service with editorial news production;
 - critical of mainstream institutions.
 
 Political orientation and perceived quality are descriptive only and are not inclusion criteria.
@@ -195,6 +196,13 @@ Answer:
 - yes: primarily journalistic;
 - no: primarily one of the non-journalistic functions above;
 - unclear: mixed or insufficiently known.
+
+Important distinction: an editorial news agency or wire service that produces
+and distributes journalistic news reports counts as primarily journalistic. Do
+not classify a news agency as non-journalistic merely because it distributes
+news to subscribers or other outlets. Exclude only press-release distributors,
+official bulletins, repositories, or automated redistribution services that lack
+substantial journalistic editorial production.
 
 Decision rule:
 - include: C1, C2, and C3 are all yes;
