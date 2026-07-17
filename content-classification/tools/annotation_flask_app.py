@@ -205,7 +205,7 @@ def derive_accused_actor_visible(accused_actor_visibility: str) -> str:
 def filtered_indices(data: pd.DataFrame) -> list[int]:
     filtered = data.copy()
     country = request.args.get("country", "")
-    status = request.args.get("status", "unreviewed")
+    status = request.args.get("status", "all")
     query = request.args.get("q", "").strip().lower()
 
     if country:
@@ -353,7 +353,7 @@ def save(row_index: int):
 def current_filters() -> dict:
     return {
         "country": request.args.get("country", ""),
-        "status": request.args.get("status", "unreviewed"),
+        "status": request.args.get("status", "all"),
         "q": request.args.get("q", ""),
     }
 
@@ -502,13 +502,14 @@ textarea { width: 100%; min-height: 96px; }
 
       <div class="definition">
         <h3>Victim visibility</h3>
-        <p>Who or what is described as harmed by corruption?</p>
+        <p>Who or what does the article represent as harmed by corruption?</p>
         <ul>
-          <li><span class="tag">no_victim</span> No harmed person, group, institution, or public interest is made visible.</li>
-          <li><span class="tag">concrete_victim</span> Identifiable people or groups are harmed, such as citizens, voters, taxpayers, residents, patients, students, workers, firms, or communities.</li>
-          <li><span class="tag">institutional_societal_victim</span> Harm is framed at the level of democracy, rule of law, public trust, state capacity, institutions, society, the economy, development, or EU accession.</li>
+          <li><span class="tag">no_victim</span> The article does not represent anyone or anything as harmed by the corruption case.</li>
+          <li><span class="tag">concrete_victim</span> The article represents identifiable people or groups as harmed by corruption, such as citizens, voters, taxpayers, residents, patients, students, workers, firms, or communities.</li>
+          <li><span class="tag">institutional_societal_victim</span> The article represents harm from corruption at the level of democracy, rule of law, public trust, state capacity, institutions, society, the economy, development, or EU accession.</li>
           <li><span class="tag">unclear</span> The article is too incomplete, ambiguous, or translation-problematic to decide.</li>
         </ul>
+        <p class="meta">Do not code every harmed person or institution mentioned in the story. Code the victim only when the article links the harm to corruption.</p>
       </div>
 
       <div class="definition">
@@ -535,15 +536,15 @@ textarea { width: 100%; min-height: 96px; }
 
       <div class="definition">
         <h3>Accused actor visibility</h3>
-        <p>Is a suspected or accused actor visible?</p>
+        <p>Is an actor represented as responsible for or participating in the corruption discussed?</p>
         <ul>
-          <li><span class="tag">no_accused_actor</span> Corruption is discussed generally but no accused actor is identified.</li>
-          <li><span class="tag">individual_actor</span> A person or officeholder is accused, investigated, charged, convicted, or explicitly linked.</li>
-          <li><span class="tag">organizational_or_institutional_actor</span> A party, company, agency, office, court, ministry, police unit, or other collective actor is implicated.</li>
-          <li><span class="tag">both_individual_and_organizational</span> Both individual and collective accused actors are visible.</li>
-          <li><span class="tag">unclear</span> Not enough information to decide.</li>
+          <li><span class="tag">no_accused_actor</span> Corruption is discussed, but no alleged perpetrator or participant is identified.</li>
+          <li><span class="tag">individual_actor</span> A person or officeholder is accused, investigated, charged, convicted, or explicitly alleged to have participated in the corruption.</li>
+          <li><span class="tag">organizational_or_institutional_actor</span> An organization or institution is explicitly alleged to have participated in, enabled, financed, directed, or concealed the corruption.</li>
+          <li><span class="tag">both_individual_and_organizational</span> Both individual and organizational alleged participants are visible.</li>
+          <li><span class="tag">unclear</span> There is insufficient information to determine actor visibility.</li>
         </ul>
-        <p class="meta">Conviction is not required. Allegation, investigation, charge, sanction, or strong linkage is enough. A binary accused-actor-visible variable is derived automatically from this field.</p>
+        <p class="meta">Do not count an organization merely because it is owned by, controlled by, connected to, or derivatively sanctioned through an accused person. A sanction counts only when the article alleges the organization's own participation in corruption. Such organizations can be recorded separately as linked or sanctioned entities, but they do not affect accused actor visibility. A binary accused-actor-visible variable is derived automatically from this field.</p>
       </div>
     </aside>
 
@@ -590,7 +591,7 @@ textarea { width: 100%; min-height: 96px; }
           <h2>Human Codes</h2>
           <div class="form-grid">
             <label>Victim visibility
-              <span class="field-help">Code the visibility of harmed people, groups, institutions, or public interests.</span>
+              <span class="field-help">Code who or what the article represents as harmed by corruption, not every harmed actor mentioned elsewhere in the story.</span>
               <select name="human_victim_visibility" required>
                 {% for option in victim_options %}
                 <option value="{{ option }}" {% if value(row, "human_victim_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
@@ -614,7 +615,7 @@ textarea { width: 100%; min-height: 96px; }
               </select>
             </label>
             <label>Accused actor visibility
-              <span class="field-help">Who is visibly accused, investigated, sanctioned, or linked?</span>
+              <span class="field-help">Code alleged perpetrators or participants only; derivative ownership, control, connection, or sanctions do not count.</span>
               <select name="human_accused_actor_visibility" required>
                 {% for option in accused_options %}
                 <option value="{{ option }}" {% if value(row, "human_accused_actor_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
