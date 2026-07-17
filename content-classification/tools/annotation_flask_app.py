@@ -64,7 +64,6 @@ CASE_LOCATION_OPTIONS = [
     "abroad",
     "unclear",
 ]
-YES_NO_UNCLEAR_OPTIONS = ["", "yes", "no", "unclear"]
 ACCUSED_OPTIONS = [
     "",
     "no_accused_actor",
@@ -179,6 +178,30 @@ def reviewed_mask(data: pd.DataFrame) -> pd.Series:
     return mask
 
 
+def derive_abroad_case(case_location: str) -> str:
+    if case_location == "abroad":
+        return "yes"
+    if case_location == "domestic":
+        return "no"
+    if case_location == "unclear":
+        return "unclear"
+    return ""
+
+
+def derive_accused_actor_visible(accused_actor_visibility: str) -> str:
+    if accused_actor_visibility == "no_accused_actor":
+        return "no"
+    if accused_actor_visibility in {
+        "individual_actor",
+        "organizational_or_institutional_actor",
+        "both_individual_and_organizational",
+    }:
+        return "yes"
+    if accused_actor_visibility == "unclear":
+        return "unclear"
+    return ""
+
+
 def filtered_indices(data: pd.DataFrame) -> list[int]:
     filtered = data.copy()
     country = request.args.get("country", "")
@@ -282,7 +305,6 @@ def index():
         victim_options=VICTIM_OPTIONS,
         frame_options=FRAME_OPTIONS,
         case_location_options=CASE_LOCATION_OPTIONS,
-        yes_no_unclear_options=YES_NO_UNCLEAR_OPTIONS,
         accused_options=ACCUSED_OPTIONS,
         value=value,
     )
@@ -300,15 +322,21 @@ def save(row_index: int):
 
     import datetime as dt
 
-    for column in HUMAN_COLUMNS:
-        if column in {
-            "human_coder_id",
-            "human_coder_first_name",
-            "human_code_session_id",
-            "human_coded_at",
-        }:
-            continue
+    manual_columns = [
+        "human_victim_visibility",
+        "human_corruption_frame",
+        "human_case_location",
+        "human_accused_actor_visibility",
+        "human_notes",
+    ]
+    for column in manual_columns:
         data.loc[row_index, column] = request.form.get(column, "")
+    data.loc[row_index, "human_abroad_case"] = derive_abroad_case(
+        data.loc[row_index, "human_case_location"]
+    )
+    data.loc[row_index, "human_accused_actor_visible"] = derive_accused_actor_visible(
+        data.loc[row_index, "human_accused_actor_visibility"]
+    )
     data.loc[row_index, "human_coder_id"] = coder_id
     data.loc[row_index, "human_coder_first_name"] = coder_first_name
     data.loc[row_index, "human_code_session_id"] = code_session_id
@@ -502,7 +530,7 @@ textarea { width: 100%; min-height: 96px; }
           <li><span class="tag">abroad</span> The case mainly concerns another country, foreign actors, foreign institutions, offshore schemes, sanctions, or cross-border probes centered elsewhere.</li>
           <li><span class="tag">unclear</span> Location cannot be determined.</li>
         </ul>
-        <p class="meta">EU funds misused domestically still count as domestic. For <span class="tag">abroad_case</span>, use yes only when the main case is abroad.</p>
+        <p class="meta">EU funds misused domestically still count as domestic. A binary abroad-case variable is derived automatically from this field.</p>
       </div>
 
       <div class="definition">
@@ -515,7 +543,7 @@ textarea { width: 100%; min-height: 96px; }
           <li><span class="tag">both_individual_and_organizational</span> Both individual and collective accused actors are visible.</li>
           <li><span class="tag">unclear</span> Not enough information to decide.</li>
         </ul>
-        <p class="meta">Conviction is not required. Allegation, investigation, charge, sanction, or strong linkage is enough.</p>
+        <p class="meta">Conviction is not required. Allegation, investigation, charge, sanction, or strong linkage is enough. A binary accused-actor-visible variable is derived automatically from this field.</p>
       </div>
     </aside>
 
@@ -585,27 +613,11 @@ textarea { width: 100%; min-height: 96px; }
                 {% endfor %}
               </select>
             </label>
-            <label>Abroad case
-              <span class="field-help">Yes only if the main corruption case is abroad.</span>
-              <select name="human_abroad_case">
-                {% for option in yes_no_unclear_options %}
-                <option value="{{ option }}" {% if value(row, "human_abroad_case") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-                {% endfor %}
-              </select>
-            </label>
             <label>Accused actor visibility
               <span class="field-help">Who is visibly accused, investigated, sanctioned, or linked?</span>
               <select name="human_accused_actor_visibility" required>
                 {% for option in accused_options %}
                 <option value="{{ option }}" {% if value(row, "human_accused_actor_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <label>Accused actor visible
-              <span class="field-help">Binary summary: is any accused actor visible?</span>
-              <select name="human_accused_actor_visible">
-                {% for option in yes_no_unclear_options %}
-                <option value="{{ option }}" {% if value(row, "human_accused_actor_visible") == option %}selected{% endif %}>{{ option or "choose..." }}</option>
                 {% endfor %}
               </select>
             </label>
