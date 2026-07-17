@@ -5,7 +5,9 @@ Run on a remote server with:
     CONTENT_ANNOTATION_INPUT=/path/to/content_validation_sample_100_per_country_english.csv.gz \
     CONTENT_ANNOTATION_OUTPUT_TEMPLATE=/path/to/content_validation_sample_100_per_country_{coder_id}.csv.gz \
     CONTENT_ANNOTATION_PASSWORD='choose-a-password' \
-    flask --app content-classification/tools/annotation_flask_app.py run --host 0.0.0.0 --port 8502
+    CONTENT_ANNOTATION_HOST=0.0.0.0 \
+    CONTENT_ANNOTATION_PORT=8502 \
+    python3 content-classification/tools/annotation_flask_app.py
 
 For multiple external coders, prefer CONTENT_ANNOTATION_OUTPUT_TEMPLATE so each
 coder writes to a distinct CSV while reading the same translated input file.
@@ -16,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import uuid
 from functools import wraps
 from pathlib import Path
 
@@ -80,6 +83,8 @@ HUMAN_COLUMNS = [
     "human_accused_actor_visible",
     "human_notes",
     "human_coder_id",
+    "human_coder_first_name",
+    "human_code_session_id",
     "human_coded_at",
 ]
 
@@ -124,6 +129,16 @@ def safe_coder_id(coder_id: str) -> str:
 
 def current_coder_id() -> str:
     return safe_coder_id(session.get("coder_id") or CODER_ID)
+
+
+def current_coder_first_name() -> str:
+    return str(session.get("coder_first_name") or "").strip()
+
+
+def current_code_session_id() -> str:
+    if not session.get("code_session_id"):
+        session["code_session_id"] = uuid.uuid4().hex
+    return str(session["code_session_id"])
 
 
 def output_path_for_coder(coder_id: str) -> Path:
@@ -199,8 +214,14 @@ def login():
     error = ""
     if request.method == "POST":
         if request.form.get("password", "") == APP_PASSWORD:
+            first_name = request.form.get("coder_first_name", "").strip()
+            if not first_name:
+                error = "Please enter your first name."
+                return render_template_string(LOGIN_TEMPLATE, error=error, default_coder_id=CODER_ID)
             session["authenticated"] = True
-            session["coder_id"] = safe_coder_id(request.form.get("coder_id", CODER_ID))
+            session["coder_first_name"] = first_name
+            session["coder_id"] = safe_coder_id(first_name)
+            session["code_session_id"] = uuid.uuid4().hex
             return redirect(request.args.get("next") or url_for("index"))
         error = "Incorrect password."
     return render_template_string(LOGIN_TEMPLATE, error=error, default_coder_id=CODER_ID)
@@ -216,6 +237,8 @@ def logout():
 @require_login
 def index():
     coder_id = current_coder_id()
+    coder_first_name = current_coder_first_name()
+    code_session_id = current_code_session_id()
     data = load_data(coder_id)
     indices = filtered_indices(data)
     pos = max(0, min(int(request.args.get("pos", 0)), max(len(indices) - 1, 0)))
@@ -230,6 +253,8 @@ def index():
             countries=countries,
             filters=current_filters(),
             coder_id=coder_id,
+            coder_first_name=coder_first_name,
+            code_session_id=code_session_id,
             output_path=output_path_for_coder(coder_id),
         )
     row_index = indices[pos]
@@ -248,6 +273,8 @@ def index():
         countries=countries,
         filters=current_filters(),
         coder_id=coder_id,
+        coder_first_name=coder_first_name,
+        code_session_id=code_session_id,
         output_path=output_path_for_coder(coder_id),
         prev_url=nav_url(max(pos - 1, 0)),
         next_url=nav_url(min(pos + 1, len(indices) - 1)),
@@ -265,6 +292,8 @@ def index():
 @require_login
 def save(row_index: int):
     coder_id = current_coder_id()
+    coder_first_name = current_coder_first_name()
+    code_session_id = current_code_session_id()
     data = load_data(coder_id)
     if row_index not in data.index:
         return "Unknown row", 404
@@ -272,10 +301,17 @@ def save(row_index: int):
     import datetime as dt
 
     for column in HUMAN_COLUMNS:
-        if column in {"human_coder_id", "human_coded_at"}:
+        if column in {
+            "human_coder_id",
+            "human_coder_first_name",
+            "human_code_session_id",
+            "human_coded_at",
+        }:
             continue
         data.loc[row_index, column] = request.form.get(column, "")
-    data.loc[row_index, "human_coder_id"] = request.form.get("human_coder_id", coder_id)
+    data.loc[row_index, "human_coder_id"] = coder_id
+    data.loc[row_index, "human_coder_first_name"] = coder_first_name
+    data.loc[row_index, "human_code_session_id"] = code_session_id
     data.loc[row_index, "human_coded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     save_data(data, coder_id)
 
@@ -313,10 +349,10 @@ label { display: block; margin-top: .85rem; font-weight: 700; }
 </style>
 <main>
   <h1>RESPOND Annotation</h1>
-  <p class="hint">Log in with your coder ID. Your annotations are saved under that ID.</p>
+  <p class="hint">Log in with your first name. Your annotations are saved with your name and a unique session ID.</p>
   <form method="post">
-    <label>Coder ID</label>
-    <input name="coder_id" value="{{ default_coder_id }}" autocomplete="username" autofocus>
+    <label>First name</label>
+    <input name="coder_first_name" autocomplete="given-name" autofocus>
     <label>Password</label>
     <input type="password" name="password" autocomplete="current-password">
     <button type="submit">Log in</button>
@@ -336,21 +372,25 @@ APP_TEMPLATE = """
   --bg: #f4f6fa;
   --ink: #172033;
   --accent: #244f86;
+  --accent-dark: #183c6b;
   --accent-soft: #e8f0fb;
   --warn: #fff4d8;
+  --panel: #ffffff;
 }
 * { box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--ink); background: var(--bg); }
-header { position: sticky; top: 0; background: white; border-bottom: 1px solid var(--border); padding: .85rem 1.25rem; z-index: 2; box-shadow: 0 2px 12px rgba(20, 35, 60, .05); }
+header { position: sticky; top: 0; background: rgba(255, 255, 255, .97); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: .85rem 1.25rem; z-index: 2; box-shadow: 0 2px 12px rgba(20, 35, 60, .05); }
 main { padding: 1rem 1.25rem 2rem; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .filters { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
 select, input, textarea, button { font: inherit; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 7px; background: white; }
-button, .button { cursor: pointer; background: var(--accent); color: white; border: 1px solid var(--accent); border-radius: 7px; font-weight: 700; padding: .55rem .65rem; text-decoration: none; display: inline-block; }
+button, .button { cursor: pointer; background: var(--accent); color: white; border: 1px solid var(--accent); border-radius: 7px; font-weight: 700; padding: .6rem .75rem; text-decoration: none; display: inline-block; min-height: 42px; }
+button:hover, .button:hover { background: var(--accent-dark); }
 .ghost { color: var(--accent); background: white; border-color: var(--border); }
+.ghost:hover { background: var(--accent-soft); color: var(--accent-dark); }
 .meta { color: var(--muted); font-size: .9rem; }
 .layout { display: grid; grid-template-columns: minmax(320px, 440px) minmax(0, 1fr); gap: 1rem; align-items: start; }
-.panel { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; background: white; }
+.panel { border: 1px solid var(--border); border-radius: 10px; padding: 1rem; background: var(--panel); box-shadow: 0 1px 3px rgba(20, 35, 60, .04); }
 .codebook { position: sticky; top: 6.6rem; max-height: calc(100vh - 7.5rem); overflow: auto; }
 .codebook h2, .panel h2 { margin: 0 0 .6rem; font-size: 1.15rem; }
 .codebook h3 { margin: 1rem 0 .35rem; font-size: .98rem; }
@@ -361,6 +401,7 @@ button, .button { cursor: pointer; background: var(--accent); color: white; bord
 .tag { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--accent-soft); color: #163d6f; border-radius: 5px; padding: .08rem .28rem; font-size: .82rem; }
 .hint { background: var(--warn); border: 1px solid #ead79a; border-radius: 8px; padding: .75rem; margin-bottom: .9rem; line-height: 1.4; }
 .article-meta { display: flex; flex-wrap: wrap; gap: .45rem .9rem; margin-bottom: .75rem; }
+.identity-pill { background: var(--accent-soft); color: var(--accent-dark); border-radius: 999px; padding: .18rem .55rem; font-weight: 700; }
 .reader-toolbar { display: flex; gap: .45rem; flex-wrap: wrap; margin-bottom: .75rem; }
 .reader-button { color: var(--accent); background: white; border-color: var(--border); }
 .reader-button.active { background: var(--accent); color: white; border-color: var(--accent); }
@@ -374,17 +415,34 @@ button, .button { cursor: pointer; background: var(--accent); color: white; bord
 textarea { width: 100%; min-height: 96px; }
 .actions { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
 .progress { font-weight: 800; }
-.savebar { position: sticky; bottom: 0; background: rgba(244, 246, 250, .96); border-top: 1px solid var(--border); padding: .75rem 0 0; }
+.savebar { position: sticky; bottom: 0; background: rgba(244, 246, 250, .97); border-top: 1px solid var(--border); padding: .75rem 0 0; margin-top: 1rem; }
 @media (max-width: 1180px) {
   .layout, .text-grid.side-by-side, .form-grid { grid-template-columns: 1fr; }
   .codebook { position: static; max-height: none; }
+}
+@media (max-width: 720px) {
+  body { background: white; }
+  header { position: static; padding: .75rem; }
+  main { padding: .65rem .65rem 6rem; }
+  .top { align-items: flex-start; }
+  .filters { display: grid; grid-template-columns: 1fr; }
+  .filters select, .filters input, .filters button { width: 100%; min-height: 44px; }
+  .panel { border-radius: 8px; padding: .8rem; box-shadow: none; }
+  .codebook { font-size: .94rem; }
+  .text { max-height: 54vh; font-size: 1rem; }
+  .reader-toolbar { display: grid; grid-template-columns: 1fr; }
+  .reader-button { width: 100%; }
+  .actions { display: grid; grid-template-columns: 1fr; }
+  .actions .button, .actions button { width: 100%; text-align: center; }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; padding: .65rem; background: white; box-shadow: 0 -6px 18px rgba(20, 35, 60, .12); z-index: 3; }
+  .savebar .actions { margin: 0; grid-template-columns: 1fr 1fr; }
 }
 </style>
 <header>
   <div class="top">
     <div>
       <div class="progress">RESPOND content annotation</div>
-      <div class="meta">Coder {{ coder_id }} · Reviewed {{ reviewed }} / {{ total }}{% if not no_rows %} · Filtered row {{ pos + 1 }} / {{ n_filtered }}{% endif %}</div>
+      <div class="meta">{{ coder_first_name }} · session {{ code_session_id[:8] }} · Reviewed {{ reviewed }} / {{ total }}{% if not no_rows %} · Filtered row {{ pos + 1 }} / {{ n_filtered }}{% endif %}</div>
     </div>
     <div><a href="{{ url_for('logout') }}">Log out</a></div>
   </div>
@@ -462,8 +520,12 @@ textarea { width: 100%; min-height: 96px; }
     </aside>
 
     <section>
+      <form method="post" action="{{ save_url }}">
+      <input type="hidden" name="pos" value="{{ pos }}">
+
       <div class="panel">
         <div class="article-meta">
+          <span class="identity-pill">{{ coder_first_name }}</span>
           <span><b>{{ value(row, "country") }}</b></span>
           <span>{{ value(row, "year") }}</span>
           <span>Article {{ pos + 1 }} / {{ n_filtered }}</span>
@@ -472,7 +534,7 @@ textarea { width: 100%; min-height: 96px; }
         <div class="meta">URI: {{ value(row, "uri") }}{% if value(row, "source_uri") %} · Source: {{ value(row, "source_uri") }}{% endif %}</div>
         <div class="actions">
           <a class="button ghost" href="{{ prev_url }}">Previous</a>
-          <a class="button ghost" href="{{ next_url }}">Next</a>
+          <button type="submit" name="action" value="save_next">Save + Next</button>
         </div>
       </div>
 
@@ -496,9 +558,7 @@ textarea { width: 100%; min-height: 96px; }
         </div>
       </section>
 
-      <form method="post" action="{{ save_url }}" style="margin-top: 1rem;">
-        <input type="hidden" name="pos" value="{{ pos }}">
-        <section class="panel">
+        <section class="panel" style="margin-top: 1rem;">
           <h2>Human Codes</h2>
           <div class="form-grid">
             <label>Victim visibility
@@ -552,9 +612,6 @@ textarea { width: 100%; min-height: 96px; }
           </div>
           <label style="display:block; margin-top:.75rem; font-weight:700;">Notes
             <textarea name="human_notes" placeholder="Optional: record ambiguity, translation issues, or why a difficult choice was made.">{{ value(row, "human_notes") }}</textarea>
-          </label>
-          <label style="display:block; margin-top:.75rem; font-weight:700;">Coder ID
-            <input name="human_coder_id" value="{{ value(row, 'human_coder_id', coder_id) }}">
           </label>
           <div class="savebar">
             <div class="actions">

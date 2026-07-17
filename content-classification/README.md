@@ -140,12 +140,11 @@ To test the annotation interface on this development sample:
 
 ```bash
 CONTENT_ANNOTATION_INPUT="$CODEBOOK_DIR/content_codebook_dev_sample_100_english.csv.gz" \
-CONTENT_ANNOTATION_OUTPUT="$CODEBOOK_DIR/content_codebook_dev_sample_100_human_notes.csv.gz" \
+CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$CODEBOOK_DIR/content_codebook_dev_sample_100_{coder_id}.csv.gz" \
 CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
-CONTENT_ANNOTATION_CODER_ID="anne_codebook_dev" \
-flask --app content-classification/tools/annotation_flask_app.py run \
-  --host 127.0.0.1 \
-  --port 8502
+CONTENT_ANNOTATION_HOST=127.0.0.1 \
+CONTENT_ANNOTATION_PORT=8502 \
+python3 content-classification/tools/annotation_flask_app.py
 ```
 
 ## Validation Sample
@@ -206,8 +205,10 @@ The translation output preserves all original columns and adds
 After translation, launch the Flask annotation app. It shows the English
 translation by default, lets coders switch to the original article or a
 side-by-side view, and keeps the codebook definitions visible while coding.
-Coders log in with a coder ID; if `CONTENT_ANNOTATION_OUTPUT_TEMPLATE` is set,
-each coder automatically writes to a separate output file.
+Coders log in with their first name; the app stores both that first name and a
+unique `human_code_session_id` on every saved row. If
+`CONTENT_ANNOTATION_OUTPUT_TEMPLATE` is set, each coder automatically writes to
+a separate output file.
 
 For a local-only session on `annecuda`:
 
@@ -217,10 +218,9 @@ VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/conten
 CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
 CONTENT_ANNOTATION_OUTPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_human_coded.csv.gz" \
 CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
-CONTENT_ANNOTATION_CODER_ID="anne" \
-flask --app content-classification/tools/annotation_flask_app.py run \
-  --host 127.0.0.1 \
-  --port 8502
+CONTENT_ANNOTATION_HOST=127.0.0.1 \
+CONTENT_ANNOTATION_PORT=8502 \
+python3 content-classification/tools/annotation_flask_app.py
 ```
 
 If working through an SSH tunnel:
@@ -245,14 +245,16 @@ CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_coun
 CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$VALIDATION_DIR/content_validation_sample_100_per_country_{coder_id}.csv.gz" \
 CONTENT_ANNOTATION_PASSWORD="strong-password-here" \
 CONTENT_ANNOTATION_SECRET_KEY="another-long-random-secret" \
-flask --app content-classification/tools/annotation_flask_app.py run \
-  --host 0.0.0.0 \
-  --port 8502
+CONTENT_ANNOTATION_HOST=0.0.0.0 \
+CONTENT_ANNOTATION_PORT=8502 \
+python3 content-classification/tools/annotation_flask_app.py
 ```
 
-Coders then open the server URL in their own browser, enter their coder ID and
-the shared password, and annotate independently. The app saves the human codes
-in `human_*` columns and is safe to restart: if a coder-specific output file
+Coders then open the server URL in their own browser, enter their first name and
+the shared password, and annotate independently. Use distinct first names or add
+an initial when two coders share a name, because the first name is also used to
+construct the coder-specific output filename. The app saves the human codes in
+`human_*` columns and is safe to restart: if a coder-specific output file
 already exists, that coder resumes from the reviewed file.
 
 After manual coding, the same sample can be sent through the GPT classifiers to
