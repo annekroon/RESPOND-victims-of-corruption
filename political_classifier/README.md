@@ -18,6 +18,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/07_build_attention_outputs.py` | Execute the attention notebook to rebuild CSVs, figures, and LaTeX tables |
 | `scripts/08_upload_outputs.py` | Upload manuscript tables and attention outputs |
 | `scripts/09_archive_derived_data.py` | Archive expensive-to-recreate derived data |
+| `scripts/10_sample_content_codebook_validation.py` | Sample classified political-corruption articles for later content-codebook validation |
 | `scripts/_impl/` | Internal implementation scripts called by the numbered entry points |
 | `scripts/legacy/` | Older exploratory/compatibility scripts kept for provenance, not part of the current run order |
 | `scripts/reset_rebuild_outputs.py` | Maintenance helper for deleting old generated outputs before a clean rebuild |
@@ -156,6 +157,28 @@ training set should be rebuilt from scratch:
    python3 political_classifier/scripts/09_archive_derived_data.py \
      --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
    ```
+
+### Next Phase: Content-Codebook Validation Samples
+
+After a country has been scored by `scripts/06_train_final_classifier.py`, use
+the sampled classified output to begin codebook development for article-level
+content coding. This step does not alter the political-corruption classifier.
+
+For example, to sample 108 French articles predicted to be political corruption:
+
+```bash
+python3 political_classifier/scripts/10_sample_content_codebook_validation.py \
+  --country France \
+  --n 108 \
+  --seed 42
+```
+
+This writes:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/France_content_codebook_validation_n108.csv
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/France_content_codebook_validation_summary.csv
+```
 
 ### 1. Clean And Dedupe
 
