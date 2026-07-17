@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import pandas as pd
+
 
 DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
@@ -75,15 +77,28 @@ def stratified_sample(data, n, seed):
 
     grouped = data.groupby("sample_stratum", dropna=False)
     group_sizes = grouped.size()
-    allocation = (group_sizes / group_sizes.sum() * n).round().astype(int)
-    allocation = allocation.clip(lower=1)
 
-    while allocation.sum() > n:
-        idx = allocation[allocation > 1].idxmax()
-        allocation.loc[idx] -= 1
-    while allocation.sum() < n:
-        idx = (group_sizes - allocation).idxmax()
-        allocation.loc[idx] += 1
+    if len(group_sizes) >= n:
+        selected_strata = group_sizes.sample(
+            n=n,
+            weights=group_sizes,
+            random_state=seed,
+            replace=False,
+        ).index
+        allocation = pd.Series(1, index=selected_strata)
+    else:
+        allocation = pd.Series(1, index=group_sizes.index)
+        remaining_n = n - int(allocation.sum())
+        fractional = group_sizes / group_sizes.sum() * remaining_n
+        extra = fractional.astype(int)
+        allocation = allocation.add(extra, fill_value=0).astype(int)
+
+        while allocation.sum() < n:
+            remainder = fractional - extra
+            idx = remainder.sort_values(ascending=False).index[0]
+            allocation.loc[idx] += 1
+            fractional.loc[idx] = 0
+            extra.loc[idx] = 0
 
     pieces = []
     for stratum, take_n in allocation.items():
@@ -91,26 +106,19 @@ def stratified_sample(data, n, seed):
         take_n = min(int(take_n), len(group))
         pieces.append(group.sample(n=take_n, random_state=seed))
 
-    sample = (
-        __import__("pandas")
-        .concat(pieces, ignore_index=True)
-        .sample(frac=1, random_state=seed)
-        .reset_index(drop=True)
-    )
+    sample = pd.concat(pieces, ignore_index=True).sample(frac=1, random_state=seed).reset_index(drop=True)
 
     if len(sample) > n:
         sample = sample.sample(n=n, random_state=seed).reset_index(drop=True)
     elif len(sample) < n:
         remaining = data.loc[~data["uri"].astype(str).isin(sample["uri"].astype(str))]
         extra = remaining.sample(n=n - len(sample), random_state=seed)
-        sample = __import__("pandas").concat([sample, extra], ignore_index=True)
+        sample = pd.concat([sample, extra], ignore_index=True)
 
     return sample.reset_index(drop=True)
 
 
 def main() -> None:
-    import pandas as pd
-
     args = parse_args()
     input_path = args.classified_dir / f"{args.country}_classified.csv.gz"
     if not input_path.exists():
