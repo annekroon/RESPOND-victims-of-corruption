@@ -152,7 +152,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-source-filter",
         action="store_true",
-        help="Do not apply the source inclusion filter.",
+        help="Do not apply the source inclusion filter to silver-label training data.",
+    )
+    parser.add_argument(
+        "--source-filter-validation",
+        action="store_true",
+        help=(
+            "Also apply the source inclusion filter to the human validation set. "
+            "Off by default so validation remains comparable to the manually labelled set."
+        ),
     )
     return parser.parse_args()
 
@@ -556,7 +564,17 @@ def main() -> None:
         source_decisions = load_source_decisions(args.source_decision_file)
         print(f"Loaded source decisions: {args.source_decision_file}", flush=True)
 
-    valid_df = load_human_validation(args.extra_human_validation, source_decisions=source_decisions)
+    validation_source_decisions = source_decisions if args.source_filter_validation else None
+    valid_df = load_human_validation(
+        args.extra_human_validation,
+        source_decisions=validation_source_decisions,
+    )
+    if source_decisions is not None and validation_source_decisions is None:
+        print(
+            "Source filter is applied to silver training data only; "
+            "human validation is left unfiltered.",
+            flush=True,
+        )
     print(f"Human validation rows: {len(valid_df):,}", flush=True)
     print(valid_df["y"].value_counts().rename(index={0: "No", 1: "Political corruption"}), flush=True)
 
