@@ -137,16 +137,16 @@ Final selected political-corruption classifier:
 | Training labels | LLM silver-labelled training set |
 | Classifier | Balanced logistic regression |
 | Embeddings | `intfloat/multilingual-e5-large` |
-| Decision threshold | `0.40` |
+| Decision threshold | `0.50` |
 | Human validation set | Original 452 rows + 50 manually reviewed UK supplement rows |
 | Validation rows | `502` |
 | Political-corruption support | `141` |
-| Political precision | `0.731` |
-| Political recall | `0.809` |
-| Political F1 | `0.768` |
-| Accuracy | `0.863` |
-| Macro F1 | `0.835` |
-| Weighted F1 | `0.865` |
+| Political precision | `0.654` |
+| Political recall | `0.830` |
+| Political F1 | `0.731` |
+| Accuracy | `0.829` |
+| Macro F1 | `0.803` |
+| Weighted F1 | `0.834` |
 
 The main derived outputs are stored on `annecuda` under:
 

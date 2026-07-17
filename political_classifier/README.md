@@ -6,9 +6,8 @@ This folder contains the workflow for identifying which cleaned news articles ar
 
 | Path | Purpose |
 |---|---|
-| `notebooks/01_clean_dedupe_data.ipynb` | Load raw country files, clean text, deduplicate, and write denominator tables |
 | `notebooks/02_inspect_classifier_comparison.ipynb` | Inspect saved classifier comparison outputs and generate manuscript tables |
-| `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time |
+| `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time and generate the attention tables, figures, and Figure 1 TikZ |
 | `scripts/00_download_source_workbook.py` | Download the reviewed source workbook from Research Drive/WebDAV |
 | `scripts/01_clean_dedupe_data.py` | Reproducibly clean and deduplicate raw corruption-query files |
 | `scripts/02_create_source_filtered_corpus.py` | Create the full cleaned/deduplicated/source-filtered corpus |
@@ -26,7 +25,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/restore_derived_data_from_webdav.py` | Restore archived derived data from Research Drive into the local pipeline folder |
 | `scripts/merge_uk_validation_annotations.py` | Save a merged annotation file with the reviewed UK supplement |
 | `tools/annotation_interface.py` | Streamlit UI for manual review |
-| `archive/` | Older notebook versions kept for provenance |
+| `archive/` | Older exploratory notebooks kept for provenance; not part of the active run order |
 
 ## Final Classifier Decision
 
@@ -38,19 +37,19 @@ update these values from the generated tables.
 | Metric | Value |
 |---|---|
 | Label source | Silver-labelled training set |
-| Training rows | `3,982` |
+| Training rows | `4,497` |
 | Embedding model | `intfloat/multilingual-e5-large` |
 | Classifier | Balanced logistic regression |
-| Threshold | `0.40` |
+| Threshold | `0.50` |
 | Validation rows | `502` |
 | Political-corruption support | `141` |
-| Accuracy | `0.863` |
-| Political precision | `0.731` |
-| Political recall | `0.809` |
-| Political F1 | `0.768` |
-| Macro F1 | `0.835` |
-| Weighted F1 | `0.865` |
-| Predicted positive rate on validation | `0.311` |
+| Accuracy | `0.829` |
+| Political precision | `0.654` |
+| Political recall | `0.830` |
+| Political F1 | `0.731` |
+| Macro F1 | `0.803` |
+| Weighted F1 | `0.834` |
+| Predicted positive rate on validation | `0.357` |
 
 ## Workflow
 
@@ -166,8 +165,10 @@ Run the reproducible script:
 python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
 ```
 
-Use `political_classifier/notebooks/01_clean_dedupe_data.ipynb` only for
-interactive inspection/debugging.
+The older notebook version is archived at
+`political_classifier/archive/01_clean_dedupe_data.ipynb`. Do not run it as
+part of the active workflow; it writes the same cleaned/deduplicated base files
+and can overwrite them.
 
 This creates cleaned compressed country files and denominator tables under:
 

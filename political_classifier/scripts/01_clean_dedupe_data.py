@@ -1,7 +1,7 @@
 """Clean and deduplicate the raw corruption-query country files.
 
-This is the reproducible script version of
-``notebooks/01_clean_dedupe_data.ipynb``. It loads ``*_news.csv`` files from
+This is the reproducible entry point for the clean/deduplicate step. It loads
+``*_news.csv`` files from
 Research Drive through the WebDAV API, normalizes article text, removes source
 duplicates and exact/near-exact duplicate text, and writes cleaned country files
 plus denominator tables.
