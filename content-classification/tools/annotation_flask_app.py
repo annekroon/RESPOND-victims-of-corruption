@@ -524,57 +524,63 @@ textarea { width: 100%; min-height: 96px; }
   <div class="layout">
     <aside class="panel codebook">
       <h2>Codebook</h2>
-      <div class="hint"><b>Code what is substantively present in the article.</b> Use the English translation by default. Check the original when wording, names, or ambiguity matter.</div>
+      <div class="hint"><b>Code the corruption case represented in the article.</b> Use only information stated in the article. A reported allegation counts even when denied, disputed, unproven, or followed by an acquittal. Use the English translation by default, and check the original when wording, names, or ambiguity matter.</div>
 
       <div class="definition">
         <h3>Victim visibility</h3>
-        <p><b>Question:</b> Who or what does the article explicitly represent as harmed by the corruption being discussed?</p>
-        <p>Code only harm that the article directly connects to corruption. Do not code every person, organization, or public interest harmed elsewhere in the story.</p>
+        <p><b>Question:</b> Who or what does the article explicitly represent as having suffered harm because of the corruption?</p>
+        <p>First isolate the corruption allegation or case. Code only harm that the article directly connects to that corruption. Do not code every person, organization, or public interest harmed elsewhere in the story, and do not infer victimhood merely from the offense type.</p>
         <ul>
-          <li><span class="tag">no_victim</span> No person, group, organization, institution, or public interest is explicitly described as suffering harm from the corruption.</li>
-          <li><span class="tag">concrete_victim</span> An identifiable person, group, community, company, association, or other concrete entity is explicitly described as losing money, property, rights, opportunities, services, or otherwise suffering because of the corruption. A person explicitly subjected to corrupt extortion or a coercive bribe demand may also count.</li>
-          <li><span class="tag">institutional_societal_victim</span> The article explicitly states that corruption harms democracy, the rule of law, public trust, institutional legitimacy, state capacity, public finances, society, the economy, development, or another broad public interest.</li>
+          <li><span class="tag">no_victim</span> No person, group, organization, institution, or public interest is explicitly described as suffering corruption-related harm.</li>
+          <li><span class="tag">concrete_victim</span> A specific or identifiable person, group, community, company, association, or similar concrete entity is explicitly described as suffering direct corruption-related harm, such as lost money, property, rights, services, employment, contracts, opportunities, coercive extortion, exclusion from a corruptly manipulated process, or physical/personal harm explicitly attributed to corruption.</li>
+          <li><span class="tag">institutional_societal_victim</span> The article explicitly states that corruption harmed democracy, electoral legitimacy, the rule of law, public trust, institutional credibility or independence, state capacity, public finances, society, the economy, development, or another broad public interest.</li>
           <li><span class="tag">unclear</span> The article is too incomplete, ambiguous, or translation-problematic to decide.</li>
         </ul>
-        <p class="meta"><b>Decision rules:</b> First identify the corruption allegation or case. Look for an explicit connection between that corruption and harm. Identify who or what suffers that harm. Do not infer a victim merely from the type of offense.</p>
-        <p class="meta">The following do not automatically establish victimhood: the mention of bribery, fraud, embezzlement, money laundering, or tax evasion; the existence of public money or public institutions; repayment of money to tax authorities; an investigation, prosecution, conviction, fine, or confiscation; a bribe offer or attempted bribe; political pressure that produces no described injury; harm caused by an unrelated event in the same article; or the general assumption that corruption harms taxpayers or society.</p>
+        <p class="meta"><b>Decision order:</b> Identify the corruption allegation. Identify the harm allegedly caused by that corruption. Identify who or what suffered the harm. If a concrete entity suffered direct personal or material harm, code <span class="tag">concrete_victim</span>. Otherwise, if only democracy, institutions, public finances, society, or another broad public interest was harmed, code <span class="tag">institutional_societal_victim</span>. If no corruption-related harm is explicit, code <span class="tag">no_victim</span>.</p>
+        <p class="meta">The following do not automatically establish victimhood: bribery, fraud, embezzlement, money laundering, or tax evasion; public money or public institutions merely being mentioned; repayment of money to tax authorities; an investigation, prosecution, conviction, fine, or confiscation; a bribe offer or attempted bribe; political pressure that produces no described injury; corruption creating only a risk of future harm; intended chaos or influence when no harm is described as occurring; harm caused by an unrelated event; or the general assumption that corruption harms taxpayers, democracy, society, or public trust.</p>
         <p class="meta">A clearly reported allegation can establish victim visibility even when the accused denies it. Conviction or proof is not required. However, the alleged harm must still be explicit. For this single-label variable, use <span class="tag">concrete_victim</span> when both a concrete victim and broader institutional harm are explicitly visible. Use <span class="tag">institutional_societal_victim</span> when only broad institutional or societal harm is visible.</p>
-        <p class="meta"><b>Examples:</b> "He embezzled BGN 10 million from the company" = <span class="tag">concrete_victim</span>. "Money was collected through the racketeering of businesspeople" = <span class="tag">concrete_victim</span>. "The scheme undermined the credibility and legitimacy of Parliament" = <span class="tag">institutional_societal_victim</span>. "The couple committed tax fraud and later paid EUR 2.3 million to the tax authorities" = <span class="tag">no_victim</span> unless the article explicitly says the state, public finances, or taxpayers suffered harm. "The official attempted to bribe another official" = <span class="tag">no_victim</span> unless someone is explicitly described as harmed, coerced, or deprived of something. "Passengers were harmed in an accident; the article separately mentions an old corruption charge" = <span class="tag">no_victim</span>.</p>
+        <p class="meta"><b>Examples:</b> "He embezzled BGN 10 million from the company" = <span class="tag">concrete_victim</span>. "The clients did not receive any of the settlement money" = <span class="tag">concrete_victim</span>. "The scheme undermined Parliament's credibility" = <span class="tag">institutional_societal_victim</span>. "Billions in state money were stolen" = <span class="tag">institutional_societal_victim</span>. "The couple committed tax fraud and later paid EUR 2.3 million to the tax authorities" = <span class="tag">no_victim</span> unless state loss is explicit. "Corruption kills" = <span class="tag">no_victim</span> if no person, group, or public interest is identified as suffering. "The operation was intended to cause chaos" = <span class="tag">no_victim</span> unless the article says chaos or resulting harm occurred.</p>
       </div>
 
       <div class="definition">
         <h3>Corruption frame</h3>
-        <p>How is the corruption problem represented?</p>
+        <p><b>Question:</b> At what level does the article primarily represent the corruption problem?</p>
+        <p>Judge the dominant explanation and emphasis. Do not classify an article as individualized merely because it names a person. Do not classify it as systemic merely because several people, institutions, or offenses are mentioned.</p>
         <ul>
-          <li><span class="tag">individualized</span> Centered on named or identifiable actors, personal misconduct, accusations, trials, resignations, or scandal episodes.</li>
-          <li><span class="tag">systemic</span> Centered on institutional dysfunction, state capture, clientelism, rule-of-law conflict, democratic backsliding, recurring abuse, or corruption as a governance pattern.</li>
-          <li><span class="tag">other_or_mixed</span> Both frames are equally central, or the article is mainly procedural, sectoral, technical, election-finance-specific, or otherwise outside the two-way distinction.</li>
+          <li><span class="tag">individualized</span> Principally centered on identifiable actors and a specific episode: personal misconduct, accusations or investigations, arrests, charges, trials, convictions, sentences, resignations, or a particular bribery, fraud, embezzlement, or conflict-of-interest scandal. Several individual defendants can still be individualized.</li>
+          <li><span class="tag">systemic</span> Principally represents corruption as a broader governance or institutional pattern: state capture, entrenched clientelism, recurring institutional abuse, systemic impunity, rule-of-law breakdown, democratic backsliding, institutionalized protection of corrupt actors, or corruption embedded across government, business, police, courts, or public administration.</li>
+          <li><span class="tag">other_or_mixed</span> Individualized and systemic framing are roughly balanced; corruption is incidental or background; the article is mainly about an unrelated event; the piece is mainly procedural, administrative, legal, technical, election-finance-specific, a roundup of unrelated cases, cultural commentary, fiction, entertainment, or otherwise outside the two-way distinction.</li>
           <li><span class="tag">unclear</span> Not enough information to classify the frame.</li>
         </ul>
+        <p class="meta"><b>Decision order:</b> If corruption is incidental, mainly procedural or technical, or balanced between individualized and systemic framing, code <span class="tag">other_or_mixed</span>. Otherwise, if the central explanation is institutional dysfunction or a recurring governance pattern, code <span class="tag">systemic</span>. Otherwise, if it centers on specific actors and a particular scandal or case, code <span class="tag">individualized</span>.</p>
       </div>
 
       <div class="definition">
         <h3>Case location</h3>
-        <p>Where is the corruption case primarily located?</p>
+        <p><b>Question:</b> Where is the main corruption case located relative to the publication country?</p>
+        <p>Use the location of the corruption case, not the article's source agency, quoted speaker, court reporting location, or unrelated main event.</p>
         <ul>
-          <li><span class="tag">domestic</span> The case mainly concerns the publication country or domestic actors/institutions.</li>
-          <li><span class="tag">abroad</span> The case mainly concerns another country, foreign actors, foreign institutions, offshore schemes, sanctions, or cross-border probes centered elsewhere.</li>
-          <li><span class="tag">unclear</span> Location cannot be determined.</li>
+          <li><span class="tag">domestic</span> The principal corruption case concerns the publication country, domestic politicians, companies, institutions, public contracts or funds, domestic misconduct involving foreign or EU money, a domestic actor using offshore accounts, or foreign sanctions imposed because of corruption centered in the publication country.</li>
+          <li><span class="tag">abroad</span> The principal corruption case concerns another country, foreign actors or institutions, a foreign government or public contract, an offshore or cross-border scheme whose main center is elsewhere, or foreign sanctions or investigations centered on foreign conduct.</li>
+          <li><span class="tag">unclear</span> No principal location can be determined, including cases with several equally central countries and no identifiable center.</li>
         </ul>
-        <p class="meta">EU funds misused domestically still count as domestic. A binary abroad-case variable is derived automatically from this field.</p>
+        <p class="meta"><b>Decision order:</b> Identify the principal corruption case. Identify where its main actors, institutions, conduct, or investigation are centered. Compare that location with the publication country. EU funds misused domestically still count as domestic. A binary abroad-case variable is derived automatically from this field.</p>
       </div>
 
       <div class="definition">
         <h3>Accused actor visibility</h3>
-        <p>Is an actor represented as responsible for or participating in the corruption discussed?</p>
+        <p><b>Question:</b> Does the article identify an actor as responsible for or participating in the corruption?</p>
+        <p>Count only actors linked to the corruption. Do not count people or organizations accused solely of unrelated misconduct. An allegation is sufficient; conviction is not required.</p>
         <ul>
           <li><span class="tag">no_accused_actor</span> Corruption is discussed, but no alleged perpetrator or participant is identified.</li>
-          <li><span class="tag">individual_actor</span> A person or officeholder is accused, investigated, charged, convicted, or explicitly alleged to have participated in the corruption.</li>
-          <li><span class="tag">organizational_or_institutional_actor</span> An organization or institution is explicitly alleged to have participated in, enabled, financed, directed, or concealed the corruption.</li>
-          <li><span class="tag">both_individual_and_organizational</span> Both individual and organizational alleged participants are visible.</li>
-          <li><span class="tag">unclear</span> There is insufficient information to determine actor visibility.</li>
+          <li><span class="tag">individual_actor</span> At least one person or officeholder is accused, investigated, charged, convicted, sanctioned for their own conduct, or explicitly alleged to have committed or participated in the corruption. Several accused people still count as <span class="tag">individual_actor</span>, not as an organizational label.</li>
+          <li><span class="tag">organizational_or_institutional_actor</span> An organization or institution is explicitly alleged to have acted as a participant by carrying out, directing, coordinating, financing, enabling, facilitating, concealing, or systematically protecting the corruption.</li>
+          <li><span class="tag">both_individual_and_organizational</span> At least one individual is explicitly accused of corruption and at least one organization or institution is explicitly accused of its own participation.</li>
+          <li><span class="tag">unclear</span> The wording is too ambiguous to determine whether the alleged participant is a person, an organization, or neither.</li>
         </ul>
-        <p class="meta">Do not count an organization merely because it is owned by, controlled by, connected to, or derivatively sanctioned through an accused person. A sanction counts only when the article alleges the organization's own participation in corruption. Such organizations can be recorded separately as linked or sanctioned entities, but they do not affect accused actor visibility. A binary accused-actor-visible variable is derived automatically from this field.</p>
+        <p class="meta"><b>Do not count:</b> victims, witnesses, whistleblowers, investigators, prosecutors, courts, regulators, organizations that merely employ an accused person, actors that merely benefited from corruption without an allegation of participation, vague references such as "they" or "political forces", or actors accused only of unrelated offenses.</p>
+        <p class="meta">Do not count an organization merely because the accused person owns, controls, leads, or works for it; it received a contract or other benefit; it appears in the same investigation; corrupt conduct occurred on its premises; it is the accused person's employer; it is a victim; or it was derivatively sanctioned because of its connection to an accused person. A sanction counts only when the article alleges the organization's own corrupt conduct or participation. Conduct by an organization's leader does not automatically become organizational conduct.</p>
+        <p class="meta"><b>Decision order:</b> List only actors accused of participating in the corruption. Remove victims, witnesses, investigators, regulators, and unrelated accused actors. Mark whether at least one accused participant is an individual and whether at least one accused participant is an organization acting in its own capacity. A binary accused-actor-visible variable is derived automatically from this field.</p>
       </div>
     </aside>
 
