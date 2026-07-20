@@ -240,16 +240,20 @@ Labels:
   enabling/facilitating it, concealing it, or systematically protecting corrupt
   participants. Qualifying actors may include a party, company, ministry,
   agency, police unit, court, government, or clearly defined organized group.
+  The article must contain a sentence or direct statement in which the
+  organization itself is accused, investigated, charged, or described as
+  carrying out, financing, directing, enabling, or concealing corruption.
   Do not count an organization merely because the accused person owns, controls,
-  leads, or works for it; it received a contract or other benefit; it appears in
-  the same investigation; corrupt conduct occurred on its premises; it is the
-  accused person's employer; it is a victim; or it was derivatively sanctioned
-  because of its connection to an accused person. A sanction counts only when
-  the article alleges the organization's own corrupt conduct or participation.
-  Conduct by an organization's leader does not automatically become
-  organizational conduct. Count the organization only when the article
-  attributes the conduct to the organization or says the leader acted on its
-  behalf.
+  leads, or works for it; because an employee, leader, owner, subsidiary,
+  member, or associate is accused; because it received a contract or other
+  benefit; because it appears in the same investigation; because corrupt conduct
+  occurred on its premises; because it is the accused person's employer; because
+  it is a victim; or because it was derivatively sanctioned due to its
+  connection to an accused person. A sanction counts only when the article
+  alleges the organization's own corrupt conduct or participation. Conduct by an
+  organization's leader does not automatically become organizational conduct.
+  Count the organization only when the article attributes the conduct to the
+  organization or says the leader acted on its behalf.
 - both_individual_and_organizational: Use when at least one individual is
   explicitly accused of corruption and at least one organization or institution
   is explicitly accused of its own participation. Both requirements must be
@@ -475,7 +479,7 @@ ABROAD_CASE = ClassifierSpec(
 
 ACCUSED_ACTOR = ClassifierSpec(
     name="accused_actor",
-    prompt_version="accused_actor_zero_shot_v3",
+    prompt_version="accused_actor_zero_shot_v4",
     default_output_name="accused_actor_labels.csv.gz",
     result_columns=[
         "accused_actor_visibility",

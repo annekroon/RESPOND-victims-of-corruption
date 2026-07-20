@@ -1,4 +1,4 @@
-"""Run all GPT content-category coders on one validation/sample file."""
+"""Run all LLM content-category coders on one validation/sample file."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ CLASSIFIER_SCRIPTS = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run all zero-shot GPT content coders on a CSV/CSV.GZ sample."
+        description="Run all zero-shot LLM content coders on a CSV/CSV.GZ sample."
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
