@@ -51,7 +51,17 @@ Given publication_country and article_text, assign exactly one label for each
 variable requested by the task. Use only information stated in the article. Do
 not use outside knowledge. Code how the article represents the case, not whether
 its allegations are true. A clearly reported allegation counts even when denied,
-disputed, unproven, or followed by an acquittal.
+disputed, unproven, politically motivated, dismissed, or followed by an
+acquittal.
+
+Important distinction:
+- corruption_frame measures what the article is mainly about.
+- accused_actor_visibility records every type of corruption participant
+  explicitly visible, even if that participant is secondary.
+
+Therefore, an article can have an individualized frame and both individual and
+organizational accused actors. Do not choose actor visibility based on which
+actor dominates the article; actor visibility records presence.
 
 Do not treat every crime, controversy, or harmful event in the article as
 corruption-related. First isolate the corruption allegation or corruption case.
@@ -76,6 +86,16 @@ There must be a direct connection between the corruption, a described loss,
 injury, deprivation, or adverse treatment, and an identifiable victim or broad
 public interest. Do not infer victimhood merely from the offense.
 
+Mandatory evidence test: before coding a victim, find textual evidence for all
+three elements: A) a person, group, organization, institution, or public
+interest; B) a realized loss, injury, deprivation, or adverse treatment; and C)
+a direct connection between that harm and the corruption. If any element is
+missing or must be inferred, code no_victim.
+
+An allegation that harm occurred is sufficient. The harm does not have to be
+proven. However, intended, possible, hypothetical, or future harm is not
+sufficient unless the article says the harm actually occurred.
+
 Labels:
 - no_victim: No person, group, organization, institution, or public interest is
   explicitly described as suffering corruption-related harm. Use this when
@@ -89,8 +109,13 @@ Labels:
   influence an election, or undermine an institution but the article does not
   say the harm occurred; or a person is harmed by an accident, murder,
   repression, prosecution, or another event not directly connected to the
-  corruption. Do not infer that taxpayers, democracy, society, or public trust
-  are victims simply because corruption normally affects them.
+  corruption; an institution is said to be "hit", "affected", "shaken",
+  criticized, or embarrassed without a specific loss of trust, legitimacy,
+  money, independence, or capacity; or a slogan says "corruption kills" without
+  identifying who or what was harmed. Do not infer that taxpayers, democracy,
+  society, or public trust are victims simply because corruption normally
+  affects them. If the article does not provide a clear corruption-to-harm link,
+  choose no_victim.
 - concrete_victim: The article explicitly describes a specific or identifiable
   person, group, community, company, association, or similar concrete entity as
   suffering direct corruption-related harm. Qualifying harm includes money or
@@ -156,7 +181,9 @@ Labels:
   accusations or investigations, arrests, charges, trials, convictions,
   sentences, resignations, or a particular bribery, fraud, embezzlement, or
   conflict-of-interest scandal. A case involving several individual defendants
-  can still be individualized.
+  can still be individualized. An article can remain individualized even when a
+  company is also accused, the case belongs to a larger corruption scandal, or
+  systemic problems are briefly mentioned as background.
 - systemic: The article principally represents corruption as a broader
   governance or institutional pattern, including state capture, entrenched
   clientelism, recurring institutional abuse, systemic impunity, rule-of-law
@@ -182,6 +209,12 @@ or balanced between individualized and systemic framing, code other_or_mixed.
 Otherwise, if the central explanation is institutional dysfunction or a
 recurring governance pattern, code systemic. Otherwise, if it centers on
 specific actors and a particular scandal or case, code individualized.
+
+Frame examples: a missing-plane article briefly mentioning an old corruption
+charge = other_or_mixed. A legal article divided between one person's fraud,
+organizational control failures, and technical contracting rules =
+other_or_mixed. An article mainly about one official's conviction, with a wider
+scandal as background = individualized.
 
 3. Case location
 
@@ -212,13 +245,28 @@ source does not determine location.
 
 4. Accused actor visibility
 
-Question: Does the article identify an actor as responsible for or participating
-in the corruption?
+Question: Does the article identify an individual or organization as responsible
+for or participating in the corruption?
 
 Count only actors linked to the corruption. Do not count people or
 organizations accused solely of unrelated misconduct. An allegation is
 sufficient. Conviction is not required. Actors still count if allegations are
 denied, charges are dropped, or they are later acquitted.
+
+Mandatory two-test method. Answer these independently:
+
+Individual test: Is there an exact passage accusing a person, officeholder, or
+identifiable group of people of participating in the corruption?
+
+Organization test: Is there a separate exact passage accusing an organization or
+institution, acting in its own capacity, of participating in, directing,
+financing, enabling, or concealing the corruption?
+
+Map the answers mechanically:
+- Individual = No; Organization = No -> no_accused_actor
+- Individual = Yes; Organization = No -> individual_actor
+- Individual = No; Organization = Yes -> organizational_or_institutional_actor
+- Individual = Yes; Organization = Yes -> both_individual_and_organizational
 
 Labels:
 - no_accused_actor: Corruption is discussed but no perpetrator or participant is
@@ -231,8 +279,9 @@ Labels:
   investigated, charged, convicted, sanctioned for their own conduct, or
   explicitly alleged to have committed or participated in the corruption. The
   person need not be named. Clearly identified categories such as "six
-  provincial deputies", "former police officers", or "a ministry official"
-  count as individual actors. Several accused people still produce
+  provincial deputies", "former police officers", "company managers", "high-
+  ranking officials", or "a ministry official" count as individual actors.
+  Several accused people still satisfy only the individual test and produce
   individual_actor, not an organizational label.
 - organizational_or_institutional_actor: Use only when an organization or
   institution is explicitly alleged to have acted as a participant in the
@@ -240,7 +289,7 @@ Labels:
   enabling/facilitating it, concealing it, or systematically protecting corrupt
   participants. Qualifying actors may include a party, company, ministry,
   agency, police unit, court, government, or clearly defined organized group.
-  The article must contain a sentence or direct statement in which the
+  The article must contain a separate sentence or direct statement in which the
   organization itself is accused, investigated, charged, or described as
   carrying out, financing, directing, enabling, or concealing corruption.
   Do not count an organization merely because the accused person owns, controls,
@@ -248,12 +297,19 @@ Labels:
   member, or associate is accused; because it received a contract or other
   benefit; because it appears in the same investigation; because corrupt conduct
   occurred on its premises; because it is the accused person's employer; because
-  it is a victim; or because it was derivatively sanctioned due to its
-  connection to an accused person. A sanction counts only when the article
-  alleges the organization's own corrupt conduct or participation. Conduct by an
-  organization's leader does not automatically become organizational conduct.
-  Count the organization only when the article attributes the conduct to the
-  organization or says the leader acted on its behalf.
+  it is a victim, investigator, regulator, court, or employer; because it was
+  derivatively sanctioned due to its connection to an accused person; because an
+  employee acted corruptly without the article attributing the conduct to the
+  organization; or because a subsidiary/parent organization is accused and the
+  allegation is not separately transferred. A sanction counts only when the
+  article alleges the organization's own corrupt conduct or participation.
+  Conduct by an organization's owner, employee, or leader becomes organizational
+  conduct only when the article says the organization participated or the person
+  acted on its behalf. A clearly defined organized group can count as
+  organizational only when the article attributes coordinated corrupt conduct to
+  the group. Vague expressions such as "they", "certain circles", "political
+  forces", "organized crime", or "extremist groups" do not count without an
+  identifiable collective actor.
 - both_individual_and_organizational: Use when at least one individual is
   explicitly accused of corruption and at least one organization or institution
   is explicitly accused of its own participation. Both requirements must be
@@ -273,15 +329,23 @@ both_individual_and_organizational; genuinely ambiguous = unclear.
 Actor examples: A minister is investigated for accepting bribes and their party
 is merely mentioned = individual_actor. Six unnamed police officers are accused
 of collecting bribes = individual_actor. A company is owned by a sanctioned
-politician but is not accused of participating = do not count the company. A
-company allegedly paid bribes through its accounts =
-organizational_or_institutional_actor, or both if individuals are also accused.
-A government is explicitly accused of concealing a procurement scheme, and a
-minister is accused of directing it = both_individual_and_organizational. A
-party benefited from election irregularities but is not accused of organizing
-them = do not count the party. An official is accused of murder in an article
-that separately mentions corruption = do not count the murder accusation as
-corruption actor visibility.
+politician but is not accused of participating = individual_actor if the
+politician is accused and do not count the company. A company paid bribes and
+its director approved them = both_individual_and_organizational. A party
+benefited from election irregularities but is not accused of organizing them =
+do not count the party. A law firm's chair stole client funds, and the article
+blames only the chair = individual_actor. A law firm's chair stole client funds,
+and the article explicitly attributes responsibility and failed concealment to
+the firm = both_individual_and_organizational. A president is accused of
+corruption and a company is merely the victim = individual_actor.
+
+Final validation before returning labels: Victim: can I identify an explicit
+corruption-related harm and its victim? If no, code no_victim. Frame: am I
+coding the article's dominant focus rather than reacting to a named actor or
+institution? Location: am I locating the corruption case rather than the
+article's source? Actors: can I cite separate evidence for the individual test
+and organization test? If organizational evidence depends only on ownership,
+employment, benefit, or association, the organization test is No.
 """.strip()
 
 
@@ -435,7 +499,7 @@ def normalize_accused_actor(parsed: dict) -> dict:
 
 VICTIM_VISIBILITY = ClassifierSpec(
     name="victim_visibility",
-    prompt_version="victim_visibility_zero_shot_v3",
+    prompt_version="victim_visibility_zero_shot_v4",
     default_output_name="victim_visibility_labels.csv.gz",
     result_columns=[
         "victim_visibility",
@@ -450,7 +514,7 @@ VICTIM_VISIBILITY = ClassifierSpec(
 
 CORRUPTION_FRAME = ClassifierSpec(
     name="corruption_frame",
-    prompt_version="corruption_frame_zero_shot_v2",
+    prompt_version="corruption_frame_zero_shot_v3",
     default_output_name="corruption_frame_labels.csv.gz",
     result_columns=[
         "corruption_frame",
@@ -464,7 +528,7 @@ CORRUPTION_FRAME = ClassifierSpec(
 
 ABROAD_CASE = ClassifierSpec(
     name="abroad_case",
-    prompt_version="abroad_case_zero_shot_v2",
+    prompt_version="abroad_case_zero_shot_v3",
     default_output_name="abroad_case_labels.csv.gz",
     result_columns=[
         "case_location",
@@ -479,7 +543,7 @@ ABROAD_CASE = ClassifierSpec(
 
 ACCUSED_ACTOR = ClassifierSpec(
     name="accused_actor",
-    prompt_version="accused_actor_zero_shot_v4",
+    prompt_version="accused_actor_zero_shot_v5",
     default_output_name="accused_actor_labels.csv.gz",
     result_columns=[
         "accused_actor_visibility",

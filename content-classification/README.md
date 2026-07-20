@@ -34,10 +34,10 @@ The current codebook prompt versions are:
 
 | Variable | Prompt version |
 |---|---|
-| `victim_visibility` | `victim_visibility_zero_shot_v3` |
-| `corruption_frame` | `corruption_frame_zero_shot_v2` |
-| `case_location` / `abroad_case` | `abroad_case_zero_shot_v2` |
-| `accused_actor_visibility` | `accused_actor_zero_shot_v4` |
+| `victim_visibility` | `victim_visibility_zero_shot_v4` |
+| `corruption_frame` | `corruption_frame_zero_shot_v3` |
+| `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
+| `accused_actor_visibility` | `accused_actor_zero_shot_v5` |
 
 These versions implement the stricter rule that the model must first isolate
 the corruption allegation/case, use only information stated in the article, and
@@ -47,13 +47,16 @@ should be treated as pilot outputs and regenerated before comparison with human
 coding.
 
 For `accused_actor_visibility`, the finalized organization rule is deliberately
-narrow: an organizational actor requires a sentence or direct statement in which
-the organization itself is accused, investigated, charged, or described as
-carrying out, financing, directing, enabling, or concealing corruption. An
-organization does not count merely because its employee, leader, owner,
-subsidiary, member, or associate is accused. Human annotations made before this
-rule was finalized, especially `both_individual_and_organizational` labels,
-should be reviewed before being treated as gold-standard validation labels.
+narrow and uses a mandatory two-test method. First, identify whether there is an
+exact passage accusing a person, officeholder, or identifiable group of people
+of participating in the corruption. Second, identify whether there is a separate
+exact passage accusing an organization or institution, acting in its own
+capacity, of participating in, directing, financing, enabling, or concealing the
+corruption. An organization does not count merely because its employee, leader,
+owner, subsidiary, member, or associate is accused, or because it benefited from
+or was connected to corruption. Human annotations made before this rule was
+finalized, especially `both_individual_and_organizational` labels, should be
+reviewed before being treated as gold-standard validation labels.
 
 ## Inputs
 
@@ -99,14 +102,14 @@ This writes one GPT-labelled file per content variable and keeps JSONL audit
 logs with prompts and raw model responses in the same output folder.
 
 To rerun all translated country-level codebook samples with the frozen prompts
-using Claude Sonnet 4.6, write the outputs to a new folder so old pilot labels
-remain auditable:
+using `gpt-5.1`, write the outputs to a new folder so old pilot labels remain
+auditable:
 
 ```bash
 nohup bash -c '
 set -e
 CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
-LLM_OUT_DIR="$CODEBOOK_DIR/claude_sonnet_46_test_labels_v1"
+LLM_OUT_DIR="$CODEBOOK_DIR/gpt51_test_labels_v4_codebook"
 mkdir -p "$LLM_OUT_DIR"
 shopt -s nullglob
 FILES=("$CODEBOOK_DIR"/*_content_codebook_validation_n12_english.csv)
@@ -116,24 +119,24 @@ if [ ${#FILES[@]} -eq 0 ]; then
 fi
 for FILE in "${FILES[@]}"; do
   COUNTRY=$(basename "$FILE" _content_codebook_validation_n12_english.csv)
-  echo "Running Claude Sonnet 4.6 content coding for $COUNTRY"
+  echo "Running GPT-5.1 content coding for $COUNTRY"
   python3 content-classification/scripts/classify_all_content_categories.py \
     --input "$FILE" \
     --output-dir "$LLM_OUT_DIR/$COUNTRY" \
-    --model claude-sonnet-4.6 \
+    --model gpt-5.1 \
     --save-every 2
 done
 echo "Done."
-' > content_claude_sonnet_46_codebook_validation_v1.log 2>&1 &
+' > content_gpt51_codebook_validation_v4_codebook.log 2>&1 &
 ```
 
 Monitor with:
 
 ```bash
-tail -f content_claude_sonnet_46_codebook_validation_v1.log
+tail -f content_gpt51_codebook_validation_v4_codebook.log
 ```
 
-Compare the regenerated GPT labels against the human-coded countries currently
+Compare the regenerated LLM labels against the human-coded countries currently
 available:
 
 ```bash
@@ -141,10 +144,10 @@ CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/politica
 
 python3 content-classification/scripts/evaluate_codebook_gpt_against_human.py \
   --codebook-dir "$CODEBOOK_DIR" \
-  --gpt-dir "$CODEBOOK_DIR/claude_sonnet_46_test_labels_v1" \
+  --gpt-dir "$CODEBOOK_DIR/gpt51_test_labels_v4_codebook" \
   --countries Bulgaria France Hungary Serbia \
   --coder-id anne \
-  --output-prefix first4_claude_sonnet_46_v1
+  --output-prefix first4_gpt51_v4_codebook
 ```
 
 After more countries are human-coded, add them to `--countries` and rerun the
