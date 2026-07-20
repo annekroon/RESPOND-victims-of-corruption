@@ -160,24 +160,52 @@ training set should be rebuilt from scratch:
 
 ### Next Phase: Content-Codebook Validation Samples
 
-After a country has been scored by `scripts/06_train_final_classifier.py`, use
-the sampled classified output to begin codebook development for article-level
+After all countries have been scored by `scripts/06_train_final_classifier.py`,
+use the classified outputs to begin codebook development for article-level
 content coding. This step does not alter the political-corruption classifier.
 
-For example, to sample 108 French articles predicted to be political corruption:
+To sample 108 total articles, 12 per country, from articles predicted to be
+political corruption:
 
 ```bash
 python3 political_classifier/scripts/10_sample_content_codebook_validation.py \
-  --country France \
-  --n 108 \
-  --seed 42
+  --all-countries \
+  --n-per-country 12 \
+  --seed 42 \
+  --output-name content_codebook_validation_sample_108_12_per_country.csv
 ```
 
 This writes:
 
 ```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/France_content_codebook_validation_n108.csv
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/France_content_codebook_validation_summary.csv
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/content_codebook_validation_sample_108_12_per_country.csv
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation/content_codebook_validation_sample_108_12_per_country_summary.csv
+```
+
+Translate the sample before annotation:
+
+```bash
+CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
+
+python3 content-classification/scripts/translate_validation_sample.py \
+  --input "$CODEBOOK_DIR/content_codebook_validation_sample_108_12_per_country.csv" \
+  --output "$CODEBOOK_DIR/content_codebook_validation_sample_108_12_per_country_english.csv" \
+  --text-column article_text \
+  --max-chars 8000 \
+  --save-every 5
+```
+
+Start the annotation app on the translated sample. The app filters by country
+and saves after each row to a coder-specific output file:
+
+```bash
+CONTENT_ANNOTATION_INPUT="$CODEBOOK_DIR/content_codebook_validation_sample_108_12_per_country_english.csv" \
+CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$CODEBOOK_DIR/content_codebook_validation_sample_108_12_per_country_english_{coder_id}.csv" \
+CONTENT_ANNOTATION_PASSWORD="RESPOND-coding" \
+CONTENT_ANNOTATION_SECRET_KEY="RESPOND-validation-sample-coding" \
+CONTENT_ANNOTATION_HOST=0.0.0.0 \
+CONTENT_ANNOTATION_PORT=8502 \
+python3 content-classification/tools/annotation_flask_app.py
 ```
 
 ### 1. Clean And Dedupe

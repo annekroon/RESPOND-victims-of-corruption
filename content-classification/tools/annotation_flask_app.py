@@ -266,11 +266,13 @@ def index():
     indices = filtered_indices(data)
     pos = max(0, min(int(request.args.get("pos", 0)), max(len(indices) - 1, 0)))
     reviewed = int(reviewed_mask(data).sum())
+    all_done = len(data) > 0 and reviewed == len(data)
     countries = sorted(data["country"].dropna().astype(str).unique()) if "country" in data.columns else []
     if not indices:
         return render_template_string(
             APP_TEMPLATE,
             no_rows=True,
+            all_done=all_done,
             total=len(data),
             reviewed=reviewed,
             countries=countries,
@@ -279,6 +281,8 @@ def index():
             coder_first_name=coder_first_name,
             code_session_id=code_session_id,
             output_path=output_path_for_coder(coder_id),
+            review_all_url=url_for("index", status="all", pos=0),
+            review_done_url=url_for("index", status="reviewed", pos=0),
         )
     row_index = indices[pos]
     row = data.loc[row_index]
@@ -286,6 +290,7 @@ def index():
     return render_template_string(
         APP_TEMPLATE,
         no_rows=False,
+        all_done=all_done,
         row=row,
         translated_text=translated_text,
         row_index=row_index,
@@ -307,6 +312,8 @@ def index():
         case_location_options=CASE_LOCATION_OPTIONS,
         accused_options=ACCUSED_OPTIONS,
         value=value,
+        review_all_url=url_for("index", status="all", pos=0),
+        review_done_url=url_for("index", status="reviewed", pos=0),
     )
 
 
@@ -493,7 +500,26 @@ textarea { width: 100%; min-height: 96px; }
 </header>
 <main>
 {% if no_rows %}
-  <div class="panel">No rows match the current filters.</div>
+  {% if all_done %}
+  <div class="panel">
+    <h2>All done</h2>
+    <p>You have coded all {{ total }} articles in this file. Nice, tidy little milestone.</p>
+    <p class="meta">Your annotations have been saved to {{ output_path }}.</p>
+    <div class="actions">
+      <a class="button" href="{{ review_all_url }}">Review all rows</a>
+      <a class="button ghost" href="{{ review_done_url }}">Review coded rows</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel">
+    <h2>No rows match the current filters</h2>
+    <p class="meta">Try changing the status filter to <b>all</b>, clearing the search field, or selecting another country.</p>
+    <div class="actions">
+      <a class="button" href="{{ review_all_url }}">Show all rows</a>
+      <a class="button ghost" href="{{ review_done_url }}">Show coded rows</a>
+    </div>
+  </div>
+  {% endif %}
 {% else %}
   <div class="layout">
     <aside class="panel codebook">
@@ -502,14 +528,18 @@ textarea { width: 100%; min-height: 96px; }
 
       <div class="definition">
         <h3>Victim visibility</h3>
-        <p>Who or what does the article represent as harmed by corruption?</p>
+        <p><b>Question:</b> Who or what does the article explicitly represent as harmed by the corruption being discussed?</p>
+        <p>Code only harm that the article directly connects to corruption. Do not code every person, organization, or public interest harmed elsewhere in the story.</p>
         <ul>
-          <li><span class="tag">no_victim</span> The article does not represent anyone or anything as harmed by the corruption case.</li>
-          <li><span class="tag">concrete_victim</span> The article represents identifiable people or groups as harmed by corruption, such as citizens, voters, taxpayers, residents, patients, students, workers, firms, or communities.</li>
-          <li><span class="tag">institutional_societal_victim</span> The article represents harm from corruption at the level of democracy, rule of law, public trust, state capacity, institutions, society, the economy, development, or EU accession.</li>
+          <li><span class="tag">no_victim</span> No person, group, organization, institution, or public interest is explicitly described as suffering harm from the corruption.</li>
+          <li><span class="tag">concrete_victim</span> An identifiable person, group, community, company, association, or other concrete entity is explicitly described as losing money, property, rights, opportunities, services, or otherwise suffering because of the corruption. A person explicitly subjected to corrupt extortion or a coercive bribe demand may also count.</li>
+          <li><span class="tag">institutional_societal_victim</span> The article explicitly states that corruption harms democracy, the rule of law, public trust, institutional legitimacy, state capacity, public finances, society, the economy, development, or another broad public interest.</li>
           <li><span class="tag">unclear</span> The article is too incomplete, ambiguous, or translation-problematic to decide.</li>
         </ul>
-        <p class="meta">Do not code every harmed person or institution mentioned in the story. Code the victim only when the article links the harm to corruption.</p>
+        <p class="meta"><b>Decision rules:</b> First identify the corruption allegation or case. Look for an explicit connection between that corruption and harm. Identify who or what suffers that harm. Do not infer a victim merely from the type of offense.</p>
+        <p class="meta">The following do not automatically establish victimhood: the mention of bribery, fraud, embezzlement, money laundering, or tax evasion; the existence of public money or public institutions; repayment of money to tax authorities; an investigation, prosecution, conviction, fine, or confiscation; a bribe offer or attempted bribe; political pressure that produces no described injury; harm caused by an unrelated event in the same article; or the general assumption that corruption harms taxpayers or society.</p>
+        <p class="meta">A clearly reported allegation can establish victim visibility even when the accused denies it. Conviction or proof is not required. However, the alleged harm must still be explicit. For this single-label variable, use <span class="tag">concrete_victim</span> when both a concrete victim and broader institutional harm are explicitly visible. Use <span class="tag">institutional_societal_victim</span> when only broad institutional or societal harm is visible.</p>
+        <p class="meta"><b>Examples:</b> "He embezzled BGN 10 million from the company" = <span class="tag">concrete_victim</span>. "Money was collected through the racketeering of businesspeople" = <span class="tag">concrete_victim</span>. "The scheme undermined the credibility and legitimacy of Parliament" = <span class="tag">institutional_societal_victim</span>. "The couple committed tax fraud and later paid EUR 2.3 million to the tax authorities" = <span class="tag">no_victim</span> unless the article explicitly says the state, public finances, or taxpayers suffered harm. "The official attempted to bribe another official" = <span class="tag">no_victim</span> unless someone is explicitly described as harmed, coerced, or deprived of something. "Passengers were harmed in an accident; the article separately mentions an old corruption charge" = <span class="tag">no_victim</span>.</p>
       </div>
 
       <div class="definition">
@@ -591,7 +621,7 @@ textarea { width: 100%; min-height: 96px; }
           <h2>Human Codes</h2>
           <div class="form-grid">
             <label>Victim visibility
-              <span class="field-help">Code who or what the article represents as harmed by corruption, not every harmed actor mentioned elsewhere in the story.</span>
+              <span class="field-help">Code only explicit harm directly connected to the corruption being discussed; do not infer victims from offense type or general assumptions.</span>
               <select name="human_victim_visibility" required>
                 {% for option in victim_options %}
                 <option value="{{ option }}" {% if value(row, "human_victim_visibility") == option %}selected{% endif %}>{{ option or "choose..." }}</option>

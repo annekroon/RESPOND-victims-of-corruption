@@ -10,8 +10,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import pandas as pd
-
 
 DEFAULT_PIPELINE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
@@ -19,13 +17,30 @@ DEFAULT_PIPELINE_DIR = Path(
 )
 DEFAULT_CLASSIFIED_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier" / "classified_country_files"
 DEFAULT_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "content_codebook_validation"
+DEFAULT_COUNTRIES = [
+    "Bulgaria",
+    "France",
+    "Hungary",
+    "Italy",
+    "Netherlands",
+    "Serbia",
+    "Sweden",
+    "Ukraine",
+    "United_Kingdom",
+]
 
 ANNOTATION_COLUMNS = [
     "human_victim_visibility",
-    "human_corruption_domain",
-    "human_case_scope",
-    "human_accused_actor_type",
+    "human_corruption_frame",
+    "human_case_location",
+    "human_abroad_case",
+    "human_accused_actor_visibility",
+    "human_accused_actor_visible",
     "human_notes",
+    "human_coder_id",
+    "human_coder_first_name",
+    "human_code_session_id",
+    "human_coded_at",
 ]
 
 
@@ -36,8 +51,26 @@ def parse_args() -> argparse.Namespace:
             "articles for content-codebook validation."
         )
     )
-    parser.add_argument("--country", default="France")
+    parser.add_argument("--country", default=None, help="Single country to sample.")
+    parser.add_argument(
+        "--countries",
+        nargs="+",
+        default=None,
+        help="Multiple countries to sample and combine. Defaults to all countries when --all-countries is used.",
+    )
+    parser.add_argument(
+        "--all-countries",
+        action="store_true",
+        help="Sample all project countries into one combined file.",
+    )
     parser.add_argument("--n", type=int, default=108)
+    parser.add_argument(
+        "--n-per-country",
+        type=int,
+        default=None,
+        help="Rows per country for combined samples. Overrides --n in multi-country mode.",
+    )
+    parser.add_argument("--output-name", default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--classified-dir", type=Path, default=DEFAULT_CLASSIFIED_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -72,6 +105,8 @@ def add_strata(data):
 
 def stratified_sample(data, n, seed):
     """Draw a broad sample across years and confidence bands."""
+    import pandas as pd
+
     if len(data) <= n:
         return data.sample(frac=1, random_state=seed).copy()
 
@@ -118,9 +153,10 @@ def stratified_sample(data, n, seed):
     return sample.reset_index(drop=True)
 
 
-def main() -> None:
-    args = parse_args()
-    input_path = args.classified_dir / f"{args.country}_classified.csv.gz"
+def sample_country(args: argparse.Namespace, country: str, n: int) -> pd.DataFrame:
+    import pandas as pd
+
+    input_path = args.classified_dir / f"{country}_classified.csv.gz"
     if not input_path.exists():
         raise FileNotFoundError(
             f"Missing classified country file: {input_path}\n"
@@ -140,8 +176,38 @@ def main() -> None:
         raise ValueError("No rows available for sampling.")
 
     data = add_strata(data)
-    sample = stratified_sample(data, args.n, args.seed)
-    sample.insert(0, "content_sample_id", [f"{args.country}_{i:04d}" for i in range(1, len(sample) + 1)])
+    sample = stratified_sample(data, n, args.seed)
+    sample.insert(0, "content_sample_id", [f"{country}_{i:04d}" for i in range(1, len(sample) + 1)])
+    return sample
+
+
+def selected_countries(args: argparse.Namespace) -> list[str]:
+    if args.all_countries:
+        return DEFAULT_COUNTRIES
+    if args.countries:
+        return args.countries
+    if args.country:
+        return [args.country]
+    return ["France"]
+
+
+def main() -> None:
+    args = parse_args()
+    import pandas as pd
+
+    countries = selected_countries(args)
+    multi_country = len(countries) > 1
+    n_per_country = args.n_per_country if args.n_per_country is not None else args.n
+
+    samples = []
+    for country in countries:
+        take_n = n_per_country if multi_country else args.n
+        samples.append(sample_country(args, country, take_n))
+
+    sample = pd.concat(samples, ignore_index=True)
+    sample = sample.sample(frac=1, random_state=args.seed).reset_index(drop=True)
+    if multi_country:
+        sample["content_sample_id"] = [f"CCV_{i:04d}" for i in range(1, len(sample) + 1)]
 
     for column in ANNOTATION_COLUMNS:
         if column not in sample.columns:
@@ -166,10 +232,20 @@ def main() -> None:
     output_columns = [column for column in output_columns if column in sample.columns]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = args.output_dir / f"{args.country}_content_codebook_validation_n{len(sample)}.csv"
+    if args.output_name:
+        output_name = args.output_name
+    elif multi_country:
+        output_name = f"content_codebook_validation_sample_{len(sample)}_total_{n_per_country}_per_country.csv"
+    else:
+        output_name = f"{countries[0]}_content_codebook_validation_n{len(sample)}.csv"
+    output_path = args.output_dir / output_name
     sample[output_columns].to_csv(output_path, index=False)
 
-    summary_path = args.output_dir / f"{args.country}_content_codebook_validation_summary.csv"
+    if output_path.name.endswith(".csv"):
+        summary_name = output_path.name.replace(".csv", "_summary.csv")
+    else:
+        summary_name = output_path.name + "_summary.csv"
+    summary_path = args.output_dir / summary_name
     summary = (
         sample.groupby(["country", "year", "probability_band"], dropna=False)
         .size()
@@ -181,6 +257,8 @@ def main() -> None:
     print(f"Saved summary: {summary_path}", flush=True)
     print("\nSample by probability band:", flush=True)
     print(sample["probability_band"].value_counts().to_string(), flush=True)
+    print("\nSample by country:", flush=True)
+    print(sample["country"].value_counts().sort_index().to_string(), flush=True)
     print("\nSample by year:", flush=True)
     print(sample["year"].value_counts().sort_index().to_string(), flush=True)
 

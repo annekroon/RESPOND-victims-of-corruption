@@ -18,6 +18,7 @@ substantive variables inside that corpus.
 | `scripts/classify_corruption_frame.py` | `corruption_frame` |
 | `scripts/classify_abroad_case.py` | `case_location`, `abroad_case` |
 | `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
+| `scripts/classify_all_content_categories.py` | convenience wrapper that runs all four GPT coders on one sample file |
 | `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
 | `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
 | `tools/annotation_flask_app.py` | Browser-based Flask app for manual coding with original and translated text |
@@ -56,6 +57,23 @@ or a single CSV/CSV.GZ file:
 
 Always run small pilots before launching the full corpus. From the repository
 root on `annecuda`:
+
+For a translated codebook-development sample, run all four content coders with:
+
+```bash
+CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
+
+python3 content-classification/scripts/classify_all_content_categories.py \
+  --input "$CODEBOOK_DIR/Bulgaria_content_codebook_validation_n12_english.csv" \
+  --output-dir "$CODEBOOK_DIR/gpt51_test_labels" \
+  --model gpt-5.1 \
+  --save-every 2
+```
+
+This writes one GPT-labelled file per content variable and keeps JSONL audit
+logs with prompts and raw model responses in the same output folder.
+
+You can also run individual coders, for example:
 
 ```bash
 python3 content-classification/scripts/classify_victim_visibility.py \

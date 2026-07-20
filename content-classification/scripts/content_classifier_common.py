@@ -56,10 +56,28 @@ KEEP_COLUMNS = {
     "word_count",
     "prob_political_corruption",
     "pred_political_corruption",
+    "content_sample_id",
+    "translated_text_en",
+    "translated_text",
+    "translation_notes",
+    "translation_confidence",
+    "translation_model",
+    "translation_error",
     "article_text",
     "combined_text",
     "title",
     "body",
+    "human_victim_visibility",
+    "human_corruption_frame",
+    "human_case_location",
+    "human_abroad_case",
+    "human_accused_actor_visibility",
+    "human_accused_actor_visible",
+    "human_notes",
+    "human_coder_id",
+    "human_coder_first_name",
+    "human_code_session_id",
+    "human_coded_at",
 }
 
 METADATA_COLUMNS = [
@@ -74,6 +92,10 @@ METADATA_COLUMNS = [
     "word_count",
     "prob_political_corruption",
     "pred_political_corruption",
+    "content_sample_id",
+    "translation_confidence",
+    "translation_model",
+    "translation_error",
 ]
 
 
@@ -129,6 +151,10 @@ def normalize_text(text: object) -> str:
 
 
 def choose_text(data):
+    if "translated_text_en" in data.columns:
+        return data["translated_text_en"]
+    if "translated_text" in data.columns:
+        return data["translated_text"]
     if "article_text" in data.columns:
         return data["article_text"]
     if "combined_text" in data.columns:
