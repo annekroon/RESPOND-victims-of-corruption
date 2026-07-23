@@ -609,6 +609,7 @@ Recommended paper set:
 | Method/descriptives | `tables/attention/latex/table_attention_corpus_construction_country_summary.tex` |
 | Main classifier validation | `tables/table_pc_classifier_comparison_main.tex` |
 | Main attention results | `figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png` |
+| Main/appendix attention summary | `tables/attention/latex/table_attention_country_summary.tex` |
 | Appendix classifier threshold check | `tables/table_pc_classifier_threshold_sweep_appendix.tex` |
 | Appendix country validation | `tables/table_pc_classifier_country_validation_appendix.tex` |
 | Appendix absolute volume | `figures/attention/political_corruption_absolute_volume_month_stacked.png` |
