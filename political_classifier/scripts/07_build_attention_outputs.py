@@ -53,6 +53,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    build_manifest = (
+        args.pipeline_dir
+        / "manuscript_tables"
+        / "manuscript_output_manifest.json"
+    )
+    build_manifest.unlink(missing_ok=True)
     if not args.skip_notebook:
         output = args.output
         output.parent.mkdir(parents=True, exist_ok=True)

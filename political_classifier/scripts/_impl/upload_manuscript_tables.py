@@ -9,6 +9,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import json
 import posixpath
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ DEFAULT_LOCAL_TABLE_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "political_corruption_pipeline/manuscript_tables"
 )
+DEFAULT_BUILD_MANIFEST = DEFAULT_LOCAL_TABLE_DIR / "manuscript_output_manifest.json"
 DEFAULT_RD_TABLE_DIR = posixpath.join(
     RD_BASE_DIR,
     "victims-of-corruption-paper",
@@ -58,6 +60,12 @@ def parse_args() -> argparse.Namespace:
             "generic table_classifier*.tex outputs."
         ),
     )
+    parser.add_argument(
+        "--build-manifest",
+        type=Path,
+        default=DEFAULT_BUILD_MANIFEST,
+        help="Fresh step-07 build manifest required before upload.",
+    )
     return parser.parse_args()
 
 
@@ -80,6 +88,21 @@ def upload_bytes(rd_path: str, data: bytes, content_type: str) -> None:
 def main() -> None:
     args = parse_args()
 
+    if not args.build_manifest.exists():
+        raise FileNotFoundError(
+            f"Build manifest not found: {args.build_manifest}. "
+            "Refusing to upload possibly stale tables. Run "
+            "political_classifier/scripts/07_build_attention_outputs.py first."
+        )
+    manifest = json.loads(args.build_manifest.read_text(encoding="utf-8"))
+    print(
+        "Validated step-07 build manifest: "
+        f"N={manifest['final_political_corruption_articles']:,}, "
+        f"threshold={manifest['selected_threshold']:.2f}, "
+        f"built={manifest['built_at_utc']}",
+        flush=True,
+    )
+
     if not args.local_table_dir.exists():
         raise FileNotFoundError(
             f"Local table directory does not exist: {args.local_table_dir}. "
@@ -100,7 +123,18 @@ def main() -> None:
         upload_bytes(rd_path, path.read_bytes(), "text/plain; charset=utf-8")
         print(f"Uploaded {path.name} -> {rd_path}", flush=True)
 
-    print(f"Done. Uploaded {len(table_paths)} file(s).", flush=True)
+    manifest_rd_path = rd_join(args.rd_table_dir, args.build_manifest.name)
+    upload_bytes(
+        manifest_rd_path,
+        args.build_manifest.read_bytes(),
+        "application/json",
+    )
+    print(
+        f"Uploaded {args.build_manifest.name} -> {manifest_rd_path}",
+        flush=True,
+    )
+
+    print(f"Done. Uploaded {len(table_paths) + 1} file(s).", flush=True)
 
 
 if __name__ == "__main__":

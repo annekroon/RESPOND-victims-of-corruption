@@ -7,8 +7,10 @@ tracked notebooks optional and prevents hand-edited manuscript numbers.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import numbers
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -44,6 +46,51 @@ def read_float_text(path: Path) -> float:
     if not path.exists():
         raise FileNotFoundError(path)
     return float(path.read_text(encoding="utf-8").strip())
+
+
+def cleaned_country_totals(pipeline_dir: Path, source_filtered):
+    """Return cleaned/deduplicated totals without requiring one specific file."""
+    import pandas as pd
+
+    if "input_rows" in source_filtered.columns:
+        return source_filtered[["country", "input_rows"]].rename(
+            columns={"input_rows": "total_articles"}
+        )
+
+    total_path = pipeline_dir / "denominator_country_total.csv"
+    if total_path.exists():
+        return read_required_csv(total_path)[["country", "total_articles"]]
+
+    for filename in [
+        "denominator_country_year.csv",
+        "denominator_country_month.csv",
+        "denominator_country_week.csv",
+    ]:
+        path = pipeline_dir / filename
+        if not path.exists():
+            continue
+        data = read_required_csv(path)
+        count_column = next(
+            (
+                column
+                for column in ["total_articles", "corruption_query_articles", "count", "n"]
+                if column in data.columns
+            ),
+            None,
+        )
+        if count_column is None or "country" not in data.columns:
+            continue
+        return (
+            data.groupby("country", dropna=False)[count_column]
+            .sum()
+            .reset_index(name="total_articles")
+        )
+
+    raise FileNotFoundError(
+        "Could not determine cleaned country totals. Expected input_rows in "
+        "source_inclusion/cleaned_source_filter_output_summary.csv or a "
+        "denominator_country_{total,year,month,week}.csv file."
+    )
 
 
 def model_label(row) -> str:
@@ -403,12 +450,12 @@ def classifier_tables(pipeline_dir: Path) -> list[Path]:
 def pipeline_counts(pipeline_dir: Path) -> dict[str, int | float]:
     import pandas as pd
 
-    cleaned = read_required_csv(pipeline_dir / "denominator_country_total.csv")
     source_filtered = read_required_csv(
         pipeline_dir
         / "source_inclusion"
         / "cleaned_source_filter_output_summary.csv"
     )
+    cleaned = cleaned_country_totals(pipeline_dir, source_filtered)
     classified = read_required_csv(
         pipeline_dir / "silver_classifier" / "classified_country_summary.csv"
     )
@@ -454,12 +501,12 @@ def pipeline_counts(pipeline_dir: Path) -> dict[str, int | float]:
 def corpus_construction_table(pipeline_dir: Path) -> list[Path]:
     import pandas as pd
 
-    cleaned = read_required_csv(pipeline_dir / "denominator_country_total.csv")
     source_filtered = read_required_csv(
         pipeline_dir
         / "source_inclusion"
         / "cleaned_source_filter_output_summary.csv"
     )
+    cleaned = cleaned_country_totals(pipeline_dir, source_filtered)
     classified = read_required_csv(
         pipeline_dir / "silver_classifier" / "classified_country_summary.csv"
     )
@@ -711,11 +758,37 @@ def write_pipeline_tikz(pipeline_dir: Path) -> Path:
     return path
 
 
+def write_build_manifest(pipeline_dir: Path) -> Path:
+    counts = pipeline_counts(pipeline_dir)
+    path = pipeline_dir / "manuscript_tables" / "manuscript_output_manifest.json"
+    payload = {
+        "built_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generator": "political_classifier/scripts/07_build_attention_outputs.py",
+        "raw_corruption_query_articles": counts["raw_query"],
+        "cleaned_corruption_query_articles": counts["cleaned_query"],
+        "source_filtered_query_articles": counts["source_filtered_query"],
+        "final_political_corruption_articles": counts["political_corruption"],
+        "total_news_articles": counts["total_news"],
+        "selected_threshold": counts["threshold"],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"Saved {path}", flush=True)
+    return path
+
+
 def main() -> None:
     args = parse_args()
+    manifest = (
+        args.pipeline_dir
+        / "manuscript_tables"
+        / "manuscript_output_manifest.json"
+    )
+    manifest.unlink(missing_ok=True)
     classifier_tables(args.pipeline_dir)
     corpus_construction_table(args.pipeline_dir)
     write_pipeline_tikz(args.pipeline_dir)
+    write_build_manifest(args.pipeline_dir)
 
 
 if __name__ == "__main__":
