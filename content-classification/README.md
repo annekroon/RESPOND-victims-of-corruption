@@ -61,7 +61,9 @@ table and expands `*_human_gpt_disagreements.csv` into an adjudication file. It
 retains translated/original article text, GPT evidence, reasoning, and
 confidence where available, classifies victim errors as a visibility-gate or
 victim-type disagreement, and adds blank adjudication fields for researcher
-review.
+review. Use `--variables victim_visibility` to evaluate a newly generated
+victim-only pilot without rerunning or copying the other three classifier
+outputs.
 
 For `accused_actor_visibility`, the finalized organization rule is deliberately
 narrow and uses a mandatory two-test method. Count only actors whom the article

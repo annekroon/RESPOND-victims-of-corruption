@@ -59,6 +59,13 @@ def parse_args() -> argparse.Namespace:
         default="anne",
         help="Coder suffix in files such as *_english_anne.csv.",
     )
+    parser.add_argument(
+        "--variables",
+        nargs="+",
+        choices=list(VARIABLES),
+        default=list(VARIABLES),
+        help="Evaluate only the selected variables. Defaults to all four.",
+    )
     parser.add_argument("--output-prefix", default="first4")
     return parser.parse_args()
 
@@ -101,7 +108,13 @@ def gpt_path(gpt_dir: Path, country: str, variable: str) -> Path:
     )
 
 
-def load_country_comparison(codebook_dir: Path, gpt_dir: Path, country: str, coder_id: str):
+def load_country_comparison(
+    codebook_dir: Path,
+    gpt_dir: Path,
+    country: str,
+    coder_id: str,
+    variables: dict[str, tuple[str, str]],
+):
     human_file = human_path(codebook_dir, country, coder_id)
     if not human_file.exists():
         raise FileNotFoundError(human_file)
@@ -112,13 +125,13 @@ def load_country_comparison(codebook_dir: Path, gpt_dir: Path, country: str, cod
         dict.fromkeys(
             keys
             + HUMAN_REVIEW_COLUMNS
-            + [value[0] for value in VARIABLES.values()]
+            + [value[0] for value in variables.values()]
         )
     )
     keep = [column for column in keep if column in human.columns]
     merged = human[keep].copy()
 
-    for variable, (_, gpt_column) in VARIABLES.items():
+    for variable, (_, gpt_column) in variables.items():
         path = gpt_path(gpt_dir, country, variable)
         if not path.exists():
             raise FileNotFoundError(path)
@@ -162,12 +175,12 @@ def load_country_comparison(codebook_dir: Path, gpt_dir: Path, country: str, cod
     return merged
 
 
-def evaluate(data):
+def evaluate(data, variables):
     import pandas as pd
 
     rows = []
     disagreements = []
-    for variable, (human_column, gpt_column) in VARIABLES.items():
+    for variable, (human_column, gpt_column) in variables.items():
         gpt_column = f"gpt_{gpt_column}"
         valid = data[[human_column, gpt_column]].copy()
         valid[human_column] = valid[human_column].map(normalize_label)
@@ -220,11 +233,11 @@ def evaluate(data):
     return summary, disagreement_df
 
 
-def confusion_table(data):
+def confusion_table(data, variables):
     import pandas as pd
 
     rows = []
-    for variable, (human_column, gpt_column) in VARIABLES.items():
+    for variable, (human_column, gpt_column) in variables.items():
         gpt_column = f"gpt_{gpt_column}"
         valid = data[[human_column, gpt_column]].copy()
         valid[human_column] = valid[human_column].map(normalize_label)
@@ -252,19 +265,28 @@ def main() -> None:
     import pandas as pd
 
     gpt_dir = args.gpt_dir or (args.codebook_dir / "gpt51_test_labels")
+    variables = {name: VARIABLES[name] for name in args.variables}
 
     frames = []
     for country in args.countries:
         print(f"Loading {country}", flush=True)
-        frames.append(load_country_comparison(args.codebook_dir, gpt_dir, country, args.coder_id))
+        frames.append(
+            load_country_comparison(
+                args.codebook_dir,
+                gpt_dir,
+                country,
+                args.coder_id,
+                variables,
+            )
+        )
 
     data = pd.concat(frames, ignore_index=True)
-    summary, disagreements = evaluate(data)
-    confusion = confusion_table(data)
+    summary, disagreements = evaluate(data, variables)
+    confusion = confusion_table(data, variables)
 
     country_summaries = []
     for country, country_df in data.groupby("country", dropna=False):
-        country_summary, _ = evaluate(country_df)
+        country_summary, _ = evaluate(country_df, variables)
         country_summary.insert(0, "country", country)
         country_summaries.append(country_summary)
     country_summary = pd.concat(country_summaries, ignore_index=True)
