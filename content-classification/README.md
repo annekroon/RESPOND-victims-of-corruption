@@ -34,7 +34,7 @@ The current codebook prompt versions are:
 
 | Variable | Prompt version |
 |---|---|
-| `victim_visibility` | `victim_visibility_zero_shot_v4` |
+| `victim_visibility` | `victim_visibility_zero_shot_v5` |
 | `corruption_frame` | `corruption_frame_zero_shot_v3` |
 | `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
 | `accused_actor_visibility` | `accused_actor_zero_shot_v6` |
@@ -45,6 +45,23 @@ avoid coding victims or actors that are linked only to unrelated harms or
 unrelated misconduct. Earlier GPT outputs generated with older prompt versions
 should be treated as pilot outputs and regenerated before comparison with human
 coding.
+
+For `victim_visibility`, version 5 uses a victim-specific prompt rather than
+sending the other three variables' instructions to that classifier. GPT first
+extracts the harm status, victim entity, harm evidence, and corruption-to-harm
+link. It then codes concrete and institutional/societal victim presence
+independently. The final label is derived mechanically as `no_victim`,
+`concrete_victim`, `institutional_societal_victim`,
+`both_concrete_and_institutional`, or `unclear`. This preserves cases in which
+both victim types are visible and prevents a positive label when the article
+describes only possible, intended, future, unrelated, or inferred harm.
+
+The agreement evaluator now writes an additional `*_human_gpt_confusion.csv`
+table and expands `*_human_gpt_disagreements.csv` into an adjudication file. It
+retains translated/original article text, GPT evidence, reasoning, and
+confidence where available, classifies victim errors as a visibility-gate or
+victim-type disagreement, and adds blank adjudication fields for researcher
+review.
 
 For `accused_actor_visibility`, the finalized organization rule is deliberately
 narrow and uses a mandatory two-test method. Count only actors whom the article

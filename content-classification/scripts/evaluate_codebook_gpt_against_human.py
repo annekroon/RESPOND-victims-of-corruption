@@ -18,6 +18,18 @@ VARIABLES = {
     "accused_actor_visibility": ("human_accused_actor_visibility", "accused_actor_visibility"),
 }
 
+HUMAN_REVIEW_COLUMNS = [
+    "content_sample_id",
+    "uri",
+    "country",
+    "source_uri",
+    "year",
+    "translated_text_en",
+    "translated_text",
+    "article_text",
+    "human_notes",
+]
+
 GPT_CLASSIFIER_FILES = {
     "victim_visibility": "victim_visibility",
     "corruption_frame": "corruption_frame",
@@ -96,7 +108,13 @@ def load_country_comparison(codebook_dir: Path, gpt_dir: Path, country: str, cod
 
     human = read_csv(human_file)
     keys = key_columns(human)
-    keep = list(dict.fromkeys(keys + ["content_sample_id", "uri", "country", *[v[0] for v in VARIABLES.values()]]))
+    keep = list(
+        dict.fromkeys(
+            keys
+            + HUMAN_REVIEW_COLUMNS
+            + [value[0] for value in VARIABLES.values()]
+        )
+    )
     keep = [column for column in keep if column in human.columns]
     merged = human[keep].copy()
 
@@ -111,9 +129,33 @@ def load_country_comparison(codebook_dir: Path, gpt_dir: Path, country: str, cod
             merge_keys = ["uri"]
         else:
             merge_keys = keys
-        gpt_keep = list(dict.fromkeys(gpt_keys + [gpt_column]))
+        detail_columns = [
+            column
+            for column in gpt.columns
+            if any(
+                token in column
+                for token in [
+                    "evidence",
+                    "reasoning",
+                    "confidence",
+                    "harm_status",
+                    "victim_entity",
+                    "concrete_victim_visible",
+                    "institutional_societal_victim_visible",
+                ]
+            )
+        ]
+        gpt_keep = list(dict.fromkeys(gpt_keys + [gpt_column] + detail_columns))
         gpt_keep = [column for column in gpt_keep if column in gpt.columns]
-        gpt = gpt[gpt_keep].rename(columns={gpt_column: f"gpt_{gpt_column}"})
+        rename_columns = {gpt_column: f"gpt_{gpt_column}"}
+        rename_columns.update(
+            {
+                column: f"gpt_{variable}_{column}"
+                for column in detail_columns
+                if column != gpt_column
+            }
+        )
+        gpt = gpt[gpt_keep].rename(columns=rename_columns)
         merged = merged.merge(gpt, on=merge_keys, how="left")
 
     merged["country"] = country
@@ -148,11 +190,61 @@ def evaluate(data):
             bad["variable"] = variable
             bad["human_label"] = bad[human_column].map(normalize_label)
             bad["gpt_label"] = bad[gpt_column].map(normalize_label)
+            if variable == "victim_visibility":
+                positive_labels = {
+                    "concrete_victim",
+                    "institutional_societal_victim",
+                    "both_concrete_and_institutional",
+                }
+
+                def victim_disagreement_type(row) -> str:
+                    human_label = row["human_label"]
+                    gpt_label = row["gpt_label"]
+                    if "unclear" in {human_label, gpt_label}:
+                        return "unclear_boundary"
+                    if (human_label == "no_victim") != (gpt_label == "no_victim"):
+                        return "victim_visibility_gate"
+                    if human_label in positive_labels and gpt_label in positive_labels:
+                        return "victim_type_boundary"
+                    return "other"
+
+                bad["disagreement_type"] = bad.apply(victim_disagreement_type, axis=1)
+            else:
+                bad["disagreement_type"] = "label_boundary"
+            bad["adjudicated_label"] = ""
+            bad["adjudication_notes"] = ""
             disagreements.append(bad)
 
     summary = pd.DataFrame(rows)
     disagreement_df = pd.concat(disagreements, ignore_index=True) if disagreements else pd.DataFrame()
     return summary, disagreement_df
+
+
+def confusion_table(data):
+    import pandas as pd
+
+    rows = []
+    for variable, (human_column, gpt_column) in VARIABLES.items():
+        gpt_column = f"gpt_{gpt_column}"
+        valid = data[[human_column, gpt_column]].copy()
+        valid[human_column] = valid[human_column].map(normalize_label)
+        valid[gpt_column] = valid[gpt_column].map(normalize_label)
+        valid = valid[valid[human_column].ne("") & valid[gpt_column].ne("")]
+        counts = (
+            valid.groupby([human_column, gpt_column], dropna=False)
+            .size()
+            .rename("n")
+            .reset_index()
+            .rename(
+                columns={
+                    human_column: "human_label",
+                    gpt_column: "gpt_label",
+                }
+            )
+        )
+        counts.insert(0, "variable", variable)
+        rows.append(counts)
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
 def main() -> None:
@@ -168,6 +260,7 @@ def main() -> None:
 
     data = pd.concat(frames, ignore_index=True)
     summary, disagreements = evaluate(data)
+    confusion = confusion_table(data)
 
     country_summaries = []
     for country, country_df in data.groupby("country", dropna=False):
@@ -181,10 +274,12 @@ def main() -> None:
     summary_path = output_dir / f"{args.output_prefix}_human_gpt_agreement_summary.csv"
     country_path = output_dir / f"{args.output_prefix}_human_gpt_agreement_by_country.csv"
     disagreement_path = output_dir / f"{args.output_prefix}_human_gpt_disagreements.csv"
+    confusion_path = output_dir / f"{args.output_prefix}_human_gpt_confusion.csv"
 
     summary.to_csv(summary_path, index=False)
     country_summary.to_csv(country_path, index=False)
     disagreements.to_csv(disagreement_path, index=False)
+    confusion.to_csv(confusion_path, index=False)
 
     print("\nOverall agreement:", flush=True)
     print(summary.to_string(index=False), flush=True)
@@ -193,6 +288,7 @@ def main() -> None:
     print(f"\nSaved summary:       {summary_path}", flush=True)
     print(f"Saved country table: {country_path}", flush=True)
     print(f"Saved disagreements: {disagreement_path}", flush=True)
+    print(f"Saved confusion table: {confusion_path}", flush=True)
 
 
 if __name__ == "__main__":

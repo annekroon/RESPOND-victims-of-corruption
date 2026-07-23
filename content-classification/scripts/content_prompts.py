@@ -357,19 +357,102 @@ employment, benefit, or association, the organization test is No.
 """.strip()
 
 
+VICTIM_CLASSIFIER_INSTRUCTIONS = """
+Victim-visibility coding instructions
+
+Use only information stated in the article. Code how the article represents the
+case, not whether the allegation is true. A reported allegation that harm
+occurred counts even when it is denied, disputed, unproven, dismissed, or
+followed by an acquittal.
+
+Question: Does the article explicitly state that the corruption caused a
+realized loss, injury, deprivation, or adverse treatment, and who or what
+suffered that harm?
+
+Apply these gates in order:
+
+1. Isolate the corruption allegation or corruption case.
+2. Identify an exact passage or close paraphrase describing harm.
+3. Identify the person, group, organization, institution, or public interest
+   that suffered the harm.
+4. Confirm that the article directly connects the harm to the corruption.
+5. Classify each victim type independently.
+
+If the article does not supply the harm, victim, and corruption-to-harm link,
+code no_victim. Do not infer victimhood merely from the offense type.
+
+Harm status:
+- realized_or_alleged_realized: The article states or alleges that harm already
+  occurred. Proof or conviction is not required.
+- possible_intended_or_future: The article describes only possible, intended,
+  hypothetical, conditional, or future harm. Words such as "could", "might",
+  "risks", or "intended to" normally indicate this status.
+- none_or_unrelated: No harm is described, or the described harm belongs to an
+  accident, violence, prosecution, or another event not caused by the
+  corruption.
+- unclear: The text is incomplete, contradictory, or translation-problematic.
+
+Some action verbs state harm without using the word "harm." For example, "stole
+money from the company", "extorted business owners", "withheld settlement money
+from clients", and "excluded competitors from the tender" explicitly encode a
+loss or deprivation. By contrast, generic mentions of bribery, fraud,
+embezzlement, money laundering, tax evasion, bid rigging, an investigation, a
+fine, or confiscation do not identify a victim by themselves.
+
+Classify the two victim types independently:
+
+- concrete victim: A bounded person, group, community, company, association, or
+  other non-public entity suffers a direct personal, material, service, right,
+  employment, contract, or opportunity loss; coercive extortion; a coercive
+  bribe demand; exclusion from a corruptly manipulated process; or
+  corruption-related physical harm. The victim need not be named, but the group
+  must be identifiable.
+- institutional/societal victim: A public institution, public budget, public
+  service, democracy, electoral legitimacy, rule of law, public trust, state
+  capacity, society, social cohesion, the general economy, or development is
+  explicitly harmed. A named public institution losing money or assets belongs
+  here. General references to citizens, taxpayers, voters, or the public losing
+  shared public resources also belong here unless an identifiable subgroup is
+  explicitly deprived of a direct personal or material benefit.
+
+Both victim types may be present. Do not force one to override the other.
+
+Do not code a victim when the article merely mentions public money, taxpayers,
+citizens, patients, voters, or an institution without describing harm; reports
+repayment to tax authorities without stating a public loss; describes a bribe
+offer without coercion or deprivation; says an institution was "hit", "shaken",
+criticized, or embarrassed without specifying lost money, trust, legitimacy,
+independence, or capacity; or assumes that corruption generally harms society.
+
+Derive victim_visibility mechanically:
+- concrete=no and institutional=no -> no_victim
+- concrete=yes and institutional=no -> concrete_victim
+- concrete=no and institutional=yes -> institutional_societal_victim
+- concrete=yes and institutional=yes -> both_concrete_and_institutional
+- genuinely indeterminate evidence or type -> unclear
+""".strip()
+
+
 def build_victim_visibility_prompt(article_text: str, metadata: dict) -> str:
     article_block = base_article_block(article_text, metadata)
     return f"""
-{CONTENT_CODING_INSTRUCTIONS}
+{VICTIM_CLASSIFIER_INSTRUCTIONS}
 
-Task: Assign the victim_visibility label. Require one short supporting quotation
-or close paraphrase before selecting the label.
+Task: Extract the evidence first, classify concrete and institutional/societal
+victim presence independently, and then assign victim_visibility. Do not return
+a positive label unless the harm evidence, victim entity, and
+corruption-to-harm link are all present.
 
 Return valid JSON only:
 {{
-  "victim_visibility": "no_victim | concrete_victim | institutional_societal_victim | unclear",
+  "harm_status": "realized_or_alleged_realized | possible_intended_or_future | none_or_unrelated | unclear",
+  "victim_entity": "person, group, organization, institution, public interest, or none",
+  "harm_evidence": "short quote or close paraphrase describing the harm, or none",
+  "corruption_harm_link_evidence": "short quote or close paraphrase linking the harm to corruption, or none",
+  "concrete_victim_visible": "yes | no | unclear",
+  "institutional_societal_victim_visible": "yes | no | unclear",
+  "victim_visibility": "no_victim | concrete_victim | institutional_societal_victim | both_concrete_and_institutional | unclear",
   "victim_visible": "yes | no | unclear",
-  "evidence": "short quote or close paraphrase from the article",
   "reasoning_brief": "one short sentence",
   "confidence": 0.0
 }}
@@ -378,17 +461,75 @@ Return valid JSON only:
 """.strip()
 
 
+def _normalized_yes_no(value: object) -> str:
+    value = str(value or "").strip().lower()
+    if value in {"yes", "true", "1"}:
+        return "yes"
+    if value in {"no", "false", "0"}:
+        return "no"
+    if value == "unclear":
+        return "unclear"
+    return ""
+
+
 def normalize_victim_visibility(parsed: dict) -> dict:
-    visibility = _value(parsed, "victim_visibility")
-    visible = _value(parsed, "victim_visible")
-    if not visible and visibility in {"concrete_victim", "institutional_societal_victim"}:
+    harm_status = str(_value(parsed, "harm_status")).strip()
+    concrete = _normalized_yes_no(_value(parsed, "concrete_victim_visible"))
+    institutional = _normalized_yes_no(
+        _value(parsed, "institutional_societal_victim_visible")
+    )
+
+    derived_visibility = {
+        ("no", "no"): "no_victim",
+        ("yes", "no"): "concrete_victim",
+        ("no", "yes"): "institutional_societal_victim",
+        ("yes", "yes"): "both_concrete_and_institutional",
+    }.get((concrete, institutional), "")
+
+    if harm_status in {"possible_intended_or_future", "none_or_unrelated"}:
+        visibility = "no_victim"
+        concrete = "no"
+        institutional = "no"
+    elif harm_status == "unclear":
+        visibility = "unclear"
+    elif derived_visibility:
+        visibility = derived_visibility
+    else:
+        visibility = str(_value(parsed, "victim_visibility")).strip()
+
+    allowed = {
+        "no_victim",
+        "concrete_victim",
+        "institutional_societal_victim",
+        "both_concrete_and_institutional",
+        "unclear",
+    }
+    if visibility not in allowed:
+        visibility = "unclear"
+
+    visible = _normalized_yes_no(_value(parsed, "victim_visible"))
+    if visibility in {
+        "concrete_victim",
+        "institutional_societal_victim",
+        "both_concrete_and_institutional",
+    }:
         visible = "yes"
-    elif not visible and visibility == "no_victim":
+    elif visibility == "no_victim":
         visible = "no"
+    elif visibility == "unclear":
+        visible = "unclear"
+
     return {
         "victim_visibility": visibility,
         "victim_visible": visible,
-        "victim_evidence": _value(parsed, "evidence"),
+        "victim_harm_status": harm_status,
+        "victim_entity": _value(parsed, "victim_entity"),
+        "victim_harm_evidence": _value(parsed, "harm_evidence"),
+        "victim_corruption_harm_link_evidence": _value(
+            parsed, "corruption_harm_link_evidence"
+        ),
+        "concrete_victim_visible": concrete,
+        "institutional_societal_victim_visible": institutional,
         "victim_reasoning_brief": _value(parsed, "reasoning_brief"),
         "victim_confidence": _confidence(parsed),
     }
@@ -507,12 +648,17 @@ def normalize_accused_actor(parsed: dict) -> dict:
 
 VICTIM_VISIBILITY = ClassifierSpec(
     name="victim_visibility",
-    prompt_version="victim_visibility_zero_shot_v4",
+    prompt_version="victim_visibility_zero_shot_v5",
     default_output_name="victim_visibility_labels.csv.gz",
     result_columns=[
         "victim_visibility",
         "victim_visible",
-        "victim_evidence",
+        "victim_harm_status",
+        "victim_entity",
+        "victim_harm_evidence",
+        "victim_corruption_harm_link_evidence",
+        "concrete_victim_visible",
+        "institutional_societal_victim_visible",
         "victim_reasoning_brief",
         "victim_confidence",
     ],

@@ -65,23 +65,38 @@ def derive_variables(data):
         {
             "concrete_victim": 1,
             "institutional_societal_victim": 1,
+            "both_concrete_and_institutional": 1,
             "no_victim": 0,
         }
     )
-    data["concrete_victim_visible"] = data["victim_visibility"].map(
-        {
-            "concrete_victim": 1,
-            "institutional_societal_victim": 0,
-            "no_victim": 0,
-        }
-    )
-    data["institutional_societal_victim_visible"] = data["victim_visibility"].map(
-        {
-            "institutional_societal_victim": 1,
-            "concrete_victim": 0,
-            "no_victim": 0,
-        }
-    )
+    if "concrete_victim_visible" in data.columns:
+        data["concrete_victim_visible"] = data["concrete_victim_visible"].map(
+            normalize_yes_no
+        )
+    else:
+        data["concrete_victim_visible"] = data["victim_visibility"].map(
+            {
+                "concrete_victim": 1,
+                "institutional_societal_victim": 0,
+                "both_concrete_and_institutional": 1,
+                "no_victim": 0,
+            }
+        )
+    if "institutional_societal_victim_visible" in data.columns:
+        data["institutional_societal_victim_visible"] = data[
+            "institutional_societal_victim_visible"
+        ].map(normalize_yes_no)
+    else:
+        data["institutional_societal_victim_visible"] = data[
+            "victim_visibility"
+        ].map(
+            {
+                "institutional_societal_victim": 1,
+                "concrete_victim": 0,
+                "both_concrete_and_institutional": 1,
+                "no_victim": 0,
+            }
+        )
     data["abroad_case_binary"] = data["abroad_case"].map(normalize_yes_no)
     data["accused_actor_visible_binary"] = data["accused_actor_visible"].map(normalize_yes_no)
     data["frame_individualized"] = data["corruption_frame"].map(
