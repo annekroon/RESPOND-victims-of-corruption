@@ -176,9 +176,9 @@ def validate_current_build(
 
     tikz = tikz_path.read_text(encoding="utf-8")
     required_fragments = [
-        "Source-inclusion screen",
-        "Source-filtered query corpus",
-        f"$N = {final_n:,}$",
+        "Cleaning and source inclusion",
+        "Source-filtered:",
+        f"final $N = {final_n:,}$",
         f"$p \\geq {threshold:.2f}$",
     ]
     missing = [fragment for fragment in required_fragments if fragment not in tikz]

@@ -637,15 +637,14 @@ def pipeline_tikz(counts: dict[str, int | float]) -> str:
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-  node distance=0.42cm and 1.05cm,
   box/.style={
     draw=black,
     line width=0.55pt,
     rounded corners=2pt,
     align=center,
     font=\scriptsize,
-    text width=4.45cm,
-    minimum height=0.82cm,
+    text width=4.15cm,
+    minimum height=0.88cm,
     inner sep=4pt
   },
   key/.style={
@@ -657,7 +656,7 @@ def pipeline_tikz(counts: dict[str, int | float]) -> str:
     box,
     line width=0.9pt,
     fill=black!4,
-    minimum height=1.18cm
+    minimum height=1.08cm
   },
   arrow/.style={
     -{Latex[length=1.8mm]},
@@ -665,57 +664,47 @@ def pipeline_tikz(counts: dict[str, int | float]) -> str:
   }
 ]
 
-\node[key] (api) at (0,0) {\textbf{NewsAPI}};
+\node[key, text width=3.1cm] (api) at (0,0) {\textbf{NewsAPI}};
 
-\node[box] (query) at (-3.0,-1.35)
-  {\textbf{Article retrieval}\\Corruption-keyword queries};
-\node[box] (counts) at (3.0,-1.35)
-  {\textbf{News-volume retrieval}\\Total-news count request};
+\node[box] (query) at (-2.75,-1.35)
+  {\textbf{Corruption-query articles}\\
+   Keyword retrieval: $N = __RAW_QUERY__$};
+\node[box] (counts) at (2.75,-1.35)
+  {\textbf{Total-news counts}\\
+   $N = __TOTAL_NEWS__$};
 
-\node[box] (raw) at (-3.0,-2.70)
-  {Raw corruption-query corpus\\$N = __RAW_QUERY__$};
-\node[box] (clean) at (-3.0,-4.05)
-  {Cleaned and deduplicated corpus\\$N = __CLEANED_QUERY__$};
-\node[box] (screen) at (-3.0,-5.40)
-  {Source-inclusion screen\\Eligible conventional news outlets};
-\node[key] (filtered) at (-3.0,-6.80)
-  {\textbf{Source-filtered query corpus}\\$N = __SOURCE_FILTERED_QUERY__$};
-\node[box] (classifier) at (-3.0,-8.20)
-  {Political-corruption classifier\\E5-large embeddings\\Logistic regression; $p \geq __THRESHOLD__$};
-\node[key] (corpus) at (-3.0,-9.70)
-  {\textbf{Final political-corruption corpus}\\$N = __POLITICAL_CORRUPTION__$};
+\node[box] (prepare) at (-2.75,-2.95)
+  {\textbf{Cleaning and source inclusion}\\
+   Deduplicated: $N = __CLEANED_QUERY__$\\
+   Source-filtered: $N = __SOURCE_FILTERED_QUERY__$};
 
-\node[box] (denominator) at (3.0,-2.70)
-  {Total-news denominator\\$N = __TOTAL_NEWS__$};
-\node[output] (attention) at (3.0,-9.70)
-  {\textbf{Relative attention}\\[1mm]
-    Political-corruption articles\\
-    divided by all news articles\\
-    in country $c$ and period $t$};
-\node[output] (coding) at (-3.0,-11.35)
-  {\textbf{Article-level coding}\\[1mm]
-    Victim visibility, frame,\\
-    case location, and accused actor};
+\node[key] (classifier) at (-2.75,-4.65)
+  {\textbf{Political-corruption classifier}\\
+   E5-large + logit model\\
+   $p \geq __THRESHOLD__$; final $N = __POLITICAL_CORRUPTION__$};
+
+\node[output] (coding) at (-2.75,-6.35)
+  {\textbf{Article-level coding}\\
+   Victim visibility, frame, location,\\
+   and accused actor};
+\node[output] (attention) at (2.75,-6.35)
+  {\textbf{Relative attention}\\
+   Political-corruption share of all news\\
+   by country-period};
 
 \draw[arrow] (api.south) -- (0,-0.68) -| (query.north);
 \draw[arrow] (api.south) -- (0,-0.68) -| (counts.north);
-\draw[arrow] (query) -- (raw);
-\draw[arrow] (raw) -- (clean);
-\draw[arrow] (clean) -- (screen);
-\draw[arrow] (screen) -- (filtered);
-\draw[arrow] (filtered) -- (classifier);
-\draw[arrow] (classifier) -- (corpus);
-\draw[arrow] (corpus) -- (coding);
-\draw[arrow] (counts) -- (denominator);
-\draw[arrow] (denominator) -- (attention);
-\draw[arrow] (corpus) -- (attention);
+\draw[arrow] (query) -- (prepare);
+\draw[arrow] (prepare) -- (classifier);
+\draw[arrow] (classifier) -- (coding);
+\draw[arrow] (counts) -- (attention);
+\draw[arrow] (classifier.east) -- (0,-4.65) |- (attention.west);
 
 \end{tikzpicture}
-\caption{Construction and analytical uses of the final political-corruption
-corpus. Corruption-keyword queries produce an article corpus that is cleaned,
-deduplicated, restricted to conventional journalistic outlets, and classified.
-A separate NewsAPI count request supplies the total-news denominator used only
-for relative-attention estimates.}
+\caption{Political-corruption corpus construction and analysis.
+Corruption-query articles were cleaned, deduplicated, restricted to eligible
+journalistic outlets, and classified. Separate total-news counts provide the
+denominator for relative attention.}
 \label{fig:pc-data-pipeline}
 \end{figure}
 """
