@@ -248,8 +248,12 @@ source does not determine location.
 Question: Does the article identify an individual or organization as responsible
 for or participating in the corruption?
 
-Count only actors linked to the corruption. Do not count people or
-organizations accused solely of unrelated misconduct. An allegation is
+Count only actors whom the article explicitly represents as committing,
+attempting, assisting, enabling, financing, directing, or concealing the
+corruption. Do not count someone merely because they are mentioned as a victim,
+witness, whistleblower, investigator, prosecutor, judge, regulator, beneficiary,
+employer, associate, or owner. However, count such an actor if the article
+separately alleges that they participated in the corruption. An allegation is
 sufficient. Conviction is not required. Actors still count if allegations are
 denied, charges are dropped, or they are later acquitted.
 
@@ -258,9 +262,10 @@ Mandatory two-test method. Answer these independently:
 Individual test: Is there an exact passage accusing a person, officeholder, or
 identifiable group of people of participating in the corruption?
 
-Organization test: Is there a separate exact passage accusing an organization or
-institution, acting in its own capacity, of participating in, directing,
-financing, enabling, or concealing the corruption?
+Organization test: Is there an exact passage attributing corrupt participation
+to the organization or institution itself, for example by saying that it paid
+bribes, manipulated a tender, financed a scheme, facilitated money laundering,
+concealed misconduct, or was investigated for corruption?
 
 Map the answers mechanically:
 - Individual = No; Organization = No -> no_accused_actor
@@ -289,9 +294,12 @@ Labels:
   enabling/facilitating it, concealing it, or systematically protecting corrupt
   participants. Qualifying actors may include a party, company, ministry,
   agency, police unit, court, government, or clearly defined organized group.
-  The article must contain a separate sentence or direct statement in which the
-  organization itself is accused, investigated, charged, or described as
-  carrying out, financing, directing, enabling, or concealing corruption.
+  The article must attribute corrupt participation to the organization itself,
+  for example by stating that it paid bribes, manipulated a tender, financed a
+  scheme, facilitated money laundering, concealed misconduct, or was
+  investigated for corruption. The required organizational allegation may appear
+  in the same sentence as the individual allegation; it must simply be
+  independently expressed.
   Do not count an organization merely because the accused person owns, controls,
   leads, or works for it; because an employee, leader, owner, subsidiary,
   member, or associate is accused; because it received a contract or other
@@ -301,7 +309,7 @@ Labels:
   derivatively sanctioned due to its connection to an accused person; because an
   employee acted corruptly without the article attributing the conduct to the
   organization; or because a subsidiary/parent organization is accused and the
-  allegation is not separately transferred. A sanction counts only when the
+  allegation is not independently transferred. A sanction counts only when the
   article alleges the organization's own corrupt conduct or participation.
   Conduct by an organization's owner, employee, or leader becomes organizational
   conduct only when the article says the organization participated or the person
@@ -543,7 +551,7 @@ ABROAD_CASE = ClassifierSpec(
 
 ACCUSED_ACTOR = ClassifierSpec(
     name="accused_actor",
-    prompt_version="accused_actor_zero_shot_v5",
+    prompt_version="accused_actor_zero_shot_v6",
     default_output_name="accused_actor_labels.csv.gz",
     result_columns=[
         "accused_actor_visibility",

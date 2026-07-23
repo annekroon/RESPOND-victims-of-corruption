@@ -37,7 +37,7 @@ The current codebook prompt versions are:
 | `victim_visibility` | `victim_visibility_zero_shot_v4` |
 | `corruption_frame` | `corruption_frame_zero_shot_v3` |
 | `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
-| `accused_actor_visibility` | `accused_actor_zero_shot_v5` |
+| `accused_actor_visibility` | `accused_actor_zero_shot_v6` |
 
 These versions implement the stricter rule that the model must first isolate
 the corruption allegation/case, use only information stated in the article, and
@@ -47,12 +47,15 @@ should be treated as pilot outputs and regenerated before comparison with human
 coding.
 
 For `accused_actor_visibility`, the finalized organization rule is deliberately
-narrow and uses a mandatory two-test method. First, identify whether there is an
-exact passage accusing a person, officeholder, or identifiable group of people
-of participating in the corruption. Second, identify whether there is a separate
-exact passage accusing an organization or institution, acting in its own
-capacity, of participating in, directing, financing, enabling, or concealing the
-corruption. An organization does not count merely because its employee, leader,
+narrow and uses a mandatory two-test method. Count only actors whom the article
+explicitly represents as committing, attempting, assisting, enabling, financing,
+directing, or concealing the corruption. An organization counts only when the
+text attributes corrupt participation to the organization itself, for example by
+stating that it paid bribes, manipulated a tender, financed a scheme,
+facilitated money laundering, concealed misconduct, or was investigated for
+corruption. The required organizational allegation may appear in the same
+sentence as the individual allegation; it must simply be independently
+expressed. An organization does not count merely because its employee, leader,
 owner, subsidiary, member, or associate is accused, or because it benefited from
 or was connected to corruption. Human annotations made before this rule was
 finalized, especially `both_individual_and_organizational` labels, should be
