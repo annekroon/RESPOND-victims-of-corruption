@@ -34,7 +34,7 @@ The current codebook prompt versions are:
 
 | Variable | Prompt version |
 |---|---|
-| `victim_visibility` | `victim_visibility_zero_shot_v5` |
+| `victim_visibility` | `victim_visibility_zero_shot_v6` |
 | `corruption_frame` | `corruption_frame_zero_shot_v3` |
 | `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
 | `accused_actor_visibility` | `accused_actor_zero_shot_v6` |
@@ -46,15 +46,24 @@ unrelated misconduct. Earlier GPT outputs generated with older prompt versions
 should be treated as pilot outputs and regenerated before comparison with human
 coding.
 
-For `victim_visibility`, version 5 uses a victim-specific prompt rather than
+For `victim_visibility`, version 6 uses a victim-specific prompt rather than
 sending the other three variables' instructions to that classifier. GPT first
-extracts the harm status, victim entity, harm evidence, and corruption-to-harm
-link. It then codes concrete and institutional/societal victim presence
-independently. The final label is derived mechanically as `no_victim`,
+extracts the harm cause and status, whether a deprived entity is explicit,
+whether coercive pressure was communicated, the victim entity, and the
+corruption-to-harm evidence. It then codes concrete and
+institutional/societal victim presence independently. The final label is
+derived mechanically as `no_victim`,
 `concrete_victim`, `institutional_societal_victim`,
 `both_concrete_and_institutional`, or `unclear`. This preserves cases in which
 both victim types are visible and prevents a positive label when the article
 describes only possible, intended, future, unrelated, or inferred harm.
+
+Version 6 also distinguishes harm caused by corruption from harm caused by the
+investigation, prosecution, scandal, resignation, or institutional response. A
+communicated coercive or extortionate demand counts as realized adverse
+treatment even when its threatened consequence does not occur. The model may
+not infer a public, party, or private funding source or deprived entity when the
+article does not identify one.
 
 The agreement evaluator now writes an additional `*_human_gpt_confusion.csv`
 table and expands `*_human_gpt_disagreements.csv` into an adjudication file. It
