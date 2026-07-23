@@ -321,7 +321,54 @@ def classify_article(client, spec: ClassifierSpec, row: dict, model: str, max_ch
         temperature=0,
     )
     raw = response.choices[0].message.content
-    return spec.normalize_result(extract_json(raw)), prompt, raw
+    result = spec.normalize_result(extract_json(raw))
+    if spec.name == "victim_visibility":
+        result = enforce_victim_evidence(result, article_text)
+    return result, prompt, raw
+
+
+def evidence_is_verbatim(evidence: object, article_text: str) -> bool:
+    evidence = normalize_text(evidence)
+    article_text = normalize_text(article_text)
+    if evidence.lower() in {
+        "",
+        "none",
+        "no evidence",
+        "not stated",
+        "not explicit",
+        "n/a",
+        "nan",
+    }:
+        return False
+    evidence = evidence.strip("\"'“”‘’")
+    return bool(evidence) and evidence.casefold() in article_text.casefold()
+
+
+def enforce_victim_evidence(result: dict, article_text: str) -> dict:
+    result = result.copy()
+    harm_verbatim = evidence_is_verbatim(
+        result.get("victim_harm_evidence", ""), article_text
+    )
+    link_verbatim = evidence_is_verbatim(
+        result.get("victim_corruption_harm_link_evidence", ""), article_text
+    )
+    result["victim_harm_evidence_verbatim"] = "yes" if harm_verbatim else "no"
+    result["victim_corruption_harm_link_evidence_verbatim"] = (
+        "yes" if link_verbatim else "no"
+    )
+
+    if result.get("victim_visibility") in {
+        "concrete_victim",
+        "institutional_societal_victim",
+    } and not (harm_verbatim and link_verbatim):
+        result["victim_visibility"] = "no_victim"
+        result["victim_visible"] = "no"
+        result["concrete_victim_visible"] = "no"
+        result["institutional_societal_victim_visible"] = "no"
+        reason = str(result.get("victim_reasoning_brief", "")).strip()
+        suffix = "Positive label removed because both evidence fields were not verbatim article quotations."
+        result["victim_reasoning_brief"] = f"{reason} {suffix}".strip()
+    return result
 
 
 def base_output_row(row: dict, spec: ClassifierSpec) -> dict:

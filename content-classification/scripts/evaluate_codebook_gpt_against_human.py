@@ -156,6 +156,7 @@ def load_country_comparison(
                     "victim_entity",
                     "deprived_entity",
                     "harmed_entity",
+                    "explicit_harm_statement",
                     "coercive_demand",
                     "concrete_victim_visible",
                     "institutional_societal_victim_visible",

@@ -372,7 +372,7 @@ suffered that harm?
 Apply these gates in order:
 
 1. Isolate the corruption allegation or corruption case.
-2. Identify an exact passage or close paraphrase describing harm.
+2. Identify an exact verbatim quotation describing harm.
 3. Identify the person, group, organization, institution, or public interest
    that suffered the harm.
 4. Determine whether the article attributes that harm to the corruption itself,
@@ -384,7 +384,27 @@ Apply these gates in order:
 If the article does not supply the harm, victim, and corruption-to-harm link,
 code no_victim. Do not infer victimhood merely from the offense type.
 
-Harm cause:
+Strict explicit-harm rule:
+
+Do not convert a corrupt act into an assumed harmful consequence. The article
+must itself state the loss, deprivation, injury, adverse treatment, or
+institutional harm. The following do not establish victimhood without an
+additional explicit statement of harm:
+
+- municipal or public property was transferred;
+- public property or money was involved;
+- a fictitious contract or payment existed;
+- an actor received money or an advantage;
+- an illegal project or transaction was approved;
+- an institution was connected to the case;
+- an investigation or scandal produced institutional consequences.
+
+Do not supply an unstated victim, source of funds, or consequence. In
+particular, do not assume that a payment came from public or party funds when
+the article does not identify the payer.
+
+Causal-source test:
+
 - corruption_itself: The article attributes the harm to the corrupt conduct,
   corrupt arrangement, abuse of public power, or coercive corruption-related
   demand.
@@ -397,6 +417,10 @@ Harm cause:
 - none: No harm is described.
 - unclear: The article does not make the causal attribution clear.
 
+Count a victim only when the causal source is corruption_itself. The words
+"case", "affair", or "scandal" do not by themselves establish that the
+underlying corruption caused the harm.
+
 Harm status:
 - realized_or_alleged_realized: The article states or alleges that harm already
   occurred. Proof or conviction is not required.
@@ -408,24 +432,14 @@ Harm status:
   corruption.
 - unclear: The text is incomplete, contradictory, or translation-problematic.
 
-Some action verbs state harm without using the word "harm." For example, "stole
-money from the company", "extorted business owners", "withheld settlement money
-from clients", and "excluded competitors from the tender" explicitly encode a
-loss or deprivation. By contrast, generic mentions of bribery, fraud,
-embezzlement, money laundering, tax evasion, bid rigging, an investigation, a
-fine, or confiscation do not identify a victim by themselves.
+Extortion exception:
 
-A communicated coercive demand or extortionate threat is itself realized
-adverse treatment once it has been made. Code the targeted person, company, or
-group as a concrete victim even if the demanded payment was not made and the
-threatened downstream consequence did not occur. A non-coercive attempted bribe
-does not qualify by itself.
-
-Do not infer a deprived entity or funding source. A suspicious salary,
-consultancy agreement, contract, payment, or transfer does not establish a
-victim unless the article identifies who supplied or lost the money, asset,
-right, service, or opportunity. Phrases such as "public or party funds" cannot
-be supplied by inference when the article does not identify them.
+An extortionate demand, corrupt threat, or coercive bribe demand is itself
+realized adverse treatment once the pressure or threat has been communicated.
+The demanded payment and threatened additional consequence do not need to
+occur. Therefore, a company told to sign a fictitious contract or face official
+retaliation is a concrete victim. By contrast, an ordinary unaccepted bribe
+offer without coercion or described injury does not establish victimhood.
 
 Classify the two victim types independently:
 
@@ -438,12 +452,8 @@ Classify the two victim types independently:
 - institutional/societal victim: A public institution, public budget, public
   service, democracy, electoral legitimacy, rule of law, public trust, state
   capacity, society, social cohesion, the general economy, or development is
-  explicitly harmed. A named public institution losing money or assets belongs
-  here. General references to citizens, taxpayers, voters, or the public losing
-  shared public resources also belong here unless an identifiable subgroup is
-  explicitly deprived of a direct personal or material benefit.
-
-Both victim types may be present. Do not force one to override the other.
+  explicitly represented as harmed. Merely mentioning public money, property,
+  an institution, or a transfer does not satisfy this rule.
 
 Do not code a victim when the article merely mentions public money, taxpayers,
 citizens, patients, voters, or an institution without describing harm; reports
@@ -453,10 +463,13 @@ criticized, or embarrassed without specifying lost money, trust, legitimacy,
 independence, or capacity; or assumes that corruption generally harms society.
 
 Boundary examples:
-- Public money is explicitly spent on party propaganda "at citizens' expense":
-  institutional_societal_victim, not concrete_victim.
-- Municipal land is transferred with false documents to favor corrupt actors:
-  institutional_societal_victim because a public asset is deprived.
+- Public money is spent on party propaganda explicitly "at citizens' expense":
+  concrete_victim because an identifiable group is explicitly represented as
+  bearing the cost. Even if institutional harm is also explicit, concrete takes
+  priority.
+- Municipal land is transferred with false documents to favor corrupt actors,
+  but the article does not itself state a loss, deprivation, or institutional
+  harm: no_victim.
 - A paid or suspicious contract is described without identifying who funded it
   or suffered a loss: no_victim.
 - A healthcare service loses personnel because of the investigation, scandal,
@@ -467,11 +480,18 @@ Boundary examples:
   extortionate pressure is already realized adverse treatment.
 
 Derive victim_visibility mechanically:
-- concrete=no and institutional=no -> no_victim
-- concrete=yes and institutional=no -> concrete_victim
-- concrete=no and institutional=yes -> institutional_societal_victim
-- concrete=yes and institutional=yes -> both_concrete_and_institutional
+- concrete=yes -> concrete_victim
+- otherwise, institutional=yes -> institutional_societal_victim
+- otherwise -> no_victim
 - genuinely indeterminate evidence or type -> unclear
+
+Never output both_concrete_and_institutional. Concrete victims take priority.
+
+Evidence rule:
+
+Evidence fields must contain verbatim quotations from the article. Do not
+paraphrase, explain, or add inferred consequences. If no exact quotation
+expresses the harm or corruption-to-harm connection, code no_victim.
 """.strip()
 
 
@@ -483,20 +503,21 @@ def build_victim_visibility_prompt(article_text: str, metadata: dict) -> str:
 Task: Extract the evidence first, classify concrete and institutional/societal
 victim presence independently, and then assign victim_visibility. Do not return
 a positive label unless the harm evidence, victim entity, and
-corruption-to-harm link are all present.
+corruption-to-harm link are all present as verbatim article quotations.
 
 Return valid JSON only:
 {{
   "harm_cause": "corruption_itself | scandal_investigation_or_response | unrelated | none | unclear",
   "harm_status": "realized_or_alleged_realized | possible_intended_or_future | none_or_unrelated | unclear",
-  "victim_entity": "person, group, organization, institution, public interest, or none",
+  "victim_entity": "verbatim quotation identifying the harmed person, group, organization, institution, or public interest; otherwise none",
   "harmed_entity_or_public_interest_explicit": "yes | no | unclear",
+  "explicit_harm_statement_present": "yes | no | unclear",
   "coercive_demand_or_pressure_made": "yes | no | unclear",
-  "harm_evidence": "short quote or close paraphrase describing the harm, or none",
-  "corruption_harm_link_evidence": "short quote or close paraphrase linking the harm to corruption, or none",
+  "harm_evidence": "verbatim quotation describing the harm, or none",
+  "corruption_harm_link_evidence": "verbatim quotation linking the harm to corruption, or none",
   "concrete_victim_visible": "yes | no | unclear",
   "institutional_societal_victim_visible": "yes | no | unclear",
-  "victim_visibility": "no_victim | concrete_victim | institutional_societal_victim | both_concrete_and_institutional | unclear",
+  "victim_visibility": "no_victim | concrete_victim | institutional_societal_victim | unclear",
   "victim_visible": "yes | no | unclear",
   "reasoning_brief": "one short sentence",
   "confidence": 0.0
@@ -517,11 +538,27 @@ def _normalized_yes_no(value: object) -> str:
     return ""
 
 
+def _has_evidence(value: object) -> bool:
+    value = str(value or "").strip().lower()
+    return value not in {
+        "",
+        "none",
+        "no evidence",
+        "not stated",
+        "not explicit",
+        "n/a",
+        "nan",
+    }
+
+
 def normalize_victim_visibility(parsed: dict) -> dict:
     harm_cause = str(_value(parsed, "harm_cause")).strip()
     harm_status = str(_value(parsed, "harm_status")).strip()
     harmed_entity_explicit = _normalized_yes_no(
         _value(parsed, "harmed_entity_or_public_interest_explicit")
+    )
+    explicit_harm_statement = _normalized_yes_no(
+        _value(parsed, "explicit_harm_statement_present")
     )
     coercive_demand = _normalized_yes_no(
         _value(parsed, "coercive_demand_or_pressure_made")
@@ -530,19 +567,28 @@ def normalize_victim_visibility(parsed: dict) -> dict:
     institutional = _normalized_yes_no(
         _value(parsed, "institutional_societal_victim_visible")
     )
+    harm_evidence = _value(parsed, "harm_evidence")
+    corruption_harm_link_evidence = _value(
+        parsed, "corruption_harm_link_evidence"
+    )
 
-    derived_visibility = {
-        ("no", "no"): "no_victim",
-        ("yes", "no"): "concrete_victim",
-        ("no", "yes"): "institutional_societal_victim",
-        ("yes", "yes"): "both_concrete_and_institutional",
-    }.get((concrete, institutional), "")
+    if concrete == "yes":
+        derived_visibility = "concrete_victim"
+    elif concrete == "no" and institutional == "yes":
+        derived_visibility = "institutional_societal_victim"
+    elif concrete == "no" and institutional == "no":
+        derived_visibility = "no_victim"
+    else:
+        derived_visibility = ""
 
     if harm_cause in {
         "scandal_investigation_or_response",
         "unrelated",
         "none",
-    } or harmed_entity_explicit == "no":
+    } or harmed_entity_explicit == "no" or not (
+        _has_evidence(harm_evidence)
+        and _has_evidence(corruption_harm_link_evidence)
+    ):
         visibility = "no_victim"
         concrete = "no"
         institutional = "no"
@@ -553,6 +599,12 @@ def normalize_victim_visibility(parsed: dict) -> dict:
         visibility = derived_visibility or str(
             _value(parsed, "victim_visibility")
         ).strip()
+    elif explicit_harm_statement == "no":
+        visibility = "no_victim"
+        concrete = "no"
+        institutional = "no"
+    elif explicit_harm_statement == "unclear":
+        visibility = "unclear"
     elif harm_status in {"possible_intended_or_future", "none_or_unrelated"}:
         visibility = "no_victim"
         concrete = "no"
@@ -568,7 +620,6 @@ def normalize_victim_visibility(parsed: dict) -> dict:
         "no_victim",
         "concrete_victim",
         "institutional_societal_victim",
-        "both_concrete_and_institutional",
         "unclear",
     }
     if visibility not in allowed:
@@ -578,7 +629,6 @@ def normalize_victim_visibility(parsed: dict) -> dict:
     if visibility in {
         "concrete_victim",
         "institutional_societal_victim",
-        "both_concrete_and_institutional",
     }:
         visible = "yes"
     elif visibility == "no_victim":
@@ -593,11 +643,10 @@ def normalize_victim_visibility(parsed: dict) -> dict:
         "victim_harm_status": harm_status,
         "victim_entity": _value(parsed, "victim_entity"),
         "victim_harmed_entity_or_public_interest_explicit": harmed_entity_explicit,
+        "victim_explicit_harm_statement_present": explicit_harm_statement,
         "victim_coercive_demand_or_pressure_made": coercive_demand,
-        "victim_harm_evidence": _value(parsed, "harm_evidence"),
-        "victim_corruption_harm_link_evidence": _value(
-            parsed, "corruption_harm_link_evidence"
-        ),
+        "victim_harm_evidence": harm_evidence,
+        "victim_corruption_harm_link_evidence": corruption_harm_link_evidence,
         "concrete_victim_visible": concrete,
         "institutional_societal_victim_visible": institutional,
         "victim_reasoning_brief": _value(parsed, "reasoning_brief"),
@@ -718,7 +767,7 @@ def normalize_accused_actor(parsed: dict) -> dict:
 
 VICTIM_VISIBILITY = ClassifierSpec(
     name="victim_visibility",
-    prompt_version="victim_visibility_zero_shot_v6",
+    prompt_version="victim_visibility_zero_shot_v7",
     default_output_name="victim_visibility_labels.csv.gz",
     result_columns=[
         "victim_visibility",
@@ -727,9 +776,12 @@ VICTIM_VISIBILITY = ClassifierSpec(
         "victim_harm_status",
         "victim_entity",
         "victim_harmed_entity_or_public_interest_explicit",
+        "victim_explicit_harm_statement_present",
         "victim_coercive_demand_or_pressure_made",
         "victim_harm_evidence",
         "victim_corruption_harm_link_evidence",
+        "victim_harm_evidence_verbatim",
+        "victim_corruption_harm_link_evidence_verbatim",
         "concrete_victim_visible",
         "institutional_societal_victim_visible",
         "victim_reasoning_brief",
