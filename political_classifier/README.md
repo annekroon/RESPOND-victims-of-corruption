@@ -505,6 +505,11 @@ Upload generated attention figures and tables to Research Drive:
 python3 political_classifier/scripts/08_upload_outputs.py
 ```
 
+Step 08 requires the fresh build manifest from step 07. Before uploading, it
+also verifies that the TikZ pipeline figure contains the source-inclusion
+screen, the current final corpus size, and the selected classifier threshold.
+This prevents an older Figure 1 from silently replacing the current output.
+
 Default Research Drive destinations:
 
 ```text
@@ -617,7 +622,7 @@ Recommended paper set:
 Upload them to Research Drive:
 
 ```bash
-python3 political_classifier/scripts/08_upload_outputs.py --skip-attention-outputs
+python3 political_classifier/scripts/08_upload_outputs.py
 ```
 
 ## Reproducibility Archive

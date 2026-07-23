@@ -10,6 +10,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import json
 import mimetypes
 import posixpath
 import sys
@@ -30,6 +31,11 @@ DEFAULT_PIPELINE_DIR = Path(
 )
 DEFAULT_LOCAL_FIGURE_DIR = DEFAULT_PIPELINE_DIR / "attention_figures"
 DEFAULT_LOCAL_TABLE_DIR = DEFAULT_PIPELINE_DIR / "attention_tables"
+DEFAULT_BUILD_MANIFEST = (
+    DEFAULT_PIPELINE_DIR
+    / "manuscript_tables"
+    / "manuscript_output_manifest.json"
+)
 DEFAULT_RD_OUTPUT_DIR = posixpath.join(
     RD_BASE_DIR,
     "victims-of-corruption-paper",
@@ -59,6 +65,12 @@ def parse_args() -> argparse.Namespace:
         "--rd-output-dir",
         default=DEFAULT_RD_OUTPUT_DIR,
         help="Research Drive base output directory.",
+    )
+    parser.add_argument(
+        "--build-manifest",
+        type=Path,
+        default=DEFAULT_BUILD_MANIFEST,
+        help="Fresh step-07 build manifest required before upload.",
     )
     parser.add_argument(
         "--rd-figure-subdir",
@@ -137,11 +149,62 @@ def upload_group(label: str, paths: list[Path], local_base_dir: Path, rd_dir: st
     return len(paths)
 
 
+def validate_current_build(
+    manifest_path: Path,
+    local_table_dir: Path,
+) -> dict[str, object]:
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Build manifest not found: {manifest_path}. "
+            "Refusing to upload possibly stale attention outputs. Run "
+            "political_classifier/scripts/07_build_attention_outputs.py first."
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    final_n = int(manifest["final_political_corruption_articles"])
+    threshold = float(manifest["selected_threshold"])
+    tikz_path = (
+        local_table_dir
+        / "latex"
+        / "figure_political_corruption_data_pipeline_tikz.tex"
+    )
+    if not tikz_path.exists():
+        raise FileNotFoundError(
+            f"Figure 1 TikZ output not found: {tikz_path}. "
+            "Run political_classifier/scripts/07_build_attention_outputs.py first."
+        )
+
+    tikz = tikz_path.read_text(encoding="utf-8")
+    required_fragments = [
+        "Source-inclusion screen",
+        "Source-filtered query corpus",
+        f"$N = {final_n:,}$",
+        f"$p \\geq {threshold:.2f}$",
+    ]
+    missing = [fragment for fragment in required_fragments if fragment not in tikz]
+    if missing:
+        raise ValueError(
+            "Figure 1 does not match the current step-07 build manifest. "
+            f"Missing expected content: {missing}. Rerun "
+            "political_classifier/scripts/07_build_attention_outputs.py."
+        )
+
+    print(
+        "Validated current attention build: "
+        f"N={final_n:,}, threshold={threshold:.2f}, "
+        f"built={manifest['built_at_utc']}",
+        flush=True,
+    )
+    return manifest
+
+
 def main() -> None:
     args = parse_args()
 
     if args.skip_tables and args.skip_figures:
         raise ValueError("Both --skip-tables and --skip-figures were set; nothing to upload.")
+
+    validate_current_build(args.build_manifest, args.local_table_dir)
 
     total = 0
 
