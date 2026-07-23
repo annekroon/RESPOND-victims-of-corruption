@@ -346,12 +346,16 @@ def evidence_is_verbatim(evidence: object, article_text: str) -> bool:
 
 def enforce_victim_evidence(result: dict, article_text: str) -> dict:
     result = result.copy()
+    entity_verbatim = evidence_is_verbatim(
+        result.get("victim_entity", ""), article_text
+    )
     harm_verbatim = evidence_is_verbatim(
         result.get("victim_harm_evidence", ""), article_text
     )
     link_verbatim = evidence_is_verbatim(
         result.get("victim_corruption_harm_link_evidence", ""), article_text
     )
+    result["victim_entity_verbatim"] = "yes" if entity_verbatim else "no"
     result["victim_harm_evidence_verbatim"] = "yes" if harm_verbatim else "no"
     result["victim_corruption_harm_link_evidence_verbatim"] = (
         "yes" if link_verbatim else "no"
@@ -360,13 +364,16 @@ def enforce_victim_evidence(result: dict, article_text: str) -> dict:
     if result.get("victim_visibility") in {
         "concrete_victim",
         "institutional_societal_victim",
-    } and not (harm_verbatim and link_verbatim):
+    } and not (entity_verbatim and harm_verbatim and link_verbatim):
         result["victim_visibility"] = "no_victim"
         result["victim_visible"] = "no"
         result["concrete_victim_visible"] = "no"
         result["institutional_societal_victim_visible"] = "no"
         reason = str(result.get("victim_reasoning_brief", "")).strip()
-        suffix = "Positive label removed because both evidence fields were not verbatim article quotations."
+        suffix = (
+            "Positive label removed because the victim entity and both evidence "
+            "fields were not verbatim article quotations."
+        )
         result["victim_reasoning_brief"] = f"{reason} {suffix}".strip()
     return result
 

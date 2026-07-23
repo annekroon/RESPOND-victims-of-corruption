@@ -92,6 +92,18 @@ interest; B) a realized loss, injury, deprivation, or adverse treatment; and C)
 a direct connection between that harm and the corruption. If any element is
 missing or must be inferred, code no_victim.
 
+Do not infer a losing party from favoritism. Saying that a tender, examination,
+appointment, contract, or decision was manipulated to favor one actor does not
+by itself state that another bidder, applicant, company, or person was harmed.
+The losing or deprived party and its loss must be explicit in the article.
+
+Do not treat harm caused by handling the case as harm caused by corruption.
+Delays, inadequate public service, staffing shortages, judicial
+incompatibilities, legal costs, resignations, or institutional disruption caused
+by an investigation, trial, prosecution, funding shortage, or administrative
+response do not count unless the article separately attributes that harm to the
+underlying corrupt conduct.
+
 An allegation that harm occurred is sufficient. The harm does not have to be
 proven. However, intended, possible, hypothetical, or future harm is not
 sufficient unless the article says the harm actually occurred.
@@ -159,6 +171,11 @@ EUR 2.3 million to the tax authorities" = no_victim unless state loss is
 explicitly described. "An official attempted to bribe another official" =
 no_victim unless the target is explicitly coerced or harmed. "Corruption kills"
 = no_victim if no person, group, or public interest is identified as suffering.
+"A tender was rigged to favor friendly companies" = no_victim unless the
+article explicitly identifies a losing or deprived bidder and its loss. "A
+corruption trial was delayed by judicial incompatibilities and staff shortages,
+reducing service to citizens" = no_victim because the described harm comes from
+case handling and resource constraints, not from the corrupt conduct itself.
 "The operation was intended to cause chaos" = no_victim unless the article says
 chaos or resulting harm occurred. "The election claim was a fraud on the
 American public and damaged the integrity of the electoral process" =
@@ -403,6 +420,15 @@ Do not supply an unstated victim, source of funds, or consequence. In
 particular, do not assume that a payment came from public or party funds when
 the article does not identify the payer.
 
+Beneficiary-counterparty test:
+
+Do not infer a victim from the existence of a beneficiary. A tender,
+examination, appointment, contract, or decision manipulated to favor one actor
+does not by itself establish that unnamed rival bidders, applicants, companies,
+or citizens were harmed. Code a victim only when the article explicitly
+identifies the losing or deprived party and states its loss or adverse
+treatment.
+
 Causal-source test:
 
 - corruption_itself: The article attributes the harm to the corrupt conduct,
@@ -420,6 +446,16 @@ Causal-source test:
 Count a victim only when the causal source is corruption_itself. The words
 "case", "affair", or "scandal" do not by themselves establish that the
 underlying corruption caused the harm.
+
+Procedural and resource-constraint test:
+
+Do not code harm caused by how the case is handled as corruption-caused harm.
+Trial delays, judicial incompatibilities, staffing shortages, underfunding,
+legal proceedings, resignations, or institutional disruption belong to
+scandal_investigation_or_response unless the article separately states that the
+underlying corrupt conduct caused the harm. The fact that a proceeding concerns
+corruption does not transform every consequence of that proceeding into harm
+from corruption.
 
 Harm status:
 - realized_or_alleged_realized: The article states or alleges that harm already
@@ -475,6 +511,13 @@ Boundary examples:
 - A healthcare service loses personnel because of the investigation, scandal,
   resignations, or institutional response rather than because of the corrupt
   conduct itself: no_victim.
+- A tender or examination is rigged to favor "friendly" companies or
+  applicants, but the article does not identify a losing party or describe its
+  loss: no_victim.
+- A corruption-related proceeding is postponed because of judicial
+  incompatibilities, staff shortages, or underfunding, producing inadequate
+  service for citizens: no_victim because case handling and resource
+  constraints, not the corrupt conduct, caused the described harm.
 - Companies are threatened with municipal repercussions unless they sign a
   fictitious consultancy agreement: concrete_victim because the communicated
   extortionate pressure is already realized adverse treatment.
@@ -510,6 +553,8 @@ Return valid JSON only:
   "harm_cause": "corruption_itself | scandal_investigation_or_response | unrelated | none | unclear",
   "harm_status": "realized_or_alleged_realized | possible_intended_or_future | none_or_unrelated | unclear",
   "victim_entity": "verbatim quotation identifying the harmed person, group, organization, institution, or public interest; otherwise none",
+  "victim_inferred_from_beneficiary_or_favoritism": "yes | no | unclear",
+  "harm_caused_by_case_handling_or_resource_constraints": "yes | no | unclear",
   "harmed_entity_or_public_interest_explicit": "yes | no | unclear",
   "explicit_harm_statement_present": "yes | no | unclear",
   "coercive_demand_or_pressure_made": "yes | no | unclear",
@@ -554,6 +599,12 @@ def _has_evidence(value: object) -> bool:
 def normalize_victim_visibility(parsed: dict) -> dict:
     harm_cause = str(_value(parsed, "harm_cause")).strip()
     harm_status = str(_value(parsed, "harm_status")).strip()
+    inferred_from_favoritism = _normalized_yes_no(
+        _value(parsed, "victim_inferred_from_beneficiary_or_favoritism")
+    )
+    case_handling_harm = _normalized_yes_no(
+        _value(parsed, "harm_caused_by_case_handling_or_resource_constraints")
+    )
     harmed_entity_explicit = _normalized_yes_no(
         _value(parsed, "harmed_entity_or_public_interest_explicit")
     )
@@ -581,7 +632,11 @@ def normalize_victim_visibility(parsed: dict) -> dict:
     else:
         derived_visibility = ""
 
-    if harm_cause in {
+    if inferred_from_favoritism == "yes" or case_handling_harm == "yes":
+        visibility = "no_victim"
+        concrete = "no"
+        institutional = "no"
+    elif harm_cause in {
         "scandal_investigation_or_response",
         "unrelated",
         "none",
@@ -642,6 +697,8 @@ def normalize_victim_visibility(parsed: dict) -> dict:
         "victim_harm_cause": harm_cause,
         "victim_harm_status": harm_status,
         "victim_entity": _value(parsed, "victim_entity"),
+        "victim_inferred_from_beneficiary_or_favoritism": inferred_from_favoritism,
+        "victim_harm_caused_by_case_handling_or_resource_constraints": case_handling_harm,
         "victim_harmed_entity_or_public_interest_explicit": harmed_entity_explicit,
         "victim_explicit_harm_statement_present": explicit_harm_statement,
         "victim_coercive_demand_or_pressure_made": coercive_demand,
@@ -767,7 +824,7 @@ def normalize_accused_actor(parsed: dict) -> dict:
 
 VICTIM_VISIBILITY = ClassifierSpec(
     name="victim_visibility",
-    prompt_version="victim_visibility_zero_shot_v7",
+    prompt_version="victim_visibility_zero_shot_v8",
     default_output_name="victim_visibility_labels.csv.gz",
     result_columns=[
         "victim_visibility",
@@ -775,6 +832,9 @@ VICTIM_VISIBILITY = ClassifierSpec(
         "victim_harm_cause",
         "victim_harm_status",
         "victim_entity",
+        "victim_entity_verbatim",
+        "victim_inferred_from_beneficiary_or_favoritism",
+        "victim_harm_caused_by_case_handling_or_resource_constraints",
         "victim_harmed_entity_or_public_interest_explicit",
         "victim_explicit_harm_statement_present",
         "victim_coercive_demand_or_pressure_made",

@@ -34,7 +34,7 @@ The current codebook prompt versions are:
 
 | Variable | Prompt version |
 |---|---|
-| `victim_visibility` | `victim_visibility_zero_shot_v7` |
+| `victim_visibility` | `victim_visibility_zero_shot_v8` |
 | `corruption_frame` | `corruption_frame_zero_shot_v3` |
 | `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
 | `accused_actor_visibility` | `accused_actor_zero_shot_v6` |
