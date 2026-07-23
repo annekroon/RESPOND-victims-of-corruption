@@ -81,12 +81,25 @@ This reads the classified country files created by
 `political_classifier/scripts/train_final_classifier.py --score-corpus` and
 keeps only rows with `pred_political_corruption == 1`.
 
+For the current manuscript rerun, the classified inputs should be the
+source-filtered classifier outputs:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
+  political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered/
+```
+
+These files are produced by
+`political_classifier/scripts/filter_classified_outputs.py` after the final
+source-inclusion decisions have been applied.
+
 ```bash
 python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified \
+  --classified-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered \
   --political-only \
-  --per-country-year 100 \
-  --output-name political_corruption_country_year_sample.csv.gz
+  --per-country-year 200 \
+  --output-name political_corruption_source_filtered_country_year_sample_200.csv.gz
 ```
 
 If a country-year has fewer than the requested number of rows, all available
@@ -132,7 +145,7 @@ python3 topic_classification/scripts/02_fit_multilingual_bertopic.py \
   --nr-topics auto
 ```
 
-Final manuscript run:
+Final manuscript run on the source-filtered sample:
 
 ```bash
 TMPDIR=/home/akroon/data/1t_storage/tmp \
@@ -140,11 +153,11 @@ HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
 TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u topic_classification/scripts/02_fit_multilingual_bertopic.py \
-  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_source_filtered_country_year_sample_200.csv.gz \
+  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10 \
   --min-topic-size 10 \
   --nr-topics auto \
-  > bertopic_political_corruption_200_min10.log 2>&1 &
+  > bertopic_political_corruption_source_filtered_200_min10.log 2>&1 &
 ```
 
 Main outputs:
@@ -162,12 +175,16 @@ and relevant environment variables. Treat this file as part of the model output.
 
 ### Final Topic-Number Choice
 
-The final manuscript appendix uses
-`bertopic_political_corruption_200_min10`, which has 67 non-outlier
-lower-level BERTopic topics. This is the preferred specification because it
-matches the substantive goal of the topic model: discover fine-grained,
-country- and time-varying patterns first, then use GPT 5.1 to aggregate those
-discovered topics into a smaller set of interpretable higher-order topics.
+The current final manuscript appendix should use
+`bertopic_political_corruption_source_filtered_200_min10`, estimated on the
+classified political-corruption articles after the final source filter has been
+applied. The specification remains the same as the previous final run:
+stratified sampling up to 200 articles per country-year stratum and
+`min_topic_size = 10` with `nr_topics = auto`. This is the preferred
+specification because it matches the substantive goal of the topic model:
+discover fine-grained, country- and time-varying patterns first, then use GPT
+5.1 to aggregate those discovered topics into a smaller set of interpretable
+higher-order topics.
 
 Alternative specifications were inspected but rejected for the appendix:
 
@@ -176,13 +193,39 @@ Alternative specifications were inspected but rejected for the appendix:
 | `bertopic_political_corruption` | 7 | Too coarse; collapses distinct scandals, countries, and institutions into broad generic topics. |
 | `bertopic_political_corruption_granular` | 8 | Misleading directory name; also too coarse for the intended lower-level topic inventory. |
 | `bertopic_political_corruption_200_topics30` | 19 | More interpretable than the 7/8-topic runs, but still merges several event-, country-, and institution-specific patterns. |
-| `bertopic_political_corruption_200_min10` | 67 | Final choice; preserves inductive lower-level variation while remaining interpretable after GPT 5.1 grouping. |
+| `bertopic_political_corruption_200_min10` | 67 | Previous final run before the final source-filtered classifier outputs were adopted. |
+| `bertopic_political_corruption_source_filtered_200_min10` | rerun-dependent | Current final choice; same specification as the 67-topic run, but estimated on source-filtered classified outputs. |
 
-The 67-topic solution should therefore be understood as the lower-level
-BERTopic inventory, not the final substantive typology. The manuscript-facing
-typology is the GPT-assisted higher-order topic grouping. The lower-level
-topics remain useful because they show which events, countries, and issue areas
-compose each higher-order topic.
+The many-topic BERTopic solution should therefore be understood as the
+lower-level inventory, not the final substantive typology. The
+manuscript-facing typology is the GPT-assisted higher-order topic grouping. The
+lower-level topics remain useful because they show which events, countries, and
+issue areas compose each higher-order topic.
+
+### One-Command Source-Filtered Final Rerun
+
+After the source-filtered classified outputs exist, the full final topic-model
+solution can be rerun with:
+
+```bash
+topic_classification/scripts/07_rerun_final_source_filtered_topic_solution.sh
+```
+
+This creates the source-filtered topic sample, fits the final BERTopic
+specification, labels the fine-grained topics with GPT 5.1, groups them into
+higher-order topics, executes the inspection notebook, and regenerates the CSV
+and LaTeX tables under:
+
+```text
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
+  topic_classification/bertopic_political_corruption_source_filtered_200_min10/inspection_tables/
+```
+
+To also upload the regenerated LaTeX tables to Research Drive:
+
+```bash
+topic_classification/scripts/07_rerun_final_source_filtered_topic_solution.sh --upload-tables
+```
 
 ## 3. Label Topics With GPT 5.1
 
@@ -425,9 +468,10 @@ recommended starting point is:
 ```bash
 python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified-webdav \
+  --classified-rd-dir "ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/classifier_outputs/classified_country_files_source_filtered" \
   --political-only \
   --per-country-year 200 \
-  --output-name political_corruption_country_year_sample_200.csv.gz
+  --output-name political_corruption_source_filtered_country_year_sample_200.csv.gz
 ```
 
 Then fit BERTopic from that saved sample and continue with the LLM labelling,
@@ -463,7 +507,7 @@ For the current manuscript workflow, the usual order is:
 1. Pull the latest repository code.
 2. Rerun `topic_classification/notebooks/01_inspect_topic_results.ipynb` using
    the final many-topic BERTopic directory,
-   `/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10`.
+   `/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10`.
 3. Confirm that `inspection_tables/latex/` contains
    `table_topic_higher_order_summary.tex` and
    `table_all_topics_llm_higher_order_topics.tex`.
@@ -477,8 +521,8 @@ Create a local archive only:
 
 ```bash
 python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
-  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10 \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_source_filtered_country_year_sample_200.csv.gz
 ```
 
 The browser folder is still visible at:
@@ -496,8 +540,8 @@ Upload the full topic archive:
 
 ```bash
 python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
-  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_country_year_sample_200.csv.gz \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10 \
+  --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_source_filtered_country_year_sample_200.csv.gz \
   --upload
 ```
 
@@ -517,16 +561,17 @@ all-topics table should be substantially longer than the stale 8-topic export
 (the 8-topic table is only about 36 lines):
 
 ```bash
-wc -l /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10/inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex
+wc -l /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10/inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex
 ```
 
-For the current 67-topic model, this should be around 97 lines after the
-notebook export cell has been rerun. Then upload the tables to a `topic models`
-subfolder under the standard `output/tables` folder:
+For the source-filtered many-topic model, this should be clearly longer than
+the stale 8-topic export after the notebook export cell has been rerun. Then
+upload the tables to a `topic models` subfolder under the standard
+`output/tables` folder:
 
 ```bash
 python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py \
-  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_200_min10 \
+  --bertopic-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/bertopic_political_corruption_source_filtered_200_min10 \
   --upload-latex-tables \
   --tables-only \
   --tables-folder-name "topic models"
@@ -548,4 +593,4 @@ wc -l "table_all_topics_llm_higher_order_topics.tex"
 
 If it is still around 36 lines, the uploaded file is stale and was generated
 from the old 8-topic directory rather than from
-`bertopic_political_corruption_200_min10`.
+`bertopic_political_corruption_source_filtered_200_min10`.
