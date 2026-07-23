@@ -1,9 +1,9 @@
 \subsection{Attention to Political Corruption Over Time}
 \label{sec:results-political-corruption-attention}
 
-Across the nine-country corpus, the political-corruption classifier identified 474,328 articles as primarily about political corruption. Relative to total news coverage, political-corruption coverage was a small but visible component of the news agenda, accounting for approximately 0.10\% of all news articles in the observation period. This aggregate figure masks substantial cross-national variation.
+Across the nine-country corpus, the political-corruption classifier identified 459,674 articles as primarily about political corruption. This represents 23.47\% of the cleaned, deduplicated, and source-filtered corruption-query corpus. Relative to the separate total-news denominator, political-corruption coverage accounted for approximately 0.10\% of all collected news articles in the observation period. This aggregate figure masks substantial cross-national variation.
 
-Figure~\ref{fig:pc-attention-monthly} shows monthly relative attention to political corruption across countries. Relative attention is calculated as the number of articles classified as primarily about political corruption divided by total news coverage in the same country-month. Bulgaria had the highest overall relative attention, with political-corruption articles representing 0.53\% of total news coverage. Italy followed at 0.35\%, Hungary at 0.27\%, and Ukraine at 0.22\%. France, the Netherlands, Serbia, Sweden, and the United Kingdom showed lower relative attention. The United Kingdom had the lowest relative level, with political-corruption articles accounting for 0.03\% of total news coverage, despite its large absolute number of classified articles.
+Figure~\ref{fig:pc-attention-monthly} shows monthly relative attention to political corruption across countries. Relative attention is calculated as the number of articles classified as primarily about political corruption divided by total news coverage in the same country-month. The corresponding country totals and percentages are reported in Table~\ref{tab:pc-attention-country-summary}. The source filter changes the eligible numerator but not the separately collected total-news denominator; the resulting percentages should therefore be interpreted as the prevalence of eligible political-corruption coverage within the broader collected news universe.
 
 \begin{figure}
 \centering
@@ -12,9 +12,7 @@ Figure~\ref{fig:pc-attention-monthly} shows monthly relative attention to politi
 \label{fig:pc-attention-monthly}
 \end{figure}
 
-Over time, relative attention was generally highest in the earlier years of the corpus. In the pooled sample, political-corruption coverage accounted for 0.13\% of total news in both 2018 and 2019, declining to approximately 0.09--0.10\% from 2020 onward. Country-specific trends varied. Bulgaria remained consistently high throughout the period, although its relative attention declined from 0.74\% in 2018 to 0.53\% in 2024. Italy peaked in 2019 at 0.56\%, while Ukraine showed a pronounced peak in 2019 at 0.41\% before falling in later years.
-
-Monthly patterns suggest that political-corruption attention is episodic rather than constant. Several sharp attention spikes appear in Bulgaria, Hungary, Italy, and Ukraine, indicating that coverage is concentrated around particular scandals, investigations, or political moments. The largest monthly relative-attention spike occurred in Bulgaria in February 2020, when political-corruption articles represented 1.53\% of total news coverage. Other prominent peaks include Hungary in March 2018, Italy in May 2019, and Ukraine in March 2019.
+The monthly series are reported rather than pooled absolute counts because the nine country corpora differ substantially in size. Peaks in the small-multiple panels indicate periods when political-corruption coverage occupied a comparatively larger share of each country's collected news agenda. Exact country-year values and peak months are generated from the current classified corpus in the accompanying appendix tables.
 
 \subsection{Appendix Figure: Absolute Political-Corruption Volume}
 \label{sec:appendix-political-corruption-volume}
@@ -26,4 +24,4 @@ Monthly patterns suggest that political-corruption attention is episodic rather 
 \label{fig:pc-absolute-volume-appendix}
 \end{figure}
 
-Figure~\ref{fig:pc-absolute-volume-appendix} reports the absolute monthly volume of articles classified as political corruption. The figure shows that absolute article counts are concentrated in larger media systems, especially the United Kingdom, Italy, France, and Bulgaria. For this reason, the main analyses use relative attention, defined as political-corruption articles divided by total news coverage in the same country-period.
+Figure~\ref{fig:pc-absolute-volume-appendix} reports the absolute monthly volume of articles classified as political corruption. Absolute counts reflect differences in both attention and the size of each collected country corpus. For this reason, the main analyses use relative attention, defined as political-corruption articles divided by total news coverage in the same country-period.

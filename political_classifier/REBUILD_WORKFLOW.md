@@ -32,8 +32,8 @@ excluded, including `No`, missing, and ambiguous values.
 
 ## Numbered Script Spine
 
-The numbered scripts are the reproducible pipeline. The notebooks are for
-inspection and sanity checks.
+The numbered scripts are the reproducible pipeline. The notebooks are optional
+inspection views and are not required to build production tables or figures.
 
 ```bash
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
@@ -168,8 +168,9 @@ active_learning/silver_training_source_filtered_with_llm_suggestions.csv
 
 ## 6. Compare Classifier Models
 
-This validates the source-filtered silver-trained classifier against the
-source-filtered human validation universe.
+This validates the source-filtered silver-trained classifier against the fixed
+human validation benchmark. The source filter is not applied to that benchmark,
+which preserves its original country composition and UK supplement.
 
 ```bash
 python3 political_classifier/scripts/05_compare_models.py \
@@ -183,11 +184,11 @@ Outputs:
 ```text
 classifier_comparison/all_threshold_results.csv
 classifier_comparison/best_model_results.csv
-classifier_comparison/country_validation_results.csv
+classifier_comparison/country_results_for_best_silver_thresholds.csv
 classifier_comparison/validation_prediction_comparison.csv
 ```
 
-Then inspect and regenerate manuscript classifier tables with:
+Optionally inspect the saved outputs with:
 
 ```text
 political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
@@ -215,15 +216,22 @@ Monitor:
 tail -f silver_classifier_final_scoring.log
 ```
 
-## 8. Rebuild Attention Tables And Figures
+## 8. Rebuild Manuscript And Attention Outputs
 
-The command-line entry point executes the attention notebook:
+The command-line entry point executes a clean copy of the attention notebook
+outside the repository and then regenerates all classifier tables, the
+country-level corpus table, and Figure 1 from saved pipeline summaries:
 
 ```bash
 python3 political_classifier/scripts/07_build_attention_outputs.py
 ```
 
-You can also inspect interactively in:
+The build checks that the comparison and final-scoring thresholds match, that
+the classified input equals the source-filtered corpus, and that attention
+counts match the final classified corpus. A mismatch stops the build with the
+step that needs to be rerun.
+
+You can optionally inspect interactively in:
 
 ```text
 political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
@@ -238,6 +246,14 @@ Outputs:
 attention_tables/
 attention_tables/latex/
 attention_figures/
+manuscript_tables/
+```
+
+If the attention CSVs and figures are already current and only the LaTeX tables
+or Figure 1 need regeneration:
+
+```bash
+python3 political_classifier/scripts/07_build_attention_outputs.py --skip-notebook
 ```
 
 ## 9. Upload Manuscript Outputs

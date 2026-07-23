@@ -3,8 +3,8 @@
 This folder contains the zero-shot GPT 5.1 workflow for coding article-level
 variables among articles already classified as primarily discussing political
 corruption. The expected corpus is the final political-corruption article set
-from `political_classifier/scripts/train_final_classifier.py`, currently about
-`474,328` articles.
+from `political_classifier/scripts/06_train_final_classifier.py`, currently
+`459,674` articles.
 
 The workflow is intentionally separate from the political-corruption classifier:
 that first classifier identifies the analysis corpus; these scripts measure
@@ -420,7 +420,7 @@ python3 content-classification/scripts/classify_accused_actor.py \
 
 This design keeps the expensive full-corpus GPT labelling separate from the
 validation exercise. If the 500-case validation shows weak agreement on a
-concept, revise the prompt version before running that concept on all 474,328
+concept, revise the prompt version before running that concept on all 459,674
 political-corruption articles.
 
 ## Full Runs

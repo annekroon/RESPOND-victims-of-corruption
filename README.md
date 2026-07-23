@@ -46,8 +46,9 @@ political_classifier/README.md
 ### Order Of Execution
 
 Run the Part 1 political-corruption workflow from the repository root on
-`annecuda`. The numbered scripts are the reproducible backbone; notebooks are
-for inspection and sanity checks.
+`annecuda`. The numbered scripts are the reproducible backbone. The two
+notebooks are optional inspection views and are not required to regenerate
+production tables or figures.
 
 First update the repository:
 
@@ -99,7 +100,7 @@ python3 political_classifier/scripts/05_compare_models.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
 ```
 
-Inspect the generated validation tables in:
+Optionally inspect the saved validation results in:
 
 ```text
 political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
@@ -130,6 +131,10 @@ python3 political_classifier/scripts/09_archive_derived_data.py \
   --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
 ```
 
+Step 07 regenerates the classifier LaTeX tables, country-level corpus table,
+attention CSVs and plots, and the TikZ data-pipeline figure. Step 08 uploads
+those production files to Research Drive.
+
 Final selected political-corruption classifier:
 
 | Item | Value |
@@ -147,6 +152,8 @@ Final selected political-corruption classifier:
 | Accuracy | `0.829` |
 | Macro F1 | `0.803` |
 | Weighted F1 | `0.834` |
+| Final source-filtered query corpus | `1,958,721` |
+| Final political-corruption corpus | `459,674` |
 
 The main derived outputs are stored on `annecuda` under:
 

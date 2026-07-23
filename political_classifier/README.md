@@ -6,8 +6,8 @@ This folder contains the workflow for identifying which cleaned news articles ar
 
 | Path | Purpose |
 |---|---|
-| `notebooks/02_inspect_classifier_comparison.ipynb` | Inspect saved classifier comparison outputs and generate manuscript tables |
-| `notebooks/03_analyze_political_corruption_attention.ipynb` | Analyze relative attention to political corruption over time and generate the attention tables, figures, and Figure 1 TikZ |
+| `notebooks/02_inspect_classifier_comparison.ipynb` | Optional interactive inspection of saved classifier comparison outputs |
+| `notebooks/03_analyze_political_corruption_attention.ipynb` | Optional interactive inspection of attention results and generated artifacts |
 | `scripts/00_download_source_workbook.py` | Download the reviewed source workbook from Research Drive/WebDAV |
 | `scripts/01_clean_dedupe_data.py` | Reproducibly clean and deduplicate raw corruption-query files |
 | `scripts/02_create_source_filtered_corpus.py` | Create the full cleaned/deduplicated/source-filtered corpus |
@@ -15,7 +15,7 @@ This folder contains the workflow for identifying which cleaned news articles ar
 | `scripts/04_label_silver_batch.py` | UvA LLM proxy silver labelling entry point |
 | `scripts/05_compare_models.py` | Classifier comparison and validation entry point |
 | `scripts/06_train_final_classifier.py` | Final classifier training/scoring entry point |
-| `scripts/07_build_attention_outputs.py` | Execute the attention notebook to rebuild CSVs, figures, and LaTeX tables |
+| `scripts/07_build_attention_outputs.py` | Rebuild attention outputs, all manuscript tables, and Figure 1 |
 | `scripts/08_upload_outputs.py` | Upload manuscript tables and attention outputs |
 | `scripts/09_archive_derived_data.py` | Archive expensive-to-recreate derived data |
 | `scripts/10_sample_content_codebook_validation.py` | Sample classified political-corruption articles for later content-codebook validation |
@@ -31,9 +31,9 @@ This folder contains the workflow for identifying which cleaned news articles ar
 ## Final Classifier Decision
 
 The final political-corruption classifier uses one combined LLM silver-labelled training set. The manually reviewed UK supplement is used only for validation, not for training.
-The metrics below describe the last completed classifier run; after rebuilding
-the source-filtered silver-labelled set, rerun the comparison notebook and
-update these values from the generated tables.
+The metrics below describe the last completed classifier run. Production tables
+and Figure 1 are regenerated from saved pipeline results by numbered step 07;
+the notebooks are not required.
 
 | Metric | Value |
 |---|---|
@@ -51,12 +51,16 @@ update these values from the generated tables.
 | Macro F1 | `0.803` |
 | Weighted F1 | `0.834` |
 | Predicted positive rate on validation | `0.357` |
+| Source-filtered corruption-query corpus | `1,958,721` |
+| Final political-corruption corpus | `459,674` |
 
 ## Workflow
 
 Run commands from the repository root on `annecuda`.
 
-The notebooks include a small bootstrap cell that finds the repository root and adds it to `sys.path`. This keeps imports such as `from config import RD_BASE_DIR` and `from dataloader import ...` working even though the notebooks live in `political_classifier/notebooks/`.
+The notebooks include a small bootstrap cell that finds the repository root and
+adds it to `sys.path`. This keeps imports working when they are opened for
+exploration, but production output generation belongs to the scripts.
 
 For the clean end-to-end rebuild after source review, use:
 
@@ -114,7 +118,8 @@ training set should be rebuilt from scratch:
      > llm_silver_training_source_filtered.log 2>&1 &
    ```
 
-7. Rerun classifier comparison on the included-source validation universe:
+7. Rerun classifier comparison. Source filtering applies to the silver training
+   data; the fixed human validation benchmark remains unfiltered:
 
    ```bash
    python3 political_classifier/scripts/05_compare_models.py \
@@ -123,10 +128,7 @@ training set should be rebuilt from scratch:
      --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
    ```
 
-8. Rerun `political_classifier/notebooks/02_inspect_classifier_comparison.ipynb`
-   to regenerate classifier validation tables.
-
-9. Score the full source-filtered corpus after accepting classifier performance:
+8. Score the full source-filtered corpus after accepting classifier performance:
 
    ```bash
    TMPDIR=/home/akroon/data/1t_storage/tmp \
@@ -139,19 +141,20 @@ training set should be rebuilt from scratch:
      > silver_classifier_final_scoring.log 2>&1 &
    ```
 
-10. Rebuild attention tables/figures:
+9. Rebuild attention CSVs, figures, classifier tables, the corpus table, and
+   Figure 1:
 
    ```bash
    python3 political_classifier/scripts/07_build_attention_outputs.py
    ```
 
-11. Upload updated tables and figures:
+10. Upload updated tables and figures:
 
    ```bash
    python3 political_classifier/scripts/08_upload_outputs.py
    ```
 
-12. Archive the updated derived data:
+11. Archive the updated derived data:
 
    ```bash
    python3 political_classifier/scripts/09_archive_derived_data.py \
@@ -341,7 +344,8 @@ Only country/source rows with `conventional_journalism == Yes` are retained.
 Rows marked `No`, missing, or anything else are excluded. Place the workbook at
 the path above before rerunning classifier validation or attention outputs.
 
-Run the final comparison on the included-source validation universe:
+Run the final comparison. The source filter is applied to silver training data;
+the fixed human validation benchmark remains intact for comparability:
 
 ```bash
 python3 political_classifier/scripts/05_compare_models.py \
@@ -379,13 +383,15 @@ Main outputs:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/classifier_comparison/
 ```
 
-Then inspect:
+Optionally inspect:
 
 ```text
 political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 ```
 
-This notebook generates manuscript-ready LaTeX classifier tables. The final model is reported as trained on one silver-labelled training set rather than as separate data-collection batches.
+The final model is reported as trained on one silver-labelled training set
+rather than as separate data-collection batches. Numbered step 07, not the
+notebook, generates the manuscript-ready LaTeX classifier tables.
 
 The inspection notebook intentionally reads only `classifier_comparison/`. If old folders such as `classifier_comparison_uk_calibration/` still exist on disk, they are ignored. You may archive or delete them manually after confirming you no longer need them.
 
@@ -429,9 +435,12 @@ Outputs are written to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/
 ```
 
-If the classifier has already been scored and only the source-inclusion scheme
-changed, do **not** rerun the expensive embedding scoring. Instead, post-filter
-the existing classified outputs:
+`filter_classified_outputs.py` can post-filter an older classified corpus for a
+quick diagnostic, but that is not the production rebuild. When source inclusion
+changes, rerun steps 02--07 so the silver sample, fitted classifier, validation
+tables, and final corpus all use the same source universe.
+
+For that diagnostic only:
 
 ```bash
 python3 political_classifier/scripts/filter_classified_outputs.py
@@ -443,23 +452,22 @@ This writes filtered classified files to:
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered/
 ```
 
-The attention notebook also applies the same source filter when it loads
-classified files, so this post-filtered directory is mainly a reproducible
-archive/checkpoint.
+This post-filtered directory is a temporary checkpoint and is not the canonical
+input used by step 07.
 
-### 6. Attention Over Time
+### 7. Attention Over Time
 
 After full scoring, run:
 
-```text
-political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
+```bash
+python3 political_classifier/scripts/07_build_attention_outputs.py
 ```
 
-Section 3 of the notebook applies the source-inclusion workbook to the
-classified political-corruption articles. The final analytical numerator is
-therefore the classified political-corruption sample restricted to explicitly
-included sources. The total-news denominator remains the separate country-period
-NewsAPI count series; the available denominator is not source-specific.
+The final classifier has already been applied only to the source-filtered
+country files. The resulting political-corruption sample is therefore the
+eligible analytical numerator. The total-news denominator remains the separate
+country-period NewsAPI count series; the available denominator is not
+source-specific.
 
 Relative political-corruption attention is defined as:
 
@@ -473,7 +481,8 @@ The denominator is total news coverage, not the corruption-query corpus. Weekly 
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/weekly_counts_total_coverage/
 ```
 
-The notebook writes attention tables, LaTeX summaries, and figures under:
+Step 07 executes a clean copy of the attention notebook outside the repository
+and then writes attention tables, LaTeX summaries, and figures under:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/
@@ -487,12 +496,8 @@ political_corruption_source_filter_summary_by_country.csv
 political_corruption_source_filter_decision_counts.csv
 ```
 
-Regenerate the manuscript data-pipeline TikZ figure by rerunning the notebook
-cell titled:
-
-```text
-# Method figure: final TikZ data-pipeline figure.
-```
+The same command regenerates the manuscript data-pipeline TikZ figure from
+saved pipeline counts.
 
 Upload generated attention figures and tables to Research Drive:
 
@@ -507,7 +512,7 @@ ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/out
 ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/output/tables/attention/
 ```
 
-The attention notebook writes LaTeX tables from the saved CSV outputs into:
+Step 07 writes LaTeX tables from the saved CSV outputs into:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/attention_tables/latex/
@@ -520,13 +525,13 @@ The main method/descriptive attention table is:
 table_attention_corpus_construction_country_summary.tex
 ```
 
-It is generated from the saved attention CSVs and reports, by country, the
-cleaned/deduplicated corruption-query corpus size, the final classified
-political-corruption corpus size, the political-corruption share within the
-query corpus, the total-news denominator, and the political-corruption share of
-total news.
+It is generated from saved pipeline summaries and reports, by country, the
+cleaned/deduplicated corruption-query corpus size, source-filtered corpus size,
+final political-corruption corpus size, political-corruption share within the
+source-filtered query corpus, total-news denominator, and political-corruption
+share of total news.
 
-The same notebook also writes outlet/source descriptives for the classified
+The same production step also writes outlet/source descriptives for the classified
 political-corruption corpus after source filtering:
 
 ```text
@@ -549,11 +554,8 @@ figure_political_corruption_data_pipeline_tikz.tex
 It shows the two separate NewsAPI routes: one route retrieves the
 corruption-query article corpus, and the other route retrieves weekly
 total-news counts used only as the denominator for relative attention.
-Regenerate it by rerunning the notebook cell:
-
-```text
-# Method figure: final TikZ data-pipeline figure.
-```
+Regenerate it with `python3
+political_classifier/scripts/07_build_attention_outputs.py`.
 
 Recommended manuscript figures:
 
@@ -577,24 +579,39 @@ docs/results_political_corruption_attention.tex
 
 ## Manuscript Tables
 
-The comparison notebook writes classifier validation tables to:
+Step 07 writes classifier validation tables to:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/manuscript_tables/
 ```
 
-The reproducible table outputs are generated by
-`political_classifier/notebooks/02_inspect_classifier_comparison.ipynb`.
-Use the `table_pc_classifier*.tex` files in Overleaf, for example:
+Use the stable `table_pc_classifier*.tex` files in Overleaf. Include the compact
+comparison once in the main manuscript and the threshold/country diagnostics in
+the appendix:
 
 ```latex
 \input{tables/table_pc_classifier_comparison_main}
 
 % Appendix
-\input{tables/table_pc_classifier_comparison_appendix}
 \input{tables/table_pc_classifier_threshold_sweep_appendix}
 \input{tables/table_pc_classifier_country_validation_appendix}
 ```
+
+`table_pc_classifier_comparison_appendix.tex` is also generated for projects
+that want the full comparison only in the appendix. Do not include both that
+file and the main comparison table in the same manuscript.
+
+Recommended paper set:
+
+| Placement | File |
+|---|---|
+| Method | `tables/attention/latex/figure_political_corruption_data_pipeline_tikz.tex` |
+| Method/descriptives | `tables/attention/latex/table_attention_corpus_construction_country_summary.tex` |
+| Main classifier validation | `tables/table_pc_classifier_comparison_main.tex` |
+| Main attention results | `figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png` |
+| Appendix classifier threshold check | `tables/table_pc_classifier_threshold_sweep_appendix.tex` |
+| Appendix country validation | `tables/table_pc_classifier_country_validation_appendix.tex` |
+| Appendix absolute volume | `figures/attention/political_corruption_absolute_volume_month_stacked.png` |
 
 Upload them to Research Drive:
 

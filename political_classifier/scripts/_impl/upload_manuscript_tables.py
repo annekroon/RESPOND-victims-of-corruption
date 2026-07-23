@@ -1,11 +1,9 @@
 """Upload generated manuscript LaTeX tables to Research Drive/WebDAV.
 
-Run this after the LaTeX table section in
-political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
-has generated local .tex files.
+Run numbered step 07 first so the local .tex files are current.
 
 Example:
-    python3 political_classifier/scripts/07_upload_outputs.py --skip-attention-outputs
+    python3 political_classifier/scripts/08_upload_outputs.py --skip-attention-outputs
 """
 
 from __future__ import annotations
@@ -85,8 +83,7 @@ def main() -> None:
     if not args.local_table_dir.exists():
         raise FileNotFoundError(
             f"Local table directory does not exist: {args.local_table_dir}. "
-            "Run the LaTeX table cells in "
-            "political_classifier/notebooks/02_inspect_classifier_comparison.ipynb first."
+            "Run political_classifier/scripts/07_build_attention_outputs.py first."
         )
 
     table_paths = sorted(args.local_table_dir.glob(args.pattern))

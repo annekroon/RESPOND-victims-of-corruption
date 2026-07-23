@@ -1,10 +1,10 @@
 """Upload generated political-corruption attention outputs to Research Drive.
 
-Run this after political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
-has generated the local attention figures and tables.
+Run numbered step 07 first so the local attention figures and tables are
+current.
 
 Example:
-    python3 political_classifier/scripts/07_upload_outputs.py
+    python3 political_classifier/scripts/08_upload_outputs.py
 """
 
 from __future__ import annotations
