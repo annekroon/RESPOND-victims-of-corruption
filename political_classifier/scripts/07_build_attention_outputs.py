@@ -8,6 +8,7 @@ tables, the corpus-construction table, and Figure 1 from saved pipeline outputs.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -60,6 +61,13 @@ def main() -> None:
     )
     build_manifest.unlink(missing_ok=True)
     if not args.skip_notebook:
+        for generated_dir in [
+            args.pipeline_dir / "attention_tables",
+            args.pipeline_dir / "attention_figures",
+        ]:
+            if generated_dir.exists():
+                shutil.rmtree(generated_dir)
+                print(f"Removed stale generated directory: {generated_dir}", flush=True)
         output = args.output
         output.parent.mkdir(parents=True, exist_ok=True)
         command = [

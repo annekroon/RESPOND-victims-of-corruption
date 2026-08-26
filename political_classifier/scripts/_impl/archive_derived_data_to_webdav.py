@@ -5,7 +5,7 @@ the RESPOND victims-of-corruption workflow. It is meant for reproducibility:
 GitHub keeps the code and notebooks; Research Drive keeps the generated data.
 
 Example:
-    python3 political_classifier/scripts/08_archive_derived_data.py
+    python3 political_classifier/scripts/09_archive_derived_data.py
 
 Default Research Drive target:
     ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/
@@ -34,8 +34,8 @@ PROJECT_ROOT = next(
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import config
 from config import RD_BASE_DIR
+from political_classifier.reproducibility import package_versions
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -70,6 +70,9 @@ ARCHIVE_GROUPS = [
             "denominator_country_month.csv",
             "denominator_country_week.csv",
             "denominator_country_year_source.csv",
+            "denominator_country_total.csv",
+            "clean_dedupe_audit.csv",
+            "clean_dedupe_run_manifest.json",
         ),
         destination_subdir="cleaned_deduped",
     ),
@@ -77,8 +80,10 @@ ARCHIVE_GROUPS = [
         name="silver_training_data",
         source_dir=DEFAULT_PIPELINE_DIR / "active_learning",
         patterns=(
-            "*with_llm_suggestions.csv",
-            "*for_annotation.csv",
+            "silver_training_source_filtered*.csv",
+            "*.run.json",
+            "*.complete.json",
+            "*_audit.jsonl",
         ),
         destination_subdir="silver_training_data",
     ),
@@ -97,6 +102,7 @@ ARCHIVE_GROUPS = [
         patterns=(
             "*.xlsx",
             "*.csv",
+            "*.json",
         ),
         destination_subdir="source_inclusion",
     ),
@@ -107,15 +113,15 @@ ARCHIVE_GROUPS = [
             "*.csv",
             "*.txt",
             "*.joblib",
+            "*.json",
             "classified_country_files/*.csv.gz",
-            "classified_country_files_source_filtered/*.csv.gz",
         ),
         destination_subdir="classifier_outputs",
     ),
     ArchiveGroup(
         name="classifier_comparison",
         source_dir=DEFAULT_PIPELINE_DIR / "classifier_comparison",
-        patterns=("*.csv",),
+        patterns=("*.csv", "*.txt", "*.json"),
         destination_subdir="classifier_comparison",
     ),
     ArchiveGroup(
@@ -128,6 +134,7 @@ ARCHIVE_GROUPS = [
             "attention_figures/*.pdf",
             "attention_figures/*.svg",
             "manuscript_tables/table_pc_classifier*.tex",
+            "manuscript_tables/manuscript_output_manifest.json",
         ),
         destination_subdir="attention_outputs",
     ),
@@ -155,6 +162,14 @@ def parse_args() -> argparse.Namespace:
         default=[group.name for group in ARCHIVE_GROUPS],
         choices=[group.name for group in ARCHIVE_GROUPS],
         help="Archive groups to upload.",
+    )
+    parser.add_argument(
+        "--archive-version",
+        default=None,
+        help=(
+            "Immutable snapshot name below runs/. Defaults to a UTC timestamp "
+            "plus the current Git commit prefix."
+        ),
     )
     parser.add_argument(
         "--no-checksum",
@@ -185,32 +200,9 @@ def enc_path(rel_path: str) -> str:
 
 
 def get_webdav_session():
-    import requests
+    from rd_utils import _get_session
 
-    app_password = getattr(config, "APP_PASSWORD", None)
-    user = getattr(config, "USER", None)
-    base_url = getattr(config, "BASE_URL", None)
-
-    missing = [
-        name
-        for name, value in {
-            "BASE_URL or RD_BASE_URL": base_url,
-            "USER or RD_USER": user,
-            "APP_PASSWORD or RD_PASS": app_password,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(
-            "Missing Research Drive WebDAV setting(s): "
-            + ", ".join(missing)
-            + ". Add them to config_local.py or set environment variables."
-        )
-
-    session = requests.Session()
-    session.auth = (user, app_password)
-    base = f"{base_url.rstrip('/')}/{quote(user, safe='')}"
-    return session, base
+    return _get_session()
 
 
 def collect_files(group: ArchiveGroup, pipeline_dir: Path) -> list[tuple[Path, Path]]:
@@ -250,17 +242,24 @@ def git_commit() -> str | None:
 
 
 def upload_file_stream(session, base_url: str, local_path: Path, rd_path: str) -> None:
-    from rd_utils import webdav_mkdirs
+    from rd_utils import DEFAULT_TIMEOUT, webdav_mkdirs
 
     webdav_mkdirs(posixpath.dirname(rd_path.rstrip("/")))
     url = f"{base_url}/{enc_path(rd_path)}"
     content_type = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
     with local_path.open("rb") as handle:
-        response = session.put(url, data=handle, headers={"Content-Type": content_type})
+        response = session.put(
+            url,
+            data=handle,
+            headers={"Content-Type": content_type},
+            timeout=(DEFAULT_TIMEOUT[0], 3600),
+        )
     response.raise_for_status()
 
 
 def manifest_header(args: argparse.Namespace) -> dict:
+    requirements = PROJECT_ROOT / "requirements.txt"
+    environment_lock = PROJECT_ROOT / "environment-lock.txt"
     return {
         "created_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "project_root": str(PROJECT_ROOT),
@@ -269,6 +268,16 @@ def manifest_header(args: argparse.Namespace) -> dict:
         "git_commit": git_commit(),
         "python": sys.version,
         "platform": platform.platform(),
+        "package_versions": package_versions(),
+        "requirements_sha256": sha256_file(requirements) if requirements.exists() else None,
+        "environment_lock_sha256": (
+            sha256_file(environment_lock) if environment_lock.exists() else None
+        ),
+        "environment_lock": (
+            environment_lock.read_text(encoding="utf-8")
+            if environment_lock.exists()
+            else None
+        ),
         "checksum_algorithm": None if args.no_checksum else "sha256",
         "groups": args.groups,
     }
@@ -276,6 +285,15 @@ def manifest_header(args: argparse.Namespace) -> dict:
 
 def main() -> None:
     args = parse_args()
+    if args.archive_version is None:
+        timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        commit = (git_commit() or "nogit")[:12]
+        args.archive_version = f"{timestamp}_{commit}"
+    if "/" in args.archive_version or args.archive_version.strip() in {"", ".", ".."}:
+        raise ValueError("--archive-version must be one path-safe folder name.")
+    archive_root = rd_join(args.rd_archive_dir, "runs", args.archive_version)
+    manifest_name = "derived_data_manifest.json"
+    manifest_path = rd_join(archive_root, manifest_name)
     selected_groups = [group for group in ARCHIVE_GROUPS if group.name in args.groups]
 
     manifest = manifest_header(args)
@@ -284,14 +302,14 @@ def main() -> None:
     planned: list[tuple[ArchiveGroup, Path, Path, str]] = []
     for group in selected_groups:
         for local_path, relative_path in collect_files(group, args.pipeline_dir):
-            rd_path = rd_join(args.rd_archive_dir, group.destination_subdir, relative_path.as_posix())
+            rd_path = rd_join(archive_root, group.destination_subdir, relative_path.as_posix())
             planned.append((group, local_path, relative_path, rd_path))
 
     if not planned:
         raise FileNotFoundError("No archive files found for the selected groups.")
 
     print(f"Local pipeline directory: {args.pipeline_dir}", flush=True)
-    print(f"Research Drive archive:  {args.rd_archive_dir}", flush=True)
+    print(f"Research Drive archive:  {archive_root}", flush=True)
     print(f"Files selected:          {len(planned):,}", flush=True)
     if args.dry_run:
         print("\nDry run; no files will be uploaded.", flush=True)
@@ -300,6 +318,17 @@ def main() -> None:
     base_url: str | None = None
     if not args.dry_run:
         session, base_url = get_webdav_session()
+        from rd_utils import DEFAULT_TIMEOUT
+
+        manifest_url = f"{base_url}/{enc_path(manifest_path)}"
+        existing = session.head(manifest_url, timeout=DEFAULT_TIMEOUT)
+        if existing.status_code == 200 and not args.overwrite:
+            raise FileExistsError(
+                f"Archive snapshot already exists: {archive_root}. Choose a new "
+                "--archive-version; use --overwrite only for an intentional repair."
+            )
+        if existing.status_code not in {200, 404}:
+            existing.raise_for_status()
 
     for group, local_path, relative_path, rd_path in planned:
         size = local_path.stat().st_size
@@ -320,8 +349,8 @@ def main() -> None:
             upload_file_stream(session, base_url, local_path, rd_path)
             print(f"  uploaded -> {rd_path}", flush=True)
 
-    manifest_name = "derived_data_manifest.json"
-    manifest_path = rd_join(args.rd_archive_dir, manifest_name)
+    manifest["archive_version"] = args.archive_version
+    manifest["archive_root"] = archive_root
     manifest_json = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
 
     local_manifest = args.pipeline_dir / manifest_name

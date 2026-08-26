@@ -9,6 +9,7 @@ the final analytical sample.
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -36,14 +37,46 @@ DECISION_COLUMN_CANDIDATES = [
     "conventional journalism",
 ]
 
+COUNTRY_ALIASES = {
+    "bulgaria": "Bulgaria",
+    "france": "France",
+    "hungary": "Hungary",
+    "italy": "Italy",
+    "netherlands": "Netherlands",
+    "the_netherlands": "Netherlands",
+    "serbia": "Serbia",
+    "sweden": "Sweden",
+    "ukraine": "Ukraine",
+    "uk": "United_Kingdom",
+    "u_k": "United_Kingdom",
+    "united_kingdom": "United_Kingdom",
+    "great_britain": "United_Kingdom",
+}
+
+
+def normalize_country(value) -> str:
+    text = str(value).strip().casefold()
+    key = "_".join(text.replace("-", " ").split())
+    return COUNTRY_ALIASES.get(key, key)
+
 
 def normalize_source(value) -> str:
     if value is None:
         return "unknown"
-    text = str(value).strip().lower()
+    text = str(value).strip().casefold()
     if text in {"", "nan", "none", "<na>"}:
         return "unknown"
-    return text
+    parsed = urlsplit(text if "://" in text else "//" + text)
+    host = (parsed.hostname or "").strip(".")
+    if host:
+        if host.startswith("www."):
+            host = host[4:]
+        try:
+            host = host.encode("ascii").decode("idna")
+        except (UnicodeError, UnicodeEncodeError):
+            pass
+        return host
+    return text.rstrip("/")
 
 
 def choose_source_column(dataframe) -> str:
@@ -101,7 +134,7 @@ def load_source_decisions(path: Path = DEFAULT_SOURCE_DECISION_FILE):
         raise ValueError(f"Source decision file is missing required columns: {sorted(missing)}")
 
     decisions = decisions.copy()
-    decisions["country"] = decisions["country"].astype(str).str.strip()
+    decisions["country"] = decisions["country"].map(normalize_country)
     decisions["source_clean"] = decisions["source_clean"].map(normalize_source)
     decisions["source_filter_decision_clean"] = (
         decisions[decision_column].astype(str).str.strip().str.upper()
@@ -134,7 +167,7 @@ def apply_source_inclusion_filter(
     if source_column is None:
         source_column = choose_source_column(data)
 
-    data["_source_filter_country"] = data[country_column].astype(str).str.strip()
+    data["_source_filter_country"] = data[country_column].map(normalize_country)
     data["_source_filter_source"] = data[source_column].map(normalize_source)
 
     filtered = data.merge(
@@ -144,7 +177,9 @@ def apply_source_inclusion_filter(
         how="left",
         suffixes=("", "_decision"),
     )
-    filtered["source_include"] = filtered["source_include"].fillna(False).astype(bool)
+    filtered["source_include"] = (
+        filtered["source_include"].fillna(False).infer_objects(copy=False).astype(bool)
+    )
     filtered["source_filter_decision"] = filtered["source_filter_decision_clean"].fillna("MISSING")
     filtered["source_filter_source_column"] = source_column
 

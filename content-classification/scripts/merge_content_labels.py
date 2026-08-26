@@ -1,15 +1,19 @@
-"""Merge article-level content labels into one silver-labelled dataset."""
+"""Merge complete article-level LLM content labels into one dataset."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+from political_classifier.reproducibility import file_record, git_commit
 
 
 DEFAULT_OUTPUT_DIR = Path(
@@ -27,9 +31,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cpi", type=Path, default=Path("output/cpi_country_year_scores.csv"))
     parser.add_argument("--skip-cpi", action="store_true")
     parser.add_argument(
-        "--require-all",
+        "--allow-partial",
         action="store_true",
-        help="Keep only articles present in all four classifier outputs.",
+        help="Diagnostic mode: retain articles missing one or more classifier outputs.",
+    )
+    parser.add_argument(
+        "--allow-errors",
+        action="store_true",
+        help="Diagnostic mode: merge rows with non-empty LLM errors.",
     )
     return parser.parse_args()
 
@@ -42,7 +51,13 @@ def read_csv(path: Path):
 
 def write_csv(data, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data.to_csv(path, index=False, compression="gzip" if path.name.endswith(".gz") else None)
+    temporary = path.with_name(path.name + ".tmp")
+    data.to_csv(
+        temporary,
+        index=False,
+        compression="gzip" if path.name.endswith(".gz") else None,
+    )
+    temporary.replace(path)
 
 
 def standardize_country(country: object) -> str:
@@ -65,7 +80,6 @@ def derive_variables(data):
         {
             "concrete_victim": 1,
             "institutional_societal_victim": 1,
-            "both_concrete_and_institutional": 1,
             "no_victim": 0,
         }
     )
@@ -78,7 +92,6 @@ def derive_variables(data):
             {
                 "concrete_victim": 1,
                 "institutional_societal_victim": 0,
-                "both_concrete_and_institutional": 1,
                 "no_victim": 0,
             }
         )
@@ -93,7 +106,6 @@ def derive_variables(data):
             {
                 "institutional_societal_victim": 1,
                 "concrete_victim": 0,
-                "both_concrete_and_institutional": 1,
                 "no_victim": 0,
             }
         )
@@ -176,6 +188,55 @@ def main() -> None:
         "accused": read_csv(accused_path),
     }
 
+    allowed_labels = {
+        "victim": ("victim_visibility", {"no_victim", "concrete_victim", "institutional_societal_victim", "unclear"}),
+        "frame": ("corruption_frame", {"individualized", "systemic", "other_or_mixed", "unclear"}),
+        "abroad": ("case_location", {"domestic", "abroad", "unclear"}),
+        "accused": (
+            "accused_actor_visibility",
+            {"no_accused_actor", "individual_actor", "organizational_or_institutional_actor", "both_individual_and_organizational", "unclear"},
+        ),
+    }
+    for name, frame in frames.items():
+        if "article_id" not in frame.columns:
+            raise ValueError(f"{name} output is missing article_id.")
+        duplicates = frame["article_id"].duplicated(keep=False)
+        if duplicates.any():
+            raise ValueError(
+                f"{name} output contains {duplicates.sum():,} duplicate article_id rows. "
+                "Rerun with the keyed checkpoint implementation."
+            )
+        if not args.allow_errors and "llm_error" in frame.columns:
+            errors = frame["llm_error"].fillna("").astype(str).str.strip().ne("")
+            if errors.any():
+                raise ValueError(
+                    f"{name} output contains {errors.sum():,} failed rows. Retry them before merging."
+                )
+        label_column, allowed = allowed_labels[name]
+        if label_column not in frame.columns:
+            raise ValueError(f"{name} output is missing {label_column}.")
+        invalid = ~frame[label_column].fillna("").astype(str).isin(allowed)
+        if invalid.any():
+            values = sorted(frame.loc[invalid, label_column].astype(str).unique())
+            raise ValueError(f"{name} output has invalid {label_column} values: {values}")
+
+    if not args.allow_partial:
+        reference_name = "victim"
+        reference_ids = set(frames[reference_name]["article_id"].astype(str))
+        differences = []
+        for name, frame in frames.items():
+            ids = set(frame["article_id"].astype(str))
+            missing = len(reference_ids - ids)
+            extra = len(ids - reference_ids)
+            if missing or extra:
+                differences.append(f"{name}: missing={missing}, extra={extra}")
+        if differences:
+            raise ValueError(
+                "Classifier outputs do not contain the same article IDs: "
+                + "; ".join(differences)
+                + ". Complete/retry all four outputs before the final merge."
+            )
+
     base_cols = [
         "article_id",
         "uri",
@@ -191,7 +252,7 @@ def main() -> None:
     ]
     data = base_metadata(frames, base_cols)
 
-    how = "inner" if args.require_all else "outer"
+    how = "outer" if args.allow_partial else "inner"
     for name, frame in frames.items():
         frame = frame.rename(
             columns={
@@ -212,6 +273,37 @@ def main() -> None:
         data = add_cpi_context(data, args.cpi)
 
     write_csv(data, output_path)
+    manifest = {
+        "schema_version": 1,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit(PROJECT_ROOT),
+        "output": str(output_path),
+        "rows": len(data),
+        "allow_partial": args.allow_partial,
+        "allow_errors": args.allow_errors,
+        "inputs": {
+            name: {
+                "path": str(path),
+                "file": file_record(path),
+                "rows": len(frames[name]),
+                "prompt_versions": sorted(
+                    frames[name].get("prompt_version", []).dropna().astype(str).unique().tolist()
+                ) if "prompt_version" in frames[name].columns else [],
+                "models": sorted(
+                    frames[name].get("llm_model", []).dropna().astype(str).unique().tolist()
+                ) if "llm_model" in frames[name].columns else [],
+            }
+            for name, path in {
+                "victim": victim_path,
+                "frame": frame_path,
+                "abroad": abroad_path,
+                "accused": accused_path,
+            }.items()
+        },
+    }
+    output_path.with_name(output_path.name + ".manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(f"Saved merged content labels: {output_path} ({len(data):,} rows)", flush=True)
 
 

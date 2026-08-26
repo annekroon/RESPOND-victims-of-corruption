@@ -106,7 +106,6 @@ def write_run_manifest(
             for key in [
                 "CUDA_VISIBLE_DEVICES",
                 "HF_HOME",
-                "TRANSFORMERS_CACHE",
                 "TMPDIR",
             ]
         },

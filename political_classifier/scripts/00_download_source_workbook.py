@@ -8,8 +8,10 @@ workbook column ``conventional_journalism`` is ``Yes``.
 from __future__ import annotations
 
 import argparse
+import json
 import posixpath
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from config import RD_BASE_DIR
 from political_classifier.source_filter import DEFAULT_SOURCE_DECISION_FILE
+from political_classifier.reproducibility import file_record, git_commit
 
 
 DEFAULT_RD_WORKBOOK_PATH = posixpath.join(
@@ -52,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    from rd_utils import webdav_download_bytes
+    from rd_utils import webdav_download_to_path
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -62,11 +65,24 @@ def main() -> None:
         return
 
     print(f"Downloading: {args.rd_path}", flush=True)
-    data = webdav_download_bytes(args.rd_path)
-    args.output.write_bytes(data)
+    webdav_download_to_path(args.rd_path, args.output)
+
+    manifest = {
+        "schema_version": 1,
+        "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit(PROJECT_ROOT),
+        "research_drive_path": args.rd_path,
+        "local_file": file_record(args.output),
+    }
+    manifest_path = args.output.with_name(args.output.name + ".download.json")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"Saved: {args.output}", flush=True)
     print(f"Size:  {args.output.stat().st_size / 1024 / 1024:.2f} MB", flush=True)
+    print(f"Manifest: {manifest_path}", flush=True)
 
 
 if __name__ == "__main__":

@@ -5,13 +5,15 @@ use previous silver labels or a provisional classifier. Instead, it samples from
 the full cleaned/deduplicated/source-filtered corpus created by
 ``02_create_source_filtered_corpus.py``.
 
-The output is intended for political_classifier/scripts/03_label_silver_batch.py.
+The output is intended for political_classifier/scripts/04_label_silver_batch.py.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = next(
@@ -21,6 +23,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from political_classifier.source_filter import DEFAULT_PIPELINE_DIR
+from political_classifier.split_integrity import remove_validation_overlap
+from political_classifier.reproducibility import (
+    file_record,
+    frame_fingerprint,
+    git_commit,
+)
 
 
 DEFAULT_OUTPUT_PATH = (
@@ -29,6 +37,12 @@ DEFAULT_OUTPUT_PATH = (
     / "silver_training_source_filtered_for_annotation.csv"
 )
 DEFAULT_INPUT_DIR = DEFAULT_PIPELINE_DIR / "cleaned_deduped_source_filtered"
+DEFAULT_SOURCE_FILTER_MANIFEST = (
+    DEFAULT_PIPELINE_DIR / "source_inclusion" / "source_filter_run_manifest.json"
+)
+DEFAULT_EXTRA_HUMAN_VALIDATION = (
+    DEFAULT_PIPELINE_DIR / "active_learning" / "uk_human_validation_reviewed.csv"
+)
 DEFAULT_COUNTRY_TARGETS = {
     "Bulgaria": 500,
     "France": 500,
@@ -80,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument(
+        "--source-filter-manifest",
+        type=Path,
+        default=DEFAULT_SOURCE_FILTER_MANIFEST,
+        help="Completed step-02 manifest for the source-filtered corpus.",
+    )
+    parser.add_argument(
         "--country-targets",
         default=None,
         help="Comma-separated targets, e.g. Sweden:600,United_Kingdom:600.",
@@ -92,11 +112,57 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
+        "--extra-human-validation",
+        type=Path,
+        nargs="+",
+        default=[DEFAULT_EXTRA_HUMAN_VALIDATION],
+        help="Additional human benchmark files whose URI/text must be excluded.",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite output if it already exists.",
     )
     return parser.parse_args()
+
+
+def choose_text_series(data):
+    if "translated_text" in data.columns:
+        return data["translated_text"]
+    if "article_text" in data.columns:
+        return data["article_text"]
+    if "combined_text" in data.columns:
+        return data["combined_text"]
+    title = data["title"].fillna("").astype(str) if "title" in data.columns else ""
+    body = data["body"].fillna("").astype(str) if "body" in data.columns else ""
+    return title + "\n" + body
+
+
+def choose_integrity_text_series(data):
+    if "article_text" in data.columns:
+        return data["article_text"]
+    if "combined_text" in data.columns:
+        return data["combined_text"]
+    return choose_text_series(data)
+
+
+def load_human_benchmark(extra_paths):
+    import pandas as pd
+    from dataloader import load_human_annotated_for_translation_webdav
+
+    frames = [load_human_annotated_for_translation_webdav()]
+    for path in extra_paths or []:
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Required extra human benchmark file not found: {path}"
+            )
+        frames.append(pd.read_csv(path))
+    benchmark = pd.concat(frames, ignore_index=True, sort=False)
+    benchmark["model_text"] = choose_text_series(benchmark).fillna("").astype(str)
+    benchmark["integrity_text"] = (
+        choose_integrity_text_series(benchmark).fillna("").astype(str)
+    )
+    return benchmark
 
 
 def source_filtered_country_path(input_dir: Path, country: str) -> Path:
@@ -147,7 +213,6 @@ def sample_country(data, country: str, target_n: int, max_per_source: int, rando
         selected_idx.update(sampled.index)
 
     sampled_pool = pd.concat(sampled_parts) if sampled_parts else data.head(0)
-    sampled_pool = sampled_pool.drop_duplicates(subset=["uri"] if "uri" in sampled_pool.columns else None)
 
     if len(sampled_pool) >= target_n:
         result = sampled_pool.sample(n=target_n, random_state=random_state).copy()
@@ -168,10 +233,34 @@ def main() -> None:
     args = parse_args()
     if args.output.exists() and not args.overwrite:
         raise FileExistsError(f"Output already exists: {args.output}. Pass --overwrite to replace it.")
+    if not args.source_filter_manifest.exists():
+        raise FileNotFoundError(
+            f"Completed source-filter manifest not found: {args.source_filter_manifest}. "
+            "Run 02_create_source_filtered_corpus.py first."
+        )
 
     import pandas as pd
 
     country_targets = parse_country_targets(args.country_targets)
+    invalid_targets = {
+        country: target for country, target in country_targets.items() if target < 1
+    }
+    if invalid_targets:
+        raise ValueError(f"Country targets must be positive: {invalid_targets}")
+    if args.max_per_source < 1:
+        raise ValueError("--max-per-source must be positive.")
+    input_paths = {
+        country: source_filtered_country_path(args.input_dir, country)
+        for country in country_targets
+    }
+    missing_inputs = [str(path) for path in input_paths.values() if not path.exists()]
+    if missing_inputs:
+        raise FileNotFoundError(
+            "Cannot draw a complete silver sample; missing source-filtered files: "
+            + ", ".join(missing_inputs)
+        )
+    human_benchmark = load_human_benchmark(args.extra_human_validation)
+    print(f"Human benchmark exclusions loaded: {len(human_benchmark):,}", flush=True)
     columns = [
         "uri",
         "country",
@@ -190,15 +279,27 @@ def main() -> None:
     sample_summaries = []
     for country, target_n in country_targets.items():
         path = source_filtered_country_path(args.input_dir, country)
-        if not path.exists():
-            print(f"Skipping missing source-filtered file for {country}: {path}", flush=True)
-            continue
-
         print(f"\nLoading {country}: {path}", flush=True)
         data = pd.read_csv(path, usecols=lambda column: column in columns)
         data["country"] = country
         if "source_uri" not in data.columns and "source.uri" in data.columns:
             data["source_uri"] = data["source.uri"]
+
+        data["model_text"] = data["article_text"].fillna("").astype(str)
+        data["integrity_text"] = data["model_text"]
+        overlap_audit = args.output.with_name(
+            f"{args.output.stem}_{country}_excluded_human_overlap.csv"
+        )
+        data, overlap = remove_validation_overlap(
+            data,
+            human_benchmark,
+            text_column="integrity_text",
+            audit_path=overlap_audit,
+        )
+        print(
+            f"{country}: excluded {len(overlap):,} human-benchmark overlap row(s)",
+            flush=True,
+        )
 
         sampled = sample_country(
             data,
@@ -208,6 +309,11 @@ def main() -> None:
             random_state=args.random_state,
         )
         print(f"{country}: sampled {len(sampled):,} / target {target_n:,}", flush=True)
+        if len(sampled) != target_n:
+            raise ValueError(
+                f"{country}: sampled {len(sampled):,} rows but target was "
+                f"{target_n:,}. Reduce the target only after inspecting eligibility."
+            )
         batches.append(sampled)
         sample_summaries.append(
             {
@@ -229,10 +335,33 @@ def main() -> None:
 
     summary_path = args.output.with_name(args.output.stem + "_sample_summary.csv")
     pd.DataFrame(sample_summaries).to_csv(summary_path, index=False)
+    manifest = {
+        "schema_version": 1,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit(PROJECT_ROOT),
+        "input_dir": str(args.input_dir),
+        "source_filter_manifest": file_record(args.source_filter_manifest),
+        "country_targets": country_targets,
+        "max_per_source": args.max_per_source,
+        "random_state": args.random_state,
+        "human_benchmark_rows": len(human_benchmark),
+        "human_benchmark_sha256": frame_fingerprint(
+            human_benchmark,
+            ["country", "uri", "integrity_text"],
+        ),
+        "sample": file_record(args.output),
+        "sample_summary": file_record(summary_path),
+    }
+    manifest_path = args.output.with_name(args.output.name + ".run.json")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"\nSaved source-filtered classifier training sample: {args.output}", flush=True)
     print(f"Rows: {len(batch):,}", flush=True)
     print(f"Saved sample summary: {summary_path}", flush=True)
+    print(f"Saved run manifest: {manifest_path}", flush=True)
     print("\nBy country:", flush=True)
     print(batch["country"].value_counts(), flush=True)
     print("\nTop sampled sources:", flush=True)

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import posixpath
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -21,6 +23,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from config import ALL_COUNTRIES, LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL, RD_BASE_DIR
 from content_prompts import ClassifierSpec
+from political_classifier.reproducibility import file_record, git_commit
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -115,6 +118,7 @@ def parse_common_args(description: str, default_output_name: str) -> argparse.Na
     parser.add_argument("--countries", nargs="+", default=ALL_COUNTRIES)
     parser.add_argument("--model", default=LLMPROXY_MODEL)
     parser.add_argument("--max-chars", type=int, default=6000)
+    parser.add_argument("--input-chunksize", type=int, default=25_000)
     parser.add_argument("--min-words", type=int, default=30)
     parser.add_argument("--limit", type=int, default=None, help="Process only the first N unfinished rows.")
     parser.add_argument("--save-every", type=int, default=25)
@@ -125,6 +129,11 @@ def parse_common_args(description: str, default_output_name: str) -> argparse.Na
         "--retry-errors",
         action="store_true",
         help="Reprocess rows with a non-empty llm_error in the existing output.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Start a fresh output and replace any existing labels/audit/manifest.",
     )
     parser.add_argument(
         "--keep-non-political",
@@ -148,6 +157,10 @@ def normalize_text(text: object) -> str:
     text = text.replace("\u00a0", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def sha256_text(text: object) -> str:
+    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
 
 
 def choose_text(data):
@@ -200,6 +213,21 @@ def append_audit_record(path: Path, record: dict) -> None:
         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def is_non_retryable_model_error(exc: Exception) -> bool:
+    """Identify access/configuration failures that retries cannot repair."""
+    message = f"{type(exc).__name__}: {exc}".casefold()
+    markers = [
+        "authenticationerror",
+        "permissiondeniederror",
+        "invalid_api_key",
+        "key_model_access_denied",
+        "model_not_found",
+        "does not exist or you do not have access",
+        "key not allowed to access model",
+    ]
+    return any(marker in message for marker in markers)
+
+
 def country_path(args: argparse.Namespace, country: str) -> Path:
     return args.classified_dir / f"{country}_classified.csv.gz"
 
@@ -240,7 +268,12 @@ def prepare_frame(data, country: str | None, args: argparse.Namespace):
     data["article_text"] = choose_text(data).map(normalize_text)
     data = data[data["article_text"].str.split().str.len().fillna(0).ge(args.min_words)].copy()
 
-    if not args.keep_non_political and "pred_political_corruption" in data.columns:
+    if not args.keep_non_political:
+        if "pred_political_corruption" not in data.columns:
+            raise ValueError(
+                "Input is missing pred_political_corruption. Refusing to classify an "
+                "unfiltered corpus; pass --keep-non-political only when intentional."
+            )
         data = data[pd.to_numeric(data["pred_political_corruption"], errors="coerce").eq(1)].copy()
 
     if "year" not in data.columns:
@@ -267,7 +300,18 @@ def prepare_frame(data, country: str | None, args: argparse.Namespace):
 
     if "uri" not in data.columns:
         data["uri"] = ""
-    data["article_id"] = data["uri"].fillna("").astype(str)
+    sample_id = (
+        data["content_sample_id"].fillna("").astype(str)
+        if "content_sample_id" in data.columns
+        else pd.Series("", index=data.index)
+    )
+    uri_id = data["uri"].fillna("").astype(str)
+    country_id = data["country"].fillna("").astype(str)
+    uri_article_id = country_id + "::" + uri_id
+    text_article_id = country_id + "::text::" + data["article_text"].map(sha256_text)
+    data["article_id"] = sample_id.where(sample_id.str.strip().ne(""), uri_article_id)
+    missing_uri = sample_id.str.strip().eq("") & uri_id.str.strip().eq("")
+    data.loc[missing_uri, "article_id"] = text_article_id.loc[missing_uri]
     missing_id = data["article_id"].str.strip().eq("")
     if missing_id.any():
         fallback = (
@@ -279,7 +323,56 @@ def prepare_frame(data, country: str | None, args: argparse.Namespace):
         )
         data.loc[missing_id, "article_id"] = fallback[missing_id]
 
+    data["input_text_sha256"] = data["article_text"].map(sha256_text)
+
     return data
+
+
+def iter_input_frames(args: argparse.Namespace):
+    import pandas as pd
+
+    if args.source == "csv":
+        if args.input is None:
+            raise ValueError("--input is required when --source csv.")
+        if args.random_sample is not None:
+            data = read_csv(args.input, usecols=lambda column: column in KEEP_COLUMNS)
+            yield "csv random-sample pool", prepare_frame(data, None, args)
+            return
+        for chunk_number, chunk in enumerate(
+            read_csv(
+                args.input,
+                usecols=lambda column: column in KEEP_COLUMNS,
+                chunksize=args.input_chunksize,
+            ),
+            start=1,
+        ):
+            yield f"csv chunk {chunk_number}", prepare_frame(chunk, None, args)
+        return
+
+    for country in args.countries:
+        print(f"Loading {country}", flush=True)
+        if args.source == "classified-webdav":
+            from rd_utils import webdav_download_to_path
+
+            cache_dir = args.output_dir / "_webdav_input_cache"
+            local_path = cache_dir / f"{country}_classified.csv.gz"
+            if not local_path.exists():
+                webdav_download_to_path(country_rd_path(args, country), local_path)
+        else:
+            local_path = country_path(args, country)
+            if not local_path.exists():
+                raise FileNotFoundError(local_path)
+
+        for chunk_number, chunk in enumerate(
+            pd.read_csv(
+                local_path,
+                usecols=lambda column: column in KEEP_COLUMNS,
+                chunksize=args.input_chunksize,
+            ),
+            start=1,
+        ):
+            frame = prepare_frame(chunk, country, args)
+            yield f"{country} chunk {chunk_number}", frame
 
 
 def load_input(args: argparse.Namespace):
@@ -310,6 +403,73 @@ def existing_done_ids(existing, retry_errors: bool) -> set[str]:
         ok = existing[existing["llm_error"].fillna("").astype(str).str.strip().eq("")]
         return set(ok["article_id"].dropna().astype(str))
     return set(existing["article_id"].dropna().astype(str))
+
+
+def done_ids_for_frame(existing, frame, retry_errors: bool) -> set[str]:
+    if existing.empty:
+        return set()
+    candidates = existing
+    if retry_errors and "llm_error" in candidates.columns:
+        candidates = candidates[
+            candidates["llm_error"].fillna("").astype(str).str.strip().eq("")
+        ]
+    if "input_text_sha256" not in candidates.columns:
+        return set()
+    current_hash = frame.set_index("article_id")["input_text_sha256"].astype(str)
+    candidates = candidates[candidates["article_id"].astype(str).isin(current_hash.index)].copy()
+    matches = candidates["input_text_sha256"].astype(str).eq(
+        candidates["article_id"].astype(str).map(current_hash)
+    )
+    return set(candidates.loc[matches, "article_id"].astype(str))
+
+
+def deduplicate_output(data):
+    if data.empty or "article_id" not in data.columns:
+        return data
+    return data.drop_duplicates(subset=["article_id"], keep="last").reset_index(drop=True)
+
+
+def output_manifest(args: argparse.Namespace, spec: ClassifierSpec) -> dict:
+    input_record = None
+    if args.source == "csv" and args.input is not None and args.input.exists():
+        input_record = file_record(args.input)
+    classifier_manifest = args.classified_dir.parent / "classifier_run_manifest.json"
+    classifier_record = (
+        file_record(classifier_manifest)
+        if args.source == "classified" and classifier_manifest.exists()
+        else None
+    )
+    return {
+        "schema_version": 1,
+        "git_commit": git_commit(PROJECT_ROOT),
+        "classifier_name": spec.name,
+        "prompt_version": spec.prompt_version,
+        "model": args.model,
+        "temperature": 0,
+        "max_chars": args.max_chars,
+        "min_words": args.min_words,
+        "source": args.source,
+        "input": str(args.input) if args.input else None,
+        "input_file": input_record,
+        "classified_dir": str(args.classified_dir),
+        "classifier_run_manifest": classifier_record,
+        "classified_rd_dir": args.classified_rd_dir,
+        "countries": list(args.countries),
+        "keep_non_political": bool(args.keep_non_political),
+    }
+
+
+def validate_or_write_manifest(path: Path, expected: dict, overwrite: bool) -> None:
+    if overwrite or not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(expected, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return
+    observed = json.loads(path.read_text(encoding="utf-8"))
+    if observed != expected:
+        raise ValueError(
+            f"Existing output manifest does not match this run: {path}. "
+            "Use a new output path or pass --overwrite."
+        )
 
 
 def classify_article(client, spec: ClassifierSpec, row: dict, model: str, max_chars: int) -> tuple[dict, str, str]:
@@ -378,17 +538,23 @@ def enforce_victim_evidence(result: dict, article_text: str) -> dict:
     return result
 
 
-def base_output_row(row: dict, spec: ClassifierSpec) -> dict:
+def base_output_row(row: dict, spec: ClassifierSpec, model: str, max_chars: int) -> dict:
     out = {column: row.get(column, "") for column in METADATA_COLUMNS if column in row}
     out["classifier_name"] = spec.name
     out["prompt_version"] = spec.prompt_version
+    out["llm_model"] = model
+    out["max_chars"] = max_chars
+    out["input_text_sha256"] = row.get("input_text_sha256", "")
+    out["llm_coded_at_utc"] = datetime.now(timezone.utc).isoformat()
     return out
 
 
 def write_checkpoint(existing, new_rows: list[dict], output_path: Path) -> None:
     import pandas as pd
 
-    checkpoint = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True)
+    checkpoint = deduplicate_output(
+        pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True)
+    )
     write_csv_atomic(checkpoint, output_path)
     print(f"Saved checkpoint: {output_path} ({len(checkpoint):,} rows)", flush=True)
 
@@ -414,69 +580,143 @@ def run_classifier(spec: ClassifierSpec) -> None:
 
     if not LLMPROXY_API_KEY:
         raise RuntimeError("Set LLMPROXY_API_KEY in your environment or config_local.py.")
+    if args.random_sample is not None and args.source != "csv":
+        raise ValueError(
+            "--random-sample is supported only for a prepared CSV sample. Use "
+            "create_validation_sample.py for a reproducible corpus-level sample."
+        )
+    if args.retries < 1 or args.save_every < 1 or args.input_chunksize < 1:
+        raise ValueError("--retries, --save-every, and --input-chunksize must be positive.")
+    if args.max_chars < 1 or args.min_words < 0:
+        raise ValueError("--max-chars must be positive and --min-words non-negative.")
+    if args.limit is not None and args.limit < 1:
+        raise ValueError("--limit must be positive when supplied.")
+    if args.random_sample is not None and args.random_sample < 1:
+        raise ValueError("--random-sample must be positive when supplied.")
 
     output_path = args.output or (args.output_dir / spec.default_output_name)
     audit_path = output_path.with_name(output_path.stem + "_audit.jsonl")
+    manifest_path = output_path.with_name(output_path.name + ".run.json")
+
+    if args.overwrite:
+        for path in [output_path, audit_path, manifest_path]:
+            if path.exists():
+                path.unlink()
+    if output_path.exists() and not manifest_path.exists():
+        raise ValueError(
+            f"Existing output has no run manifest: {output_path}. "
+            "Use a new output path or pass --overwrite."
+        )
+    validate_or_write_manifest(
+        manifest_path,
+        output_manifest(args, spec),
+        overwrite=args.overwrite,
+    )
 
     client = OpenAI(api_key=LLMPROXY_API_KEY, base_url=LLMPROXY_BASE_URL)
-    data = load_input(args)
-    print(f"Loaded {len(data):,} eligible rows.", flush=True)
 
     if output_path.exists():
-        existing = read_csv(output_path)
-        done_ids = existing_done_ids(existing, args.retry_errors)
-        print(f"Resuming from {output_path}; already done: {len(done_ids):,}", flush=True)
+        existing = deduplicate_output(read_csv(output_path))
+        print(f"Resuming from {output_path}; existing rows: {len(existing):,}", flush=True)
     else:
         existing = pd.DataFrame()
-        done_ids = set()
-
-    unfinished = select_unfinished(data, done_ids, args)
-    print(f"Rows to process now: {len(unfinished):,}", flush=True)
     print(f"Output: {output_path}", flush=True)
     print(f"Model: {args.model}", flush=True)
 
     new_rows: list[dict] = []
-    for _, row in tqdm(unfinished.iterrows(), total=len(unfinished), desc=f"LLM {spec.name}"):
-        row_dict = row.to_dict()
-        out = base_output_row(row_dict, spec)
+    processed_this_run = 0
+    for input_label, data in iter_input_frames(args):
+        done_ids = done_ids_for_frame(existing, data, args.retry_errors)
+        unfinished = data[~data["article_id"].astype(str).isin(done_ids)].copy()
+        if args.random_sample is not None:
+            unfinished = unfinished.sample(
+                n=min(args.random_sample, len(unfinished)),
+                random_state=args.random_state,
+            )
+        if args.limit is not None:
+            remaining = max(0, args.limit - processed_this_run)
+            unfinished = unfinished.head(remaining)
+        print(
+            f"{input_label}: {len(data):,} eligible; {len(unfinished):,} to process",
+            flush=True,
+        )
 
-        for attempt in range(1, args.retries + 1):
-            try:
-                parsed, prompt, raw_response = classify_article(
-                    client=client,
-                    spec=spec,
-                    row=row_dict,
-                    model=args.model,
-                    max_chars=args.max_chars,
-                )
-                out.update(parsed)
-                out["llm_error"] = ""
-                append_audit_record(
-                    audit_path,
-                    {
-                        "article_id": out.get("article_id", ""),
-                        "classifier_name": spec.name,
-                        "prompt_version": spec.prompt_version,
-                        "prompt": prompt,
-                        "raw_response": raw_response,
-                    },
-                )
-                break
-            except Exception as exc:
-                out["llm_error"] = repr(exc)
-                print(
-                    f"Error on article_id={out.get('article_id', '')} "
-                    f"attempt {attempt}/{args.retries}: {exc!r}",
-                    flush=True,
-                )
-                if attempt < args.retries:
-                    time.sleep(args.retry_sleep * attempt)
+        for _, row in tqdm(
+            unfinished.iterrows(),
+            total=len(unfinished),
+            desc=f"LLM {spec.name} ({input_label})",
+        ):
+            row_dict = row.to_dict()
+            out = base_output_row(row_dict, spec, args.model, args.max_chars)
+            prompt = spec.build_prompt(
+                normalize_text(row_dict.get("article_text", ""))[: args.max_chars],
+                row_dict,
+            )
+            raw_response = ""
+            parsed = {}
+            fatal_error: Exception | None = None
 
-        new_rows.append(out)
+            for attempt in range(1, args.retries + 1):
+                try:
+                    parsed, prompt, raw_response = classify_article(
+                        client=client,
+                        spec=spec,
+                        row=row_dict,
+                        model=args.model,
+                        max_chars=args.max_chars,
+                    )
+                    out.update(parsed)
+                    out["llm_error"] = ""
+                    break
+                except Exception as exc:
+                    out["llm_error"] = repr(exc)
+                    print(
+                        f"Error on article_id={out.get('article_id', '')} "
+                        f"attempt {attempt}/{args.retries}: {exc!r}",
+                        flush=True,
+                    )
+                    if is_non_retryable_model_error(exc):
+                        fatal_error = exc
+                        break
+                    if attempt < args.retries:
+                        time.sleep(args.retry_sleep * attempt)
 
-        if len(new_rows) % args.save_every == 0:
+            append_audit_record(
+                audit_path,
+                {
+                    "article_id": out.get("article_id", ""),
+                    "classifier_name": spec.name,
+                    "prompt_version": spec.prompt_version,
+                    "model": args.model,
+                    "max_chars": args.max_chars,
+                    "input_text_sha256": out.get("input_text_sha256", ""),
+                    "coded_at_utc": out.get("llm_coded_at_utc", ""),
+                    "prompt": prompt,
+                    "raw_response": raw_response,
+                    "parsed_response": parsed,
+                    "error": out.get("llm_error", ""),
+                },
+            )
+            new_rows.append(out)
+            processed_this_run += 1
+
+            if fatal_error is not None:
+                write_checkpoint(existing, new_rows, output_path)
+                raise RuntimeError(
+                    f"Non-retryable LLM model/access error for {args.model!r}. "
+                    f"The failed request was saved to {audit_path}."
+                ) from fatal_error
+
+            if len(new_rows) % args.save_every == 0:
+                write_checkpoint(existing, new_rows, output_path)
+                time.sleep(args.sleep)
+
+        if new_rows:
             write_checkpoint(existing, new_rows, output_path)
-            time.sleep(args.sleep)
+            existing = deduplicate_output(read_csv(output_path))
+            new_rows = []
+        if args.limit is not None and processed_this_run >= args.limit:
+            break
 
     write_checkpoint(existing, new_rows, output_path)
     print("Done.", flush=True)

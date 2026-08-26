@@ -9,6 +9,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import posixpath
 import sys
@@ -85,6 +86,14 @@ def upload_bytes(rd_path: str, data: bytes, content_type: str) -> None:
     webdav_upload_bytes(rd_path, data, content_type)
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def main() -> None:
     args = parse_args()
 
@@ -95,6 +104,10 @@ def main() -> None:
             "political_classifier/scripts/07_build_attention_outputs.py first."
         )
     manifest = json.loads(args.build_manifest.read_text(encoding="utf-8"))
+    artifact_hashes = {
+        record["relative_path"]: record["sha256"]
+        for record in manifest.get("artifacts", [])
+    }
     print(
         "Validated step-07 build manifest: "
         f"N={manifest['final_political_corruption_articles']:,}, "
@@ -119,6 +132,12 @@ def main() -> None:
     print(f"Research Drive target: {args.rd_table_dir}", flush=True)
 
     for path in table_paths:
+        artifact_key = f"manuscript_tables/{path.name}"
+        if artifact_hashes.get(artifact_key) != sha256_file(path):
+            raise ValueError(
+                f"Table differs from the step-07 build manifest: {path}. "
+                "Rerun 07_build_attention_outputs.py before upload."
+            )
         rd_path = rd_join(args.rd_table_dir, path.name)
         upload_bytes(rd_path, path.read_bytes(), "text/plain; charset=utf-8")
         print(f"Uploaded {path.name} -> {rd_path}", flush=True)

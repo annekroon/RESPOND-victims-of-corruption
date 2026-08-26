@@ -733,8 +733,11 @@ Return valid JSON only:
 
 
 def normalize_corruption_frame(parsed: dict) -> dict:
+    frame = str(_value(parsed, "corruption_frame")).strip()
+    if frame not in {"individualized", "systemic", "other_or_mixed", "unclear"}:
+        frame = "unclear"
     return {
-        "corruption_frame": _value(parsed, "corruption_frame"),
+        "corruption_frame": frame,
         "frame_evidence": _value(parsed, "evidence"),
         "frame_reasoning_brief": _value(parsed, "reasoning_brief"),
         "frame_confidence": _confidence(parsed),
@@ -764,12 +767,10 @@ Return valid JSON only:
 
 
 def normalize_abroad_case(parsed: dict) -> dict:
-    location = _value(parsed, "case_location")
-    abroad = _value(parsed, "abroad_case")
-    if not abroad and location == "abroad":
-        abroad = "yes"
-    elif not abroad and location == "domestic":
-        abroad = "no"
+    location = str(_value(parsed, "case_location")).strip()
+    if location not in {"domestic", "abroad", "unclear"}:
+        location = "unclear"
+    abroad = {"abroad": "yes", "domestic": "no", "unclear": "unclear"}[location]
     return {
         "case_location": location,
         "abroad_case": abroad,
@@ -803,16 +804,26 @@ Return valid JSON only:
 
 
 def normalize_accused_actor(parsed: dict) -> dict:
-    visibility = _value(parsed, "accused_actor_visibility")
-    visible = _value(parsed, "accused_actor_visible")
-    if not visible and visibility in {
+    visibility = str(_value(parsed, "accused_actor_visibility")).strip()
+    allowed = {
+        "no_accused_actor",
+        "individual_actor",
+        "organizational_or_institutional_actor",
+        "both_individual_and_organizational",
+        "unclear",
+    }
+    if visibility not in allowed:
+        visibility = "unclear"
+    if visibility in {
         "individual_actor",
         "organizational_or_institutional_actor",
         "both_individual_and_organizational",
     }:
         visible = "yes"
-    elif not visible and visibility == "no_accused_actor":
+    elif visibility == "no_accused_actor":
         visible = "no"
+    else:
+        visible = "unclear"
     return {
         "accused_actor_visibility": visibility,
         "accused_actor_visible": visible,

@@ -1,133 +1,139 @@
 # Political-Classifier Rebuild Workflow
 
-This is the reproducible rebuild path for Part 1 of the paper: identifying
-articles that are primarily about political corruption and producing the final
-attention tables/figures.
+This is the canonical, reproducible run order for Part 1: constructing the
+source-eligible corruption-query corpus, training and validating the political-
+corruption classifier, scoring the corpus, and producing manuscript outputs.
 
-Run commands from the repository root on `annecuda`.
+Run all commands from the repository root on `annecuda`.
 
-## Principle
-
-The final analytical sample is:
+## Analysis Contract
 
 ```text
-raw corruption-query corpus from NewsAPI
--> clean and deduplicate
--> source-inclusion filter
--> political-corruption classifier
+NewsAPI corruption-keyword article retrieval
+-> clean and exact-deduplicate within country
+-> retain only country-source pairs with conventional_journalism == Yes
+-> draw a fresh country-balanced silver-training sample
+-> GPT-5.1 silver labels
+-> exclude all overlap with the human benchmark
+-> threshold calibration on 40% of the eligible human benchmark
+-> one held-out performance estimate on the remaining 60%
+-> score every source-filtered country file
 -> final political-corruption corpus
 ```
 
-The relative-attention denominator follows a separate NewsAPI route:
+Relative attention uses a separate denominator:
 
 ```text
-NewsAPI total-news count request
--> country-week/month total-news denominator
+NewsAPI weekly total-news counts
+-> aggregate the same weekly bins for numerator and denominator
+-> political-corruption articles / all news articles
 ```
 
-The source-inclusion rule is strict: keep only country/source pairs where
-`conventional_journalism == Yes` in
-`political_corruption_all_sources_classified.xlsx`. Everything else is
-excluded, including `No`, missing, and ambiguous values.
+The numbered Python scripts are the production workflow. The notebooks are
+optional inspection views and are never required to create a production file.
 
-## Numbered Script Spine
+## 0. Environment And Credentials
 
-The numbered scripts are the reproducible pipeline. The notebooks are optional
-inspection views and are not required to build production tables or figures.
+Create or activate the server environment, install the declared dependencies,
+and save the exact installed versions with the run:
 
 ```bash
-python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
-python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
-python3 political_classifier/scripts/03_prepare_classifier_training_sample.py --overwrite
-python3 political_classifier/scripts/04_label_silver_batch.py --overwrite
-python3 political_classifier/scripts/05_compare_models.py
-python3 political_classifier/scripts/06_train_final_classifier.py --score-corpus
-python3 political_classifier/scripts/07_build_attention_outputs.py
-python3 political_classifier/scripts/08_upload_outputs.py
-python3 political_classifier/scripts/09_archive_derived_data.py
+cd ~/RESPOND-victims-of-corruption
+python3 -m pip install -r requirements.txt
+python3 -m pip freeze > environment-lock.txt
 ```
 
-For long-running steps, use `nohup` as shown below.
+`config_local.py` or environment variables must provide the Research Drive and
+UvA LLM proxy credentials. Never commit that file or the credentials.
 
-## 0. Optional Clean Slate
+Use storage-backed cache/temp folders for model runs:
 
-This removes generated outputs only. It preserves cleaned input files if you do
-not want to recreate them, total-news denominators, the source workbook, and
-annotation/review files.
+```bash
+mkdir -p /home/akroon/data/1t_storage/tmp
+mkdir -p /home/akroon/data/1t_storage/huggingface_cache
+export TMPDIR=/home/akroon/data/1t_storage/tmp
+export HF_HOME=/home/akroon/data/1t_storage/huggingface_cache
+```
 
-First run the dry run:
+For a deliberate clean rebuild, first inspect and then execute the generated-
+output reset. It preserves the reviewed source workbook, human annotations, UK
+benchmark supplement, cleaned country files, and content-codebook samples:
 
 ```bash
 python3 political_classifier/scripts/reset_rebuild_outputs.py
-```
-
-If the listed paths are old generated outputs you want to delete, run:
-
-```bash
 python3 political_classifier/scripts/reset_rebuild_outputs.py \
   --confirm DELETE_OLD_POLITICAL_CLASSIFIER_OUTPUTS
 ```
 
-## 1. Download The Source Workbook
+The first command is a dry run. Read its list before running the confirmed
+deletion.
 
-Do not copy from the mounted WebDAV folder; the mount can throw I/O errors.
-Download through the WebDAV API:
+## 1. Download The Reviewed Source Workbook
+
+This uses the WebDAV API, not the unreliable mounted WebDAV folder.
 
 ```bash
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
 ```
 
-Output:
+Only rows whose final `conventional_journalism` value is exactly `Yes` are
+eligible. `No`, review/unclear, blank, and unmatched country-source pairs are
+excluded.
 
-```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_classified.xlsx
-```
+## 2. Clean And Exact-Deduplicate Within Country
 
-## 2. Clean And Deduplicate The Corruption-Query Corpus
-
-This loads `*_news.csv` files directly from Research Drive/WebDAV, normalizes
-text, removes duplicate-source rows, removes empty/short text, parses dates,
-and performs URI, exact-text, and near-exact-text deduplication.
-
-```bash
-python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-```
-
-Key outputs:
-
-```text
-{country}_cleaned_deduped.csv.gz
-all_countries_cleaned_deduped_minimal.csv.gz
-denominator_country_total.csv
-denominator_country_year.csv
-denominator_country_month.csv
-denominator_country_week.csv
-denominator_country_year_source.csv
-```
-
-## 3. Create The Full Source-Filtered Corpus
-
-This starts from the existing cleaned/deduplicated country files and removes
-sources where `conventional_journalism != Yes`.
+Run this when the raw NewsAPI exports or cleaning rules change. It downloads
+each country file to a local cache, processes it in chunks, and writes country
+outputs atomically. Exact URI and normalized-text duplicates are removed within
+country. Risky prefix-based near-deduplication is disabled in production.
 
 ```bash
-python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
+nohup python3 -u political_classifier/scripts/01_clean_dedupe_data.py \
+  --overwrite \
+  > 01_clean_dedupe_data.log 2>&1 &
 ```
 
-Key outputs:
+Monitor:
+
+```bash
+tail -f 01_clean_dedupe_data.log
+```
+
+Important outputs include:
 
 ```text
-cleaned_deduped_source_filtered/{country}_cleaned_deduped_source_filtered.csv.gz
-cleaned_deduped_source_filtered/all_countries_cleaned_deduped_source_filtered_minimal.csv.gz
-source_inclusion/cleaned_source_filter_output_summary.csv
-source_inclusion/cleaned_source_filter_decision_summary_by_country.csv
+political_corruption_pipeline/{country}_cleaned_deduped.csv.gz
+political_corruption_pipeline/all_countries_cleaned_deduped_minimal.csv.gz
+political_corruption_pipeline/clean_dedupe_audit.csv
+political_corruption_pipeline/denominator_country_*.csv
 ```
 
-## 4. Prepare The Source-Filtered Classifier Training Sample
+## 3. Build The Full Source-Filtered Corpus
 
-This samples from the full source-filtered corpus. It does not use previous
-silver labels or provisional classifier scores.
+```bash
+python3 political_classifier/scripts/02_create_source_filtered_corpus.py \
+  --overwrite
+```
+
+The step fails if more than 2% of rows lack a source decision; investigate the
+workbook rather than silently retaining unmatched sources.
+
+Outputs:
+
+```text
+political_corruption_pipeline/cleaned_deduped_source_filtered/
+  {country}_cleaned_deduped_source_filtered.csv.gz
+  all_countries_cleaned_deduped_source_filtered_minimal.csv.gz
+political_corruption_pipeline/source_inclusion/
+  cleaned_source_filter_output_summary.csv
+  cleaned_source_filter_decision_summary_by_country.csv
+```
+
+## 4. Draw A Fresh Silver-Training Candidate Set
+
+The script samples 500 articles per country from the source-filtered corpus. It
+automatically excludes URI and normalized-text overlap with both parts of the
+human benchmark and saves an overlap audit.
 
 ```bash
 python3 political_classifier/scripts/03_prepare_classifier_training_sample.py \
@@ -135,151 +141,198 @@ python3 political_classifier/scripts/03_prepare_classifier_training_sample.py \
   --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```
 
-Output:
-
-```text
-active_learning/silver_training_source_filtered_for_annotation.csv
-```
-
-## 5. Label The Fresh Silver Set
-
-This calls the UvA LLM proxy. Run it with `nohup` because it can take hours.
+## 5. Create Fresh GPT-5.1 Silver Labels
 
 ```bash
 nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
   --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
   --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
+  --model gpt-5.1 \
   --max-chars 3000 \
+  --save-every 10 \
   --overwrite \
-  > llm_silver_training_source_filtered.log 2>&1 &
+  > 04_label_silver_batch.log 2>&1 &
 ```
 
 Monitor:
 
 ```bash
-tail -f llm_silver_training_source_filtered.log
+tail -f 04_label_silver_batch.log
 ```
 
-Output:
+The output has a run manifest and append-only JSONL audit. Invalid labels and
+failed requests are not accepted as training labels. A successful run also
+writes `silver_training_source_filtered_with_llm_suggestions.csv.complete.json`;
+step 05 refuses a partial CSV without this checksum-verified marker.
 
-```text
-active_learning/silver_training_source_filtered_with_llm_suggestions.csv
+If the job was interrupted, resume it without `--overwrite` and retry any saved
+errors:
+
+```bash
+nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
+  --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
+  --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
+  --model gpt-5.1 \
+  --max-chars 3000 \
+  --save-every 10 \
+  --retry-errors \
+  > 04_label_silver_batch.log 2>&1 &
 ```
 
-## 6. Compare Classifier Models
+## 6. Calibrate And Evaluate The Classifier
 
-This validates the source-filtered silver-trained classifier against the fixed
-human validation benchmark. The source filter is not applied to that benchmark,
-which preserves its original country composition and UK supplement.
+This is the statistical checkpoint. The pre-specified production model is
+E5-large plus class-balanced logistic regression. The human benchmark is
+source-filtered to match the production population, then split once by country
+and class: 40% for threshold calibration and 60% for held-out reporting. A hard
+assertion stops the run if any silver/human URI or text overlap remains.
 
 ```bash
 python3 political_classifier/scripts/05_compare_models.py \
   --embedding-models intfloat/multilingual-e5-large \
+  --threshold-calibration-fraction 0.40 \
   --batch-size 32 \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
 ```
 
-Outputs:
+Inspect these files before full scoring:
 
 ```text
-classifier_comparison/all_threshold_results.csv
+classifier_comparison/classifier_comparison_run_manifest.json
+classifier_comparison/human_benchmark_split.csv
+classifier_comparison/selected_threshold.txt
 classifier_comparison/best_model_results.csv
 classifier_comparison/country_results_for_best_silver_thresholds.csv
-classifier_comparison/validation_prediction_comparison.csv
+classifier_comparison/all_threshold_results.csv
 ```
 
-Optionally inspect the saved outputs with:
+The threshold table is calibration-only. The selected silver-model row in
+`best_model_results.csv` is held-out performance. Human five-fold CV rows are
+diagnostics, not the selected model's held-out estimate.
 
-```text
-political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
-```
+## 7. Refit And Validate The Final Model
 
-## 7. Score The Final Corpus
-
-Only run this after accepting the validation results. This is the expensive
-full-corpus scoring step.
+First run step 06 without corpus scoring. It verifies that the silver files,
+source workbook, split, model, and threshold exactly match step 05.
 
 ```bash
-TMPDIR=/home/akroon/data/1t_storage/tmp \
-HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
-TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
-CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
+python3 political_classifier/scripts/06_train_final_classifier.py \
   --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
+  --batch-size 32
+```
+
+Review the printed held-out report and:
+
+```text
+silver_classifier/classifier_run_manifest.json
+silver_classifier/country_validation_results.csv
+silver_classifier/threshold_validation_results.csv
+```
+
+`threshold_validation_results.csv` is still the calibration partition; country
+validation is held-out.
+
+## 8. Score The Full Source-Filtered Corpus
+
+Run only after accepting step 07. Existing classified country files are not
+silently mixed with a new run, so a deliberate full rebuild uses
+`--overwrite-classifications`.
+
+```bash
+CUDA_VISIBLE_DEVICES=1 nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
+  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
+  --batch-size 32 \
   --score-corpus \
-  > silver_classifier_final_scoring.log 2>&1 &
+  --overwrite-classifications \
+  > 06_score_final_corpus.log 2>&1 &
 ```
 
 Monitor:
 
 ```bash
-tail -f silver_classifier_final_scoring.log
+tail -f 06_score_final_corpus.log
 ```
 
-## 8. Rebuild Manuscript And Attention Outputs
+Canonical final files:
 
-The command-line entry point executes a clean copy of the attention notebook
-outside the repository and then regenerates all classifier tables, the
-country-level corpus table, and Figure 1 from saved pipeline summaries:
+```text
+political_corruption_pipeline/silver_classifier/classified_country_files/
+  {country}_classified.csv.gz
+political_corruption_pipeline/silver_classifier/classified_country_summary.csv
+```
+
+## 9. Rebuild Attention, Tables, Figure 1, And LaTeX Values
 
 ```bash
 python3 political_classifier/scripts/07_build_attention_outputs.py
 ```
 
-The build checks that the comparison and final-scoring thresholds match, that
-the classified input equals the source-filtered corpus, and that attention
-counts match the final classified corpus. A mismatch stops the build with the
-step that needs to be rerun.
+This executes a clean copy of the attention notebook outside Git and then
+builds all manuscript artifacts from saved CSVs. It fails if classifier input,
+source-filtered counts, attention counts, model, or threshold disagree.
 
-You can optionally inspect interactively in:
+Generated LaTeX tables use `\scriptsize` and `adjustbox` with `max width`; they
+are never enlarged to the full text width. The manuscript preamble needs:
+
+```tex
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+```
+
+The generated values file is:
 
 ```text
-political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
+attention_tables/latex/political_corruption_manuscript_values.tex
 ```
 
-The attention outputs use the classified political-corruption corpus as the
-numerator and the separate NewsAPI total-news count series as the denominator.
+Both Method files input this file so corpus Ns, the threshold, split sizes, and
+held-out metrics are not copied by hand.
 
-Outputs:
-
-```text
-attention_tables/
-attention_tables/latex/
-attention_figures/
-manuscript_tables/
-```
-
-If the attention CSVs and figures are already current and only the LaTeX tables
-or Figure 1 need regeneration:
-
-```bash
-python3 political_classifier/scripts/07_build_attention_outputs.py --skip-notebook
-```
-
-## 9. Upload Manuscript Outputs
+## 10. Upload Current Manuscript Outputs
 
 ```bash
 python3 political_classifier/scripts/08_upload_outputs.py
 ```
 
-This uploads classifier manuscript tables plus attention tables/figures.
+The uploader requires the fresh step-07 build manifest and refuses stale
+outputs.
 
-## 10. Archive Derived Data
+## 11. Archive An Immutable Reproducibility Snapshot
 
 ```bash
 python3 political_classifier/scripts/09_archive_derived_data.py \
-  --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
+  --groups source_inclusion cleaned_deduped silver_training_data validation_data classifier_comparison classifier_outputs attention_outputs
 ```
 
-This updates the Research Drive reproducibility archive and manifest.
+Each run is stored under `derived_data/political_classifier/runs/<timestamp>_<git>`
+with SHA-256 checksums. It does not overwrite a previous run.
 
-## What To Rerun When Something Changes
+To restore the newest archived snapshot on a fresh machine:
 
-| Change | Rerun |
+```bash
+python3 political_classifier/scripts/restore_derived_data_from_webdav.py
+```
+
+To restore one named snapshot:
+
+```bash
+python3 political_classifier/scripts/restore_derived_data_from_webdav.py \
+  --archive-version YYYYMMDDTHHMMSSZ_COMMIT
+```
+
+## What To Rerun
+
+| Change | Start again at |
 |---|---|
-| Source workbook changes | Steps 1, 3-10 |
-| Raw corruption-query data changes | Steps 2-10 |
-| Silver prompt/model changes | Steps 5-10 |
-| Classifier model/threshold changes | Steps 6-10 |
-| Only attention plotting code changes | Steps 8-9 |
-| Only Overleaf tables need reupload | Step 9 |
+| Reviewed source workbook | `00`, then `02` through `09` |
+| Raw NewsAPI article exports or cleaning rules | `01` through `09` |
+| Silver sampling, prompt, labels, or LLM model | `03` through `09` |
+| Human benchmark or UK supplement | `03` through `09` |
+| Classifier model or threshold grid | `05` through `09` |
+| Attention aggregation/plotting only | `07`, then `08` and `09` |
+| LaTeX upload only, after a current build | `08` |
+
+Human annotation files and codebook-development samples are not generated
+classifier outputs. Preserve them when cleaning or rebuilding the pipeline.

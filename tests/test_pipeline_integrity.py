@@ -1,0 +1,257 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from political_classifier.source_filter import normalize_country, normalize_source
+from political_classifier.split_integrity import (
+    assert_no_validation_overlap,
+    calibration_test_split,
+    overlap_rows,
+)
+from political_classifier.scripts._impl.build_manuscript_outputs import (
+    format_latex_table,
+    pipeline_counts,
+)
+from political_classifier.reproducibility import file_record
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_script(name: str, relative_path: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+CLEAN = load_script(
+    "clean_dedupe_script",
+    "political_classifier/scripts/01_clean_dedupe_data.py",
+)
+CONTENT_COMMON = load_script(
+    "content_classifier_common_test",
+    "content-classification/scripts/content_classifier_common.py",
+)
+CONTENT_PROMPTS = load_script(
+    "content_prompts_test",
+    "content-classification/scripts/content_prompts.py",
+)
+
+
+class CleaningTests(unittest.TestCase):
+    def test_deduplication_state_is_country_scoped(self):
+        article = "This is a sufficiently long political corruption article. " * 20
+        chunk = pd.DataFrame(
+            {
+                "uri": ["same-uri"],
+                "body": [article],
+                "dateTime": ["2024-01-01"],
+                "source.uri": ["https://www.example.com/story"],
+            }
+        )
+        bulgaria = CLEAN.prepare_chunk(chunk, "Bulgaria", 1, 0)
+        france = CLEAN.prepare_chunk(chunk, "France", 1, 0)
+        self.assertEqual(len(CLEAN.remove_seen(bulgaria, set(), set(), set())), 1)
+        self.assertEqual(len(CLEAN.remove_seen(france, set(), set(), set())), 1)
+
+    def test_blank_uris_do_not_collapse_distinct_articles(self):
+        data = pd.DataFrame(
+            {
+                "uri": ["", ""],
+                "text_hash": ["one", "two"],
+                "near_dup_hash": ["", ""],
+            }
+        )
+        self.assertEqual(len(CLEAN.remove_seen(data, set(), set(), set())), 2)
+
+
+class SourceFilterTests(unittest.TestCase):
+    def test_domain_canonicalization(self):
+        self.assertEqual(normalize_source("https://WWW.Example.COM/news/1"), "example.com")
+        self.assertEqual(normalize_source("example.com/"), "example.com")
+
+    def test_country_aliases_match(self):
+        self.assertEqual(normalize_country("United Kingdom"), "United_Kingdom")
+        self.assertEqual(normalize_country("UK"), "United_Kingdom")
+
+
+class SplitIntegrityTests(unittest.TestCase):
+    def test_overlap_detects_uri_and_text(self):
+        training = pd.DataFrame(
+            {"uri": ["u1", "u2"], "model_text": ["First text", "Shared text"]}
+        )
+        validation = pd.DataFrame(
+            {"uri": ["u1", "u3"], "model_text": ["Different", "shared text!"]}
+        )
+        overlap = overlap_rows(training, validation)
+        self.assertEqual(len(overlap), 2)
+        with self.assertRaises(ValueError):
+            assert_no_validation_overlap(training, validation)
+
+    def test_calibration_and_test_are_disjoint_and_stratified(self):
+        rows = []
+        for country in ["A", "B"]:
+            for label in [0, 1]:
+                rows.extend({"country": country, "y": label} for _ in range(10))
+        data = pd.DataFrame(rows)
+        calibration, test = calibration_test_split(data, 0.4, 42)
+        self.assertFalse(set(calibration.index) & set(test.index))
+        self.assertEqual(len(calibration) + len(test), len(data))
+        self.assertEqual(set(calibration.groupby(["country", "y"]).size()), {4})
+
+
+class CheckpointTests(unittest.TestCase):
+    def test_successful_retry_replaces_failed_row(self):
+        existing = pd.DataFrame(
+            [{"article_id": "A::1", "llm_error": "timeout", "label": ""}]
+        )
+        replacement = [{"article_id": "A::1", "llm_error": "", "label": "yes"}]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "labels.csv"
+            CONTENT_COMMON.write_checkpoint(existing, replacement, output)
+            result = pd.read_csv(output)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.loc[0, "label"], "yes")
+        self.assertTrue(pd.isna(result.loc[0, "llm_error"]) or result.loc[0, "llm_error"] == "")
+
+    def test_model_access_errors_are_non_retryable(self):
+        error = RuntimeError(
+            "key not allowed to access model; code=key_model_access_denied"
+        )
+        self.assertTrue(CONTENT_COMMON.is_non_retryable_model_error(error))
+        self.assertFalse(
+            CONTENT_COMMON.is_non_retryable_model_error(RuntimeError("temporary 503"))
+        )
+
+
+class ContentSchemaTests(unittest.TestCase):
+    def test_blank_uri_article_ids_use_text_hash(self):
+        args = type(
+            "Args",
+            (),
+            {"min_words": 1, "keep_non_political": True},
+        )()
+        frame = pd.DataFrame(
+            {
+                "country": ["A", "A"],
+                "uri": ["", ""],
+                "article_text": ["first article", "second article"],
+            }
+        )
+        prepared = CONTENT_COMMON.prepare_frame(frame, None, args)
+        self.assertEqual(prepared["article_id"].nunique(), 2)
+
+    def test_invalid_labels_become_unclear(self):
+        self.assertEqual(
+            CONTENT_PROMPTS.normalize_corruption_frame({"corruption_frame": "typo"})[
+                "corruption_frame"
+            ],
+            "unclear",
+        )
+        location = CONTENT_PROMPTS.normalize_abroad_case(
+            {"case_location": "domestic", "abroad_case": "yes"}
+        )
+        self.assertEqual(location["abroad_case"], "no")
+        actor = CONTENT_PROMPTS.normalize_accused_actor(
+            {"accused_actor_visibility": "unexpected"}
+        )
+        self.assertEqual(actor["accused_actor_visibility"], "unclear")
+        self.assertEqual(actor["accused_actor_visible"], "unclear")
+
+
+class LatexTests(unittest.TestCase):
+    def test_wide_tables_are_never_upscaled(self):
+        table = pd.DataFrame([{f"c{i}": i for i in range(8)}])
+        latex = format_latex_table(table, "Caption", "tab:test", "Note.")
+        self.assertIn(r"\begin{adjustbox}{max width=\textwidth}", latex)
+        self.assertNotIn(r"\resizebox", latex)
+
+    def test_pipeline_counts_use_audited_raw_total_and_completed_manifests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pipeline = Path(directory)
+            source_dir = pipeline / "source_inclusion"
+            comparison_dir = pipeline / "classifier_comparison"
+            classifier_dir = pipeline / "silver_classifier"
+            attention_dir = pipeline / "attention_tables"
+            for path in [source_dir, comparison_dir, classifier_dir, attention_dir]:
+                path.mkdir(parents=True)
+
+            source_workbook = source_dir / "sources.xlsx"
+            source_workbook.write_bytes(b"reviewed source decisions")
+            clean_audit = pipeline / "clean_dedupe_audit.csv"
+            pd.DataFrame(
+                [{"country": "A", "raw_rows": 10, "cleaned_deduplicated_rows": 8}]
+            ).to_csv(clean_audit, index=False)
+            (pipeline / "clean_dedupe_run_manifest.json").write_text(
+                json.dumps({"audit": file_record(clean_audit)})
+            )
+
+            source_summary = source_dir / "cleaned_source_filter_output_summary.csv"
+            pd.DataFrame(
+                [{"country": "A", "input_rows": 8, "output_rows": 7}]
+            ).to_csv(source_summary, index=False)
+            source_record = file_record(source_workbook)
+            (source_dir / "source_filter_run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "output_summary": file_record(source_summary),
+                        "source_decision_file": source_record,
+                    }
+                )
+            )
+
+            comparison_manifest = comparison_dir / "classifier_comparison_run_manifest.json"
+            comparison_manifest.write_text("{}")
+            classified_summary = classifier_dir / "classified_country_summary.csv"
+            pd.DataFrame(
+                [
+                    {
+                        "country": "A",
+                        "total_articles": 7,
+                        "predicted_political_corruption": 3,
+                    }
+                ]
+            ).to_csv(classified_summary, index=False)
+            (classifier_dir / "selected_threshold.txt").write_text("0.5\n")
+            (classifier_dir / "classifier_run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "threshold": 0.5,
+                        "classified_country_summary": file_record(classified_summary),
+                        "comparison_manifest": file_record(comparison_manifest),
+                        "source_decision_file": source_record,
+                    }
+                )
+            )
+            pd.DataFrame(
+                [
+                    {
+                        "country": "A",
+                        "total_news_articles": 100,
+                        "political_corruption_articles": 3,
+                    }
+                ]
+            ).to_csv(
+                attention_dir
+                / "political_corruption_attention_total_news_country_summary.csv",
+                index=False,
+            )
+
+            counts = pipeline_counts(pipeline)
+            self.assertEqual(counts["raw_query"], 10)
+            self.assertEqual(counts["source_filtered_query"], 7)
+            self.assertEqual(counts["political_corruption"], 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

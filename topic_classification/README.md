@@ -71,14 +71,13 @@ On `annecuda`, keep Hugging Face and temp files on the large disk:
 ```bash
 TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
-TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 python3 -m pip install -r topic_classification/requirements-topic.txt
 ```
 
 ## 1. Create A Political-Corruption Sample
 
 This reads the classified country files created by
-`political_classifier/scripts/train_final_classifier.py --score-corpus` and
+`political_classifier/scripts/06_train_final_classifier.py --score-corpus` and
 keeps only rows with `pred_political_corruption == 1`.
 
 For the current manuscript rerun, the classified inputs should be the
@@ -86,17 +85,16 @@ source-filtered classifier outputs:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
-  political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered/
+  political_corruption_pipeline/silver_classifier/classified_country_files/
 ```
 
-These files are produced by
-`political_classifier/scripts/filter_classified_outputs.py` after the final
-source-inclusion decisions have been applied.
+These files are produced directly by the final classifier from the canonical
+cleaned/deduplicated/source-filtered country files.
 
 ```bash
 python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified \
-  --classified-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/classified_country_files_source_filtered \
+  --classified-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/silver_classifier/classified_country_files \
   --political-only \
   --per-country-year 200 \
   --output-name political_corruption_source_filtered_country_year_sample_200.csv.gz
@@ -150,7 +148,6 @@ Final manuscript run on the source-filtered sample:
 ```bash
 TMPDIR=/home/akroon/data/1t_storage/tmp \
 HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
-TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
 CUDA_VISIBLE_DEVICES=1 \
 nohup python3 -u topic_classification/scripts/02_fit_multilingual_bertopic.py \
   --sample /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/topic_classification/political_corruption_source_filtered_country_year_sample_200.csv.gz \
@@ -468,7 +465,7 @@ recommended starting point is:
 ```bash
 python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
   --source classified-webdav \
-  --classified-rd-dir "ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/classifier_outputs/classified_country_files_source_filtered" \
+  --classified-rd-dir "ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/classifier_outputs/classified_country_files" \
   --political-only \
   --per-country-year 200 \
   --output-name political_corruption_source_filtered_country_year_sample_200.csv.gz

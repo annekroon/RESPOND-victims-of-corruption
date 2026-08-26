@@ -1,12 +1,30 @@
-pandas
-tqdm
-requests
-pdfplumber
-pypdf
-openpyxl
-openai
-streamlit
-flask
-scikit-learn
-sentence-transformers
-joblib
+# Runtime ranges are deliberately bounded to the API families used by the
+# pipeline. Record the exact environment for each published run with
+# `python3 -m pip freeze > environment-lock.txt` and archive that lock file.
+numpy>=1.26,<2.1
+pandas>=2.2,<2.3
+scipy>=1.11,<1.15
+tqdm>=4.66,<5
+requests>=2.31,<3
+urllib3>=2.2,<3
+openpyxl>=3.1,<4
+openai>=1.50,<2
+scikit-learn>=1.4,<1.7
+sentence-transformers>=3.0,<4
+transformers>=4.44,<5
+torch>=2.2,<3
+joblib>=1.3,<2
+flask>=3.0,<4
+streamlit>=1.35,<2
+matplotlib>=3.8,<4
+seaborn>=0.13,<1
+jupyter>=1.0,<2
+nbconvert>=7.16,<8
+ipython>=8.20,<10
+pdfplumber>=0.11,<1
+pypdf>=4,<7
+
+# Exploratory topic modelling.
+bertopic>=0.16,<0.18
+umap-learn>=0.5.6,<0.6
+hdbscan>=0.8.38,<0.9

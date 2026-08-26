@@ -1,10 +1,12 @@
 # Article-Level Content Classification
 
-This folder contains the zero-shot GPT 5.1 workflow for coding article-level
+This folder contains the zero-shot LLM workflow for coding article-level
 variables among articles already classified as primarily discussing political
 corruption. The expected corpus is the final political-corruption article set
-from `political_classifier/scripts/06_train_final_classifier.py`, currently
-`459,674` articles.
+from `political_classifier/scripts/06_train_final_classifier.py`. Its current
+size is read from
+`political_corruption_pipeline/silver_classifier/classified_country_summary.csv`;
+do not copy an old corpus N into commands or documentation.
 
 The workflow is intentionally separate from the political-corruption classifier:
 that first classifier identifies the analysis corpus; these scripts measure
@@ -22,7 +24,7 @@ substantive variables inside that corpus.
 | `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
 | `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
 | `tools/annotation_flask_app.py` | Browser-based Flask app for manual coding with original and translated text |
-| `scripts/merge_content_labels.py` | one merged silver-labelled article-level dataset |
+| `scripts/merge_content_labels.py` | one complete merged LLM-coded article-level dataset |
 
 Each classifier sends article text to the UvA LLM proxy with deterministic
 settings where supported (`temperature=0`) and requires structured JSON output
@@ -46,7 +48,7 @@ unrelated misconduct. Earlier GPT outputs generated with older prompt versions
 should be treated as pilot outputs and regenerated before comparison with human
 coding.
 
-For `victim_visibility`, version 7 uses a victim-specific prompt rather than
+For `victim_visibility`, version 8 uses a victim-specific prompt rather than
 sending the other three variables' instructions to that classifier. GPT first
 extracts the harm cause and status, whether a deprived entity is explicit,
 whether coercive pressure was communicated, the victim entity, and the
@@ -55,14 +57,14 @@ institutional/societal victim presence independently. The final label is
 derived mechanically as `no_victim`, `concrete_victim`,
 `institutional_societal_victim`, or `unclear`. Concrete victims take priority
 when both types are visible; the final classifier never emits a `both` label.
-Version 7 requires verbatim harm and corruption-to-harm quotations and prevents
+Version 8 requires verbatim harm and corruption-to-harm quotations and prevents
 a positive label when either quotation is absent. The classifier runner also
 checks that both returned evidence strings occur verbatim in the supplied
 article text; a positive label with paraphrased or invented evidence is
 automatically downgraded to `no_victim` and the failed evidence checks are
 retained in the output.
 
-Version 7 also distinguishes harm caused by corruption from harm caused by the
+Version 8 also distinguishes harm caused by corruption from harm caused by the
 investigation, prosecution, scandal, resignation, or institutional response. A
 communicated coercive or extortionate demand counts as realized adverse
 treatment even when its threatened consequence does not occur. The model may
@@ -120,6 +122,73 @@ or a single CSV/CSV.GZ file:
 
 Always run small pilots before launching the full corpus. From the repository
 root on `annecuda`:
+
+### Model-selection checkpoint: GPT-5.1 versus GPT-5.6-terra
+
+`gpt-5.6-terra` is a candidate for the final zero-shot content coding. Do not
+replace the production model merely because it is newer. Run both candidates
+with the same frozen prompts on the same already-human-coded development
+articles, compare agreement, Cohen's kappa, macro F1, and weighted F1, then
+record and freeze the selected model before final coding. These development
+articles must not later be presented as a held-out final validation sample.
+
+The following short trial uses Italy and the Netherlands (`N = 24`) and writes
+each model to a separate output directory:
+
+First make one access-check request so an unavailable model fails immediately:
+
+```bash
+cd ~/RESPOND-victims-of-corruption
+CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
+
+python3 content-classification/scripts/classify_victim_visibility.py \
+  --source csv \
+  --input "$CODEBOOK_DIR/Italy_content_codebook_validation_n12_english.csv" \
+  --output "$CODEBOOK_DIR/gpt56_terra_access_check.csv.gz" \
+  --model gpt-5.6-terra \
+  --limit 1 \
+  --save-every 1 \
+  --overwrite
+```
+
+Only after that succeeds, run the paired trial:
+
+```bash
+cd ~/RESPOND-victims-of-corruption
+CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
+
+for MODEL_SPEC in "gpt-5.1:gpt51_current" "gpt-5.6-terra:gpt56_terra_current"; do
+  MODEL=${MODEL_SPEC%%:*}
+  SLUG=${MODEL_SPEC##*:}
+  for COUNTRY in Italy Netherlands; do
+    python3 content-classification/scripts/classify_all_content_categories.py \
+      --input "$CODEBOOK_DIR/${COUNTRY}_content_codebook_validation_n12_english.csv" \
+      --output-dir "$CODEBOOK_DIR/model_trial_${SLUG}/${COUNTRY}" \
+      --model "$MODEL" \
+      --save-every 2
+  done
+done
+```
+
+Evaluate both runs:
+
+```bash
+for SLUG in gpt51_current gpt56_terra_current; do
+  python3 content-classification/scripts/evaluate_codebook_gpt_against_human.py \
+    --codebook-dir "$CODEBOOK_DIR" \
+    --gpt-dir "$CODEBOOK_DIR/model_trial_${SLUG}" \
+    --countries Italy Netherlands \
+    --coder-id anne \
+    --output-prefix "italy_netherlands_${SLUG}"
+done
+```
+
+If the proxy rejects `gpt-5.6-terra`, stop there and retain the 401/error audit;
+do not let failed rows enter the comparison. If it succeeds, inspect both
+summary CSVs under each model folder's `evaluation/` directory. Prefer the
+model with stronger macro F1 and kappa across variables, while also checking
+the substantive disagreement files. Record the decision, exact model name,
+prompt versions, date, and run-manifest hashes in the method notes.
 
 For a translated codebook-development sample, run all four content coders with:
 
@@ -419,37 +488,45 @@ python3 content-classification/scripts/classify_accused_actor.py \
 ```
 
 This design keeps the expensive full-corpus GPT labelling separate from the
-validation exercise. If the 500-case validation shows weak agreement on a
-concept, revise the prompt version before running that concept on all 459,674
-political-corruption articles.
+validation exercise. If the final held-out validation shows weak agreement on a
+concept, revise the prompt version before running that concept on the complete
+current political-corruption corpus.
 
 ## Full Runs
 
-The full corpus is large, so run each concept separately with `nohup`. The
-scripts are resumable: if an output file already exists, completed `article_id`
-rows are skipped. Use `--retry-errors` to reprocess rows with non-empty
-`llm_error`.
+The full corpus is large, so run each concept separately with `nohup`. Every run
+has a manifest containing the model, prompt version, settings, and input source.
+Resume is allowed only when that manifest matches. Rows are skipped only when
+both `article_id` and the stored input-text hash match; changed text is
+reprocessed. Use `--retry-errors` to reprocess failed rows, or `--overwrite` to
+start a deliberately fresh output.
 
 ```bash
-CONTENT_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification
+# Replace only after the paired development-sample comparison is complete.
+CONTENT_MODEL=gpt-5.6-terra
+CONTENT_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/gpt56_terra_final
 
 nohup python3 -u content-classification/scripts/classify_victim_visibility.py \
   --output-dir "$CONTENT_DIR" \
+  --model "$CONTENT_MODEL" \
   --max-chars 6000 \
   > content_victim_visibility.log 2>&1 &
 
 nohup python3 -u content-classification/scripts/classify_corruption_frame.py \
   --output-dir "$CONTENT_DIR" \
+  --model "$CONTENT_MODEL" \
   --max-chars 6000 \
   > content_corruption_frame.log 2>&1 &
 
 nohup python3 -u content-classification/scripts/classify_abroad_case.py \
   --output-dir "$CONTENT_DIR" \
+  --model "$CONTENT_MODEL" \
   --max-chars 6000 \
   > content_abroad_case.log 2>&1 &
 
 nohup python3 -u content-classification/scripts/classify_accused_actor.py \
   --output-dir "$CONTENT_DIR" \
+  --model "$CONTENT_MODEL" \
   --max-chars 6000 \
   > content_accused_actor.log 2>&1 &
 ```
@@ -460,9 +537,9 @@ Monitor progress with:
 tail -f content_victim_visibility.log
 ```
 
-## Merge Silver Labels
+## Merge LLM-Coded Labels
 
-After all four concept files are present:
+After all four concept files are present and error-free:
 
 ```bash
 python3 content-classification/scripts/merge_content_labels.py \
@@ -490,16 +567,21 @@ Derived variables include:
 | `frame_systemic` | 1 for systemic frame; 0 for individualized or other/mixed |
 | `perceived_corruption_lag1` | `100 - CPI` from the previous country-year |
 
-Rows coded `unclear` retain missing values in the derived binary variables so
+By default the merge is an inner, one-to-one merge and fails on duplicate IDs,
+invalid labels, failed requests, or missing variable outputs. `--allow-partial`
+and `--allow-errors` are diagnostic overrides and must not be used for final
+analysis. Rows coded `unclear` retain missing values in the derived binary variables so
 they can be excluded from the relevant regression models.
 
 ## Reproducibility Notes
 
 - The prompts live in `scripts/content_prompts.py`; do not edit them mid-run
   unless intentionally starting a new prompt version.
-- Each output row stores `classifier_name` and `prompt_version`.
-- Each classifier writes an audit JSONL next to the output file containing the
-  prompt and raw model response for every successful article.
+- Each output row stores `classifier_name`, `prompt_version`, model, timestamp,
+  maximum characters, and an SHA-256 hash of the supplied text.
+- Each classifier writes an append-only audit JSONL next to the output file
+  containing the prompt, raw and parsed response, and any error for every
+  attempted article.
 - The default model is read from `LLMPROXY_MODEL` in `config.py`, currently
   `gpt-5.1`.
 - Credentials must be supplied through environment variables or ignored

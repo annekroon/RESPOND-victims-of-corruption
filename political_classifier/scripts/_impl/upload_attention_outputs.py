@@ -10,6 +10,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import posixpath
@@ -126,6 +127,30 @@ def collect_paths(directory: Path, patterns: list[str]) -> list[Path]:
     return sorted({path for path in paths if path.is_file()})
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_artifact_hashes(
+    paths: list[Path], local_base_dir: Path, prefix: str, manifest: dict
+) -> None:
+    expected = {
+        record["relative_path"]: record["sha256"]
+        for record in manifest.get("artifacts", [])
+    }
+    for path in paths:
+        key = f"{prefix}/{path.relative_to(local_base_dir).as_posix()}"
+        if expected.get(key) != sha256_file(path):
+            raise ValueError(
+                f"Artifact differs from the step-07 build manifest: {path}. "
+                "Rerun 07_build_attention_outputs.py before upload."
+            )
+
+
 def upload_file(path: Path, local_base_dir: Path, rd_dir: str) -> str:
     from rd_utils import webdav_mkdirs, webdav_upload_bytes
 
@@ -176,8 +201,9 @@ def validate_current_build(
 
     tikz = tikz_path.read_text(encoding="utf-8")
     required_fragments = [
-        "Cleaning and source inclusion",
-        "Source-filtered:",
+        "Cleaning and exact deduplication",
+        "Source inclusion",
+        "Conventional journalism:",
         f"final $N = {final_n:,}$",
         f"$p \\geq {threshold:.2f}$",
     ]
@@ -204,12 +230,18 @@ def main() -> None:
     if args.skip_tables and args.skip_figures:
         raise ValueError("Both --skip-tables and --skip-figures were set; nothing to upload.")
 
-    validate_current_build(args.build_manifest, args.local_table_dir)
+    manifest = validate_current_build(args.build_manifest, args.local_table_dir)
 
     total = 0
 
     if not args.skip_figures:
         figure_paths = collect_paths(args.local_figure_dir, args.figure_patterns)
+        validate_artifact_hashes(
+            figure_paths,
+            args.local_figure_dir,
+            "attention_figures",
+            manifest,
+        )
         figure_rd_dir = rd_join(args.rd_output_dir, args.rd_figure_subdir)
         total += upload_group(
             "attention figure(s)",
@@ -220,6 +252,12 @@ def main() -> None:
 
     if not args.skip_tables:
         table_paths = collect_paths(args.local_table_dir, args.table_patterns)
+        validate_artifact_hashes(
+            table_paths,
+            args.local_table_dir,
+            "attention_tables",
+            manifest,
+        )
         table_rd_dir = rd_join(args.rd_output_dir, args.rd_table_subdir)
         total += upload_group(
             "attention table(s)",

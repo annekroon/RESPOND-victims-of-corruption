@@ -21,7 +21,7 @@ done
 DATA_ROOT="${DATA_ROOT:-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption}"
 PIPELINE_DIR="${PIPELINE_DIR:-$DATA_ROOT/political_corruption_pipeline}"
 TOPIC_ROOT="${TOPIC_ROOT:-$DATA_ROOT/topic_classification}"
-CLASSIFIED_DIR="${CLASSIFIED_DIR:-$PIPELINE_DIR/silver_classifier/classified_country_files_source_filtered}"
+CLASSIFIED_DIR="${CLASSIFIED_DIR:-$PIPELINE_DIR/silver_classifier/classified_country_files}"
 
 SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_source_filtered_country_year_sample_200.csv.gz}"
 BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_source_filtered_200_min10}"
@@ -49,7 +49,6 @@ echo
 echo "2/5 Fitting multilingual BERTopic final specification..."
 TMPDIR="${TMPDIR:-/home/akroon/data/1t_storage/tmp}" \
 HF_HOME="${HF_HOME:-/home/akroon/data/1t_storage/huggingface_cache}" \
-TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-/home/akroon/data/1t_storage/huggingface_cache}" \
 CUDA_VISIBLE_DEVICES="$CUDA_DEVICE" \
 python3 topic_classification/scripts/02_fit_multilingual_bertopic.py \
   --sample "$SAMPLE_PATH" \

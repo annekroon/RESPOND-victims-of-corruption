@@ -27,8 +27,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import config
 from config import RD_BASE_DIR
+from rd_utils import (
+    DEFAULT_TIMEOUT,
+    _get_session,
+    webdav_download_to_path,
+    webdav_list,
+)
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -77,6 +82,14 @@ def parse_args() -> argparse.Namespace:
         help="Research Drive archive source directory.",
     )
     parser.add_argument(
+        "--archive-version",
+        default=None,
+        help=(
+            "Snapshot folder below runs/. Omit to restore the lexicographically "
+            "latest timestamped snapshot."
+        ),
+    )
+    parser.add_argument(
         "--groups",
         nargs="+",
         default=ARCHIVE_GROUPS,
@@ -112,50 +125,19 @@ def enc_path(rel_path: str) -> str:
 
 
 def get_webdav_session():
-    import requests
-
-    app_password = getattr(config, "APP_PASSWORD", None)
-    user = getattr(config, "USER", None)
-    base_url = getattr(config, "BASE_URL", None)
-
-    missing = [
-        name
-        for name, value in {
-            "BASE_URL or RD_BASE_URL": base_url,
-            "USER or RD_USER": user,
-            "APP_PASSWORD or RD_PASS": app_password,
-        }.items()
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(
-            "Missing Research Drive WebDAV setting(s): "
-            + ", ".join(missing)
-            + ". Add them to config_local.py or set environment variables."
-        )
-
-    session = requests.Session()
-    session.auth = (user, app_password)
-    base = f"{base_url.rstrip('/')}/{quote(user, safe='')}"
-    return session, base
+    return _get_session()
 
 
 def webdav_get_bytes(session, base_url: str, rd_path: str) -> bytes:
     url = f"{base_url}/{enc_path(rd_path)}"
-    response = session.get(url)
+    response = session.get(url, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
     return response.content
 
 
 def download_file_stream(session, base_url: str, rd_path: str, local_path: Path) -> None:
-    url = f"{base_url}/{enc_path(rd_path)}"
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    with session.get(url, stream=True) as response:
-        response.raise_for_status()
-        with local_path.open("wb") as handle:
-            for chunk in response.iter_content(chunk_size=1024 * 1024 * 8):
-                if chunk:
-                    handle.write(chunk)
+    del session, base_url
+    webdav_download_to_path(rd_path, local_path)
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024 * 8) -> str:
@@ -175,8 +157,15 @@ def local_target_path(pipeline_dir: Path, record: dict) -> Path:
 
 def main() -> None:
     args = parse_args()
+    if args.archive_version is None:
+        runs_dir = posixpath.join(args.rd_archive_dir, "runs")
+        candidates = sorted(name for name in webdav_list(runs_dir) if name and not name.startswith("."))
+        if not candidates:
+            raise FileNotFoundError(f"No archived runs found in {runs_dir}.")
+        args.archive_version = candidates[-1]
+    archive_root = posixpath.join(args.rd_archive_dir, "runs", args.archive_version)
     session, base_url = get_webdav_session()
-    manifest_rd_path = posixpath.join(args.rd_archive_dir, args.manifest_name)
+    manifest_rd_path = posixpath.join(archive_root, args.manifest_name)
     manifest = json.loads(webdav_get_bytes(session, base_url, manifest_rd_path).decode("utf-8"))
 
     records = [
@@ -187,7 +176,7 @@ def main() -> None:
     if not records:
         raise FileNotFoundError(f"No manifest records found for groups: {args.groups}")
 
-    print(f"Research Drive archive: {args.rd_archive_dir}", flush=True)
+    print(f"Research Drive archive: {archive_root}", flush=True)
     print(f"Local pipeline target:  {args.pipeline_dir}", flush=True)
     print(f"Files selected:         {len(records):,}", flush=True)
     if args.dry_run:
@@ -206,6 +195,7 @@ def main() -> None:
             if expected_sha and not args.no_verify:
                 actual_sha = sha256_file(local_path)
                 if actual_sha != expected_sha:
+                    local_path.unlink(missing_ok=True)
                     raise ValueError(
                         f"Checksum mismatch for {local_path}: "
                         f"expected {expected_sha}, got {actual_sha}"

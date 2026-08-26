@@ -35,6 +35,9 @@ DELETE_GLOBS = [
     "active_learning/active_learning_batch*",
     "active_learning/silver_training_source_filtered*",
     "active_learning/uk_calibration_batch*",
+    "source_inclusion/cleaned_source_filter_output_summary.csv",
+    "source_inclusion/cleaned_source_filter_decision_summary_by_country.csv",
+    "source_inclusion/source_filter_run_manifest.json",
     "manuscript_tables/table_pc_classifier*.tex",
     "manuscript_tables/table_classifier*.tex",
 ]

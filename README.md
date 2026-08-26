@@ -1,345 +1,151 @@
 # RESPOND Victims of Corruption
 
-This repository contains the analysis workflow for the RESPOND victims-of-corruption paper.
+This repository contains the analysis workflow for the RESPOND
+victims-of-corruption paper. Large data and generated outputs live on Research
+Drive; Git contains code, prompts, notebooks, tests, and manuscript methods.
 
-The project is organized in parts. **Part 1 identifies articles that are primarily about political corruption** and produces the cleaned corpus, classifier outputs, attention figures, and reproducibility archive. Later analyses, such as victim identification and corruption-domain classification, should live in separate folders rather than being added to the political-classifier sequence.
-
-Topic modelling is a separate exploratory step. It is deliberately inductive and is mainly intended for appendix material and for inspiration when developing substantive coding variables later, especially victim identification and corruption-type/domain categories. It is not the final supervised coding workflow for those variables.
-
-Raw news collection code is maintained in the related RESPOND media repository:
+Raw NewsAPI collection code is maintained separately:
 
 ```text
 https://github.com/annekroon/RESPOND_media/tree/main/data-collection/news-collection/news-api
 ```
 
-## Repository Map
+## Analysis Parts
 
-| Path | Purpose |
-|---|---|
-| `political_classifier/` | Part 1 workflow: clean/dedupe, silver labels, classifier comparison, final scoring, attention tables |
-| `topic_classification/` | Inductive political-corruption topic discovery for appendix/exploratory interpretation and future coding-frame development |
-| `content-classification/` | Article-level GPT 5.1 zero-shot coding of victim visibility, corruption frames, case scope, and accused actors |
-| `config.py` | Shared non-secret paths and defaults |
-| `config_local.example.py` | Template for ignored local credentials |
-| `dataloader.py` | Shared data-loading helpers |
-| `extract_cpi_from_transparency.py` | Preferred helper to download official Transparency International CPI full-results files into country-year scores |
-| `extract_cpi_from_pdfs.py` | Fallback helper to parse CPI PDF reports from Research Drive/SURF into country-year scores |
-| `upload_cpi_to_webdav.py` | Helper to upload extracted CPI country-year scores and extraction logs to Research Drive/SURF |
-| `rd_io.py`, `rd_utils.py` | Research Drive/WebDAV helpers |
-| `requirements.txt` | Python dependencies |
-| `src/` | Older exploratory scripts kept for provenance |
+| Path | Purpose | Canonical guide |
+|---|---|---|
+| `political_classifier/` | Part 1: clean/deduplicate, source screen, silver labels, political-corruption classifier, final corpus, attention outputs | `political_classifier/REBUILD_WORKFLOW.md` |
+| `content-classification/` | Article-level victim, frame, case-location, and accused-actor codebook development and prompt-based coding | `content-classification/README.md` |
+| `topic_classification/` | Separate inductive BERTopic analysis for appendix/discovery and codebook sensitization | `topic_classification/README.md` |
+| `docs/method.tex` | Full manuscript-ready Method section | Generated political-classifier values are input from step 07 |
+| `tests/` | Pipeline-integrity tests | `python3 -m unittest discover -s tests -v` |
 
-Research Drive credentials and UvA LLM proxy tokens belong in ignored `config_local.py`, not in git:
+Topic modelling is exploratory. It helps interpret the corpus and inspire later
+substantive categories, but it is not the final measurement of victim
+visibility, corruption type, case location, or accused actors.
+
+## Configuration
+
+Copy the ignored local configuration template and add Research Drive/WebDAV and
+UvA LLM proxy credentials locally:
 
 ```bash
 cp config_local.example.py config_local.py
 ```
 
-## Part 1: Political-Corruption Classifier
+Never commit `config_local.py`, API keys, app passwords, or downloaded article
+data.
 
-See:
+Shared modules:
 
-```text
-political_classifier/README.md
-```
-
-### Order Of Execution
-
-Run the Part 1 political-corruption workflow from the repository root on
-`annecuda`. The numbered scripts are the reproducible backbone. The two
-notebooks are optional inspection views and are not required to regenerate
-production tables or figures.
-
-First update the repository:
-
-```bash
-cd ~/RESPOND-victims-of-corruption
-git pull
-```
-
-If `git pull` is blocked by local notebook outputs, stash those outputs first:
-
-```bash
-git stash push -m "local notebook outputs before pull" -- \
-  political_classifier/notebooks/02_inspect_classifier_comparison.ipynb \
-  political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
-
-git pull
-```
-
-Then run the rebuild in this order:
-
-```bash
-python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
-python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
-python3 political_classifier/scripts/03_prepare_classifier_training_sample.py \
-  --overwrite \
-  --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
-```
-
-Label the fresh source-filtered silver set with the UvA LLM proxy:
-
-```bash
-nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
-  --input /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_for_annotation.csv \
-  --output /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/silver_training_source_filtered_with_llm_suggestions.csv \
-  --max-chars 3000 \
-  --overwrite \
-  > llm_silver_training_source_filtered.log 2>&1 &
-
-tail -f llm_silver_training_source_filtered.log
-```
-
-After the LLM labelling finishes, compare and inspect the classifier:
-
-```bash
-python3 political_classifier/scripts/05_compare_models.py \
-  --embedding-models intfloat/multilingual-e5-large \
-  --batch-size 32 \
-  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
-```
-
-Optionally inspect the saved validation results in:
-
-```text
-political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
-```
-
-Only after accepting classifier performance, run the expensive full-corpus
-scoring step:
-
-```bash
-TMPDIR=/home/akroon/data/1t_storage/tmp \
-HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
-TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
-CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
-  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
-  --score-corpus \
-  > silver_classifier_final_scoring.log 2>&1 &
-
-tail -f silver_classifier_final_scoring.log
-```
-
-After full scoring finishes, rebuild, upload, and archive outputs:
-
-```bash
-python3 political_classifier/scripts/07_build_attention_outputs.py
-python3 political_classifier/scripts/08_upload_outputs.py
-python3 political_classifier/scripts/09_archive_derived_data.py \
-  --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
-```
-
-Step 07 regenerates the classifier LaTeX tables, country-level corpus table,
-attention CSVs and plots, and the TikZ data-pipeline figure. Step 08 uploads
-those production files to Research Drive.
-
-Final selected political-corruption classifier:
-
-| Item | Value |
+| File | Role |
 |---|---|
-| Training labels | LLM silver-labelled training set |
-| Classifier | Balanced logistic regression |
-| Embeddings | `intfloat/multilingual-e5-large` |
-| Decision threshold | `0.50` |
-| Human validation set | Original 452 rows + 50 manually reviewed UK supplement rows |
-| Validation rows | `502` |
-| Political-corruption support | `141` |
-| Political precision | `0.654` |
-| Political recall | `0.830` |
-| Political F1 | `0.731` |
-| Accuracy | `0.829` |
-| Macro F1 | `0.803` |
-| Weighted F1 | `0.834` |
-| Final source-filtered query corpus | `1,958,721` |
-| Final political-corruption corpus | `459,674` |
+| `config.py` | Non-secret defaults and paths |
+| `dataloader.py` | Human annotation and corpus loaders |
+| `rd_io.py`, `rd_utils.py` | Retried, timeout-bounded Research Drive/WebDAV I/O |
+| `requirements.txt` | Declared dependency ranges |
+| `environment-lock.txt` | Exact server environment; regenerate for each production run |
 
-The main derived outputs are stored on `annecuda` under:
+Create the exact environment record after installing dependencies:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 -m pip freeze > environment-lock.txt
+```
+
+## Political-Classifier Run Order
+
+Do not use command fragments from old notebooks or logs. Use the one maintained
+runbook:
+
+```text
+political_classifier/REBUILD_WORKFLOW.md
+```
+
+Its numbered production spine is:
+
+```text
+00 download reviewed source workbook
+01 clean and exact-deduplicate within country
+02 create full source-filtered corpus
+03 draw fresh silver-training candidates and remove benchmark overlap
+04 create GPT-5.1 silver labels
+05 calibrate the threshold and evaluate on a held-out benchmark partition
+06 refit/validate and then score the complete source-filtered corpus
+07 rebuild attention outputs, LaTeX tables, Figure 1, and generated values
+08 upload the current validated manuscript build
+09 archive an immutable checksummed Research Drive snapshot
+```
+
+The notebooks under `political_classifier/notebooks/` are optional inspection
+views. They are not production entry points and do not need to be committed
+after local execution.
+
+## Manuscript Outputs
+
+Step 07 creates all political-classifier and attention artifacts from saved run
+outputs. It also creates:
+
+```text
+attention_tables/latex/political_corruption_manuscript_values.tex
+```
+
+The Method section inputs this file so current corpus Ns, split sizes,
+threshold, and held-out classifier metrics are not copied by hand. Generated
+tables use `\scriptsize` and `adjustbox` with `max width`; add these packages to
+the Overleaf preamble:
+
+```tex
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+```
+
+## Data And Archive Locations
+
+Default server pipeline root:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/
 ```
 
-The final political-corruption analytical sample applies an additional
-source-inclusion screen. The reviewed workbook is expected at:
+Immutable political-classifier snapshots:
 
 ```text
-/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/source_inclusion/political_corruption_all_sources_classified.xlsx
+ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/
+victims-of-corruption-paper/derived_data/political_classifier/runs/
 ```
 
-Only sources marked `Yes` in the `conventional_journalism` column are retained
-for final political-corruption attention tables and figures.
+Human annotation files, the reviewed source workbook, UK benchmark supplement,
+and content-codebook samples are inputs and must be preserved. Generated
+classifier files can be rebuilt or restored using the commands in the runbook.
 
-The reproducibility archive for expensive-to-recreate derived data is stored on
-Research Drive/WebDAV under:
+## CPI Helpers
 
-```text
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/political_classifier/
-```
-
-Create/update that archive from `annecuda` with:
-
-```bash
-python3 political_classifier/scripts/09_archive_derived_data.py
-```
-
-Restore the archived derived data into the expected local folder with:
-
-```bash
-python3 political_classifier/scripts/restore_derived_data_from_webdav.py
-```
-
-The archive contains cleaned/deduplicated files, denominator tables,
-silver-labelled training data, validation supplements, classifier outputs,
-attention outputs, and a `derived_data_manifest.json` with file sizes,
-checksums, destination paths, and the git commit used for the archive.
-
-## CPI / Corruption Perceptions Index
-
-The preferred CPI source is Transparency International's official yearly CPI
-page and linked full-results spreadsheet/archive. This is more reproducible than
-parsing report PDFs because the score and rank columns are structured data:
+The preferred CPI route downloads official Transparency International structured
+results:
 
 ```bash
 python3 extract_cpi_from_transparency.py \
   --years 2018 2019 2020 2021 2022 2023 2024 2025 \
   --output output/cpi_country_year_scores.csv
-```
-
-By default the website extractor keeps only the project countries listed in
-`config.py` and drops any selected-country year unless all project countries
-were recovered. It writes:
-
-```text
-output/cpi_country_year_scores.csv
-output/cpi_country_year_scores_extraction_log.csv
-```
-
-The output contains `year`, `country`, `cpi_score`, `cpi_rank`, `source_url`,
-`source_file`, and `extraction_method`. CPI scores are the Transparency
-International values from 0 to 100; ranks are stored separately. Use the log to
-verify the official source file used for each year.
-
-The CPI PDF reports are still stored on Research Drive/SURF under:
-
-```text
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/CPI/
-```
-
-Use the PDF parser only as a fallback/audit route:
-
-```bash
-python3 extract_cpi_from_pdfs.py \
-  --source webdav \
-  --output output/cpi_country_year_scores.csv
-```
-
-For the PDF parser, use `--min-selected-countries` only if you intentionally
-want to relax the completeness threshold, `--allow-partial-years` only for
-debugging PDF layouts, and `--country-scope all` only if you need every
-country/territory from the CPI PDFs.
-
-Upload the extracted scores and extraction log back to Research Drive/SURF with:
-
-```bash
 python3 upload_cpi_to_webdav.py
 ```
 
-By default this uploads:
+`extract_cpi_from_pdfs.py` is retained as an audit/fallback route for locally
+stored or Research Drive PDF reports.
 
-```text
-output/cpi_country_year_scores.csv
-output/cpi_country_year_scores_extraction_log.csv
-```
+## Git And Local Notebook Outputs
 
-to:
-
-```text
-ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/victims-of-corruption-paper/derived_data/cpi/
-```
-
-For local PDFs instead of WebDAV:
+If `git pull` is blocked only by executed notebook output, preserve it in a
+stash before pulling:
 
 ```bash
-python3 extract_cpi_from_pdfs.py \
-  --source local \
-  --local-dir /path/to/CPI \
-  --output output/cpi_country_year_scores.csv
-```
-
-## Current Main Commands
-
-From the repo root on `annecuda`:
-
-```bash
-cd ~/RESPOND-victims-of-corruption
+git stash push -m "local notebook outputs before pull" -- \
+  political_classifier/notebooks/02_inspect_classifier_comparison.ipynb \
+  political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
 git pull
 ```
 
-The reproducible Part 1 political-corruption pipeline is:
-
-```bash
-python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
-python3 political_classifier/scripts/01_clean_dedupe_data.py --overwrite
-python3 political_classifier/scripts/02_create_source_filtered_corpus.py --overwrite
-python3 political_classifier/scripts/03_prepare_classifier_training_sample.py --overwrite
-nohup python3 -u political_classifier/scripts/04_label_silver_batch.py --overwrite \
-  > llm_silver_training_source_filtered.log 2>&1 &
-python3 political_classifier/scripts/05_compare_models.py \
-  --embedding-models intfloat/multilingual-e5-large \
-  --batch-size 32 \
-  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv
-```
-
-After accepting classifier performance, score the cleaned/source-filtered
-corpus:
-
-```bash
-TMPDIR=/home/akroon/data/1t_storage/tmp \
-HF_HOME=/home/akroon/data/1t_storage/huggingface_cache \
-TRANSFORMERS_CACHE=/home/akroon/data/1t_storage/huggingface_cache \
-CUDA_VISIBLE_DEVICES=1 \
-nohup python3 -u political_classifier/scripts/06_train_final_classifier.py \
-  --extra-human-validation /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/active_learning/uk_human_validation_reviewed.csv \
-  --score-corpus \
-  > silver_classifier_final_scoring.log 2>&1 &
-```
-
-Then rebuild and upload attention outputs:
-
-```bash
-python3 political_classifier/scripts/07_build_attention_outputs.py
-python3 political_classifier/scripts/08_upload_outputs.py
-python3 political_classifier/scripts/09_archive_derived_data.py \
-  --groups source_inclusion cleaned_deduped silver_training_data classifier_comparison classifier_outputs attention_outputs
-```
-
-## Part 2: Topic Classification And Discovery
-
-See:
-
-```text
-topic_classification/README.md
-```
-
-This workflow starts with reproducible random samples across country and year
-among articles classified as political corruption, then fits multilingual
-BERTopic models, labels topics with GPT 5.1 through the UvA LLM proxy, and
-uses a notebook to inspect topic tables, example articles, and interactive
-country/time visualizations. The topic outputs are intended as an inductive
-appendix/discovery step before building final substantive variables. They can
-help inspire later coding of victim visibility, victim type, corruption domain,
-and case scope, but they are not treated as final measurement of those
-variables.
-
-Numbered topic workflow:
-
-```bash
-python3 topic_classification/scripts/01_create_stratified_topic_sample.py --source classified --political-only
-python3 topic_classification/scripts/02_fit_multilingual_bertopic.py --sample <sample.csv.gz> --output-dir <bertopic-dir>
-python3 topic_classification/scripts/03_label_topics_with_llm.py --bertopic-dir <bertopic-dir>
-python3 topic_classification/scripts/04_group_topics_with_llm.py --bertopic-dir <bertopic-dir>
-python3 topic_classification/scripts/05_build_topic_visualizations.py --bertopic-dir <bertopic-dir>
-python3 topic_classification/scripts/06_publish_topic_archive_to_webdav.py --bertopic-dir <bertopic-dir> --sample <sample.csv.gz>
-```
+Generated data, logs, model caches, and secrets do not belong in Git.

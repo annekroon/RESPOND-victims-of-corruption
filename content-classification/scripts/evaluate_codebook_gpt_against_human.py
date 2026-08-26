@@ -40,7 +40,7 @@ GPT_CLASSIFIER_FILES = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate GPT-5.1 content labels against human-coded codebook samples."
+        description="Evaluate zero-shot LLM content labels against human-coded codebook samples."
     )
     parser.add_argument("--codebook-dir", type=Path, default=DEFAULT_CODEBOOK_DIR)
     parser.add_argument(
@@ -77,12 +77,12 @@ def read_csv(path: Path):
 
 
 def key_columns(data) -> list[str]:
+    if "content_sample_id" in data.columns:
+        return ["content_sample_id"]
     if "article_id" in data.columns:
         return ["article_id"]
     if "uri" in data.columns:
         return ["uri"]
-    if "content_sample_id" in data.columns:
-        return ["content_sample_id"]
     raise ValueError("Could not find article_id, uri, or content_sample_id.")
 
 
@@ -121,6 +121,8 @@ def load_country_comparison(
 
     human = read_csv(human_file)
     keys = key_columns(human)
+    if human.duplicated(subset=keys).any():
+        raise ValueError(f"Human file contains duplicate keys {keys}: {human_file}")
     keep = list(
         dict.fromkeys(
             keys
@@ -142,6 +144,8 @@ def load_country_comparison(
             merge_keys = ["uri"]
         else:
             merge_keys = keys
+        if gpt.duplicated(subset=gpt_keys).any():
+            raise ValueError(f"GPT file contains duplicate keys {gpt_keys}: {path}")
         detail_columns = [
             column
             for column in gpt.columns
@@ -174,7 +178,17 @@ def load_country_comparison(
             }
         )
         gpt = gpt[gpt_keep].rename(columns=rename_columns)
-        merged = merged.merge(gpt, on=merge_keys, how="left")
+        merged = merged.merge(
+            gpt,
+            on=merge_keys,
+            how="left",
+            validate="one_to_one",
+        )
+        missing_labels = merged[f"gpt_{gpt_column}"].isna()
+        if missing_labels.any():
+            raise ValueError(
+                f"GPT file is missing {missing_labels.sum():,} human-coded rows: {path}"
+            )
 
     merged["country"] = country
     return merged
@@ -182,6 +196,7 @@ def load_country_comparison(
 
 def evaluate(data, variables):
     import pandas as pd
+    from sklearn.metrics import cohen_kappa_score, f1_score
 
     rows = []
     disagreements = []
@@ -192,12 +207,28 @@ def evaluate(data, variables):
         valid[gpt_column] = valid[gpt_column].map(normalize_label)
         valid = valid[valid[human_column].ne("") & valid[gpt_column].ne("")]
         correct = valid[human_column].eq(valid[gpt_column])
+        labels = sorted(set(valid[human_column]) | set(valid[gpt_column]))
 
         rows.append(
             {
                 "variable": variable,
                 "n": len(valid),
                 "agreement": float(correct.mean()) if len(valid) else None,
+                "cohen_kappa": (
+                    float(cohen_kappa_score(valid[human_column], valid[gpt_column], labels=labels))
+                    if len(valid) and len(labels) > 1
+                    else None
+                ),
+                "macro_f1": (
+                    float(f1_score(valid[human_column], valid[gpt_column], labels=labels, average="macro", zero_division=0))
+                    if len(valid)
+                    else None
+                ),
+                "weighted_f1": (
+                    float(f1_score(valid[human_column], valid[gpt_column], labels=labels, average="weighted", zero_division=0))
+                    if len(valid)
+                    else None
+                ),
                 "matches": int(correct.sum()),
                 "mismatches": int((~correct).sum()),
             }
