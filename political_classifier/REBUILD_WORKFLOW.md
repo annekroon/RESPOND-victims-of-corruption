@@ -115,8 +115,12 @@ python3 political_classifier/scripts/02_create_source_filtered_corpus.py \
   --overwrite
 ```
 
-The step fails if more than 2% of rows lack a source decision; investigate the
-workbook rather than silently retaining unmatched sources.
+The step fails if more than 2% of rows lack a source decision. Inspect the
+ranked normalized domains in `source_filter_missing_sources.csv` rather than
+silently retaining unmatched sources. Add reviewed decisions to the canonical
+workbook and rerun step 02. Raise `--max-missing-source-share` only after the
+remaining unmatched rows have been substantively reviewed and their exclusion
+is documented.
 
 Outputs:
 
@@ -127,6 +131,7 @@ political_corruption_pipeline/cleaned_deduped_source_filtered/
 political_corruption_pipeline/source_inclusion/
   cleaned_source_filter_output_summary.csv
   cleaned_source_filter_decision_summary_by_country.csv
+  source_filter_missing_sources.csv
 ```
 
 ## 4. Draw A Fresh Silver-Training Candidate Set

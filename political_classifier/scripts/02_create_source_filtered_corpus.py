@@ -11,6 +11,7 @@ It does not sample rows. Sampling for classifier training happens in
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import sys
 from datetime import datetime, timezone
@@ -97,6 +98,45 @@ def output_country_path(output_dir: Path, country: str) -> Path:
     return output_dir / f"{country}_cleaned_deduped_source_filtered.csv.gz"
 
 
+def write_missing_source_audit(
+    path: Path,
+    missing_source_counts: Counter[tuple[str, str]],
+    country_input_rows: dict[str, int],
+) -> None:
+    """Persist unmatched normalized domains, including on a fail-fast exit."""
+    import pandas as pd
+
+    rows = [
+        {
+            "country": country,
+            "source_clean": source,
+            "article_rows": count,
+            "share_of_country_rows_pct": (
+                count / country_input_rows[country] * 100
+                if country_input_rows.get(country)
+                else 0.0
+            ),
+        }
+        for (country, source), count in missing_source_counts.items()
+    ]
+    audit = pd.DataFrame(
+        rows,
+        columns=[
+            "country",
+            "source_clean",
+            "article_rows",
+            "share_of_country_rows_pct",
+        ],
+    )
+    if not audit.empty:
+        audit = audit.sort_values(
+            ["country", "article_rows", "source_clean"],
+            ascending=[True, False, True],
+        ).reset_index(drop=True)
+        audit["rank_within_country"] = audit.groupby("country").cumcount() + 1
+    audit.to_csv(path, index=False)
+
+
 def main() -> None:
     args = parse_args()
 
@@ -166,6 +206,9 @@ def main() -> None:
 
     output_rows = []
     filter_summaries = []
+    missing_source_counts: Counter[tuple[str, str]] = Counter()
+    country_input_rows: dict[str, int] = {}
+    missing_source_audit_path = args.summary_dir / "source_filter_missing_sources.csv"
     combined_temporary = combined_output.with_name(combined_output.name + ".part")
     if combined_temporary.exists():
         combined_temporary.unlink()
@@ -204,7 +247,17 @@ def main() -> None:
             chunk_counts = merged["source_filter_decision"].value_counts(dropna=False)
             for decision, count in chunk_counts.items():
                 decision_counts[str(decision)] = decision_counts.get(str(decision), 0) + int(count)
-            missing_n += int(merged["source_filter_decision"].eq("MISSING").sum())
+            missing = merged[merged["source_filter_decision"].eq("MISSING")]
+            missing_n += len(missing)
+            if not missing.empty:
+                counts = missing.groupby(
+                    ["_source_filter_country", "_source_filter_source"],
+                    dropna=False,
+                ).size()
+                for (missing_country, missing_source), count in counts.items():
+                    missing_source_counts[
+                        (str(missing_country), str(missing_source))
+                    ] += int(count)
 
             if args.write_combined_minimal and not filtered.empty:
                 minimal_cols = [column for column in MINIMAL_COLUMNS if column in filtered.columns]
@@ -232,12 +285,19 @@ def main() -> None:
                 f"cleaning audit records {expected_rows!r}. Rerun step 01."
             )
         missing_share = missing_n / input_n if input_n else 0.0
+        country_input_rows[country] = input_n
+        write_missing_source_audit(
+            missing_source_audit_path,
+            missing_source_counts,
+            country_input_rows,
+        )
         if missing_share > args.max_missing_source_share:
             temporary.unlink(missing_ok=True)
             raise ValueError(
                 f"{country}: {missing_n:,}/{input_n:,} rows ({missing_share:.2%}) "
                 "lack a source decision, exceeding --max-missing-source-share. "
-                "Update the workbook or explicitly relax the threshold."
+                "Inspect source_filter_missing_sources.csv, then update the "
+                "workbook or explicitly relax the threshold."
             )
         temporary.replace(output_path)
 
@@ -298,6 +358,7 @@ def main() -> None:
         ),
         "output_summary": file_record(output_summary_path),
         "decision_summary": file_record(decision_summary_path),
+        "missing_source_audit": file_record(missing_source_audit_path),
     }
     manifest_path = args.summary_dir / "source_filter_run_manifest.json"
     manifest_path.write_text(
@@ -311,6 +372,7 @@ def main() -> None:
 
     print(f"Saved output summary:   {output_summary_path}", flush=True)
     print(f"Saved decision summary: {decision_summary_path}", flush=True)
+    print(f"Saved missing-source audit: {missing_source_audit_path}", flush=True)
     print(f"Saved run manifest:     {manifest_path}", flush=True)
     print("\nBy country:", flush=True)
     print(output_summary.to_string(index=False), flush=True)
