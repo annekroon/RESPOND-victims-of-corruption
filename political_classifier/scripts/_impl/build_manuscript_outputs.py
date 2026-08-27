@@ -717,8 +717,8 @@ def corpus_construction_table(pipeline_dir: Path) -> list[Path]:
     )
     note = (
         "Note. PC = political corruption. Cleaned N is the deduplicated "
-        "corruption-query corpus. Source-filtered N retains only country-source "
-        "pairs coded \\texttt{conventional\\_journalism = Yes}. Total news N "
+        "corruption-query corpus. Source-filtered N removes country-source "
+        "pairs coded \\texttt{conventional\\_journalism = No}. Total news N "
         "comes from the separate NewsAPI country-period count series and is not "
         "source-specific."
     )
@@ -780,8 +780,8 @@ def pipeline_tikz(counts: dict[str, int | float]) -> str:
    Within country: $N = __CLEANED_QUERY__$};
 
 \node[box] (sources) at (-2.75,-4.05)
-  {\textbf{Source inclusion}\\
-   Conventional journalism: $N = __SOURCE_FILTERED_QUERY__$};
+  {\textbf{Source exclusions removed}\\
+   Explicit outlet exclusions: $N = __SOURCE_FILTERED_QUERY__$};
 
 \node[key] (classifier) at (-2.75,-5.55)
   {\textbf{Political-corruption classifier}\\
@@ -808,8 +808,8 @@ def pipeline_tikz(counts: dict[str, int | float]) -> str:
 
 \end{tikzpicture}
 \caption{Political-corruption corpus construction and analysis.
-Corruption-query articles were cleaned, deduplicated, restricted to eligible
-journalistic outlets, and classified. Separate total-news counts provide the
+Corruption-query articles were cleaned and deduplicated, explicitly excluded
+outlets were removed, and the remaining articles were classified. Separate total-news counts provide the
 denominator for relative attention.}
 \label{fig:pc-data-pipeline}
 \end{figure}

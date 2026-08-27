@@ -207,13 +207,13 @@ def parse_args() -> argparse.Namespace:
         "--source-decision-file",
         type=Path,
         default=DEFAULT_SOURCE_DECISION_FILE,
-        help="Source inclusion workbook/CSV. Only conventional_journalism == Yes is retained.",
+        help="Source decision workbook/CSV. Only conventional_journalism == No is excluded.",
     )
     parser.add_argument(
         "--no-source-filter",
         action="store_true",
         help=(
-            "Diagnostic override: do not apply the source inclusion filter to "
+            "Diagnostic override: do not remove explicitly excluded sources from "
             "silver training data or validation. Corpus scoring still reads the "
             "explicit --corpus-dir, whose default is the source-filtered corpus."
         ),

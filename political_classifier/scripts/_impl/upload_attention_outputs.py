@@ -202,8 +202,8 @@ def validate_current_build(
     tikz = tikz_path.read_text(encoding="utf-8")
     required_fragments = [
         "Cleaning and exact deduplication",
-        "Source inclusion",
-        "Conventional journalism:",
+        "Source exclusions removed",
+        "Explicit outlet exclusions:",
         f"final $N = {final_n:,}$",
         f"$p \\geq {threshold:.2f}$",
     ]

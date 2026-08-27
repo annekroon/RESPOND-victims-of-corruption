@@ -27,10 +27,10 @@ published in more than one national corpus from being silently assigned to the
 first country encountered. The resulting cleaned corruption-query corpus
 contained \PCCleanedQueryN{} articles.
 
-\subsubsection{Source Inclusion}
+\subsubsection{Source Exclusion Screen}
 
-To improve cross-country comparability, the cleaned corpus was restricted to
-conventional journalistic outlets. Each country--source pair was evaluated
+To improve cross-country comparability, the cleaned corpus was screened to
+remove outlets explicitly identified as non-eligible. Each country--source pair was evaluated
 against three criteria: the outlet had to be genuinely based in the country to
 which it was assigned; it had to produce original reporting or exercise
 identifiable editorial curation; and it could not function primarily as an
@@ -39,11 +39,11 @@ Descriptive outlet characteristics, including source type, national versus
 regional scope, and broadcast versus print/digital format, were recorded
 separately and did not by themselves determine eligibility.
 
-The reviewed source workbook records the final inclusion decision in the
-\texttt{conventional\_journalism} field. Only country--source pairs explicitly
-coded \texttt{Yes} were retained. Sources coded \texttt{No}, left unresolved,
-or absent from the workbook were excluded rather than assumed to be eligible.
-This conservative screen reduced the cleaned corruption-query corpus from
+The reviewed source workbook records the final exclusion decision in the
+\texttt{conventional\_journalism} field. Country--source pairs explicitly coded
+\texttt{No} were removed. Sources coded \texttt{Yes}, left unresolved, or absent
+from the workbook were retained; the latter two groups were separately audited.
+This exclusion screen reduced the cleaned corruption-query corpus from
 \PCCleanedQueryN{} to \PCSourceFilteredN{} articles. The source screen was applied before drawing
 the silver-labelled training sample and before scoring the corpus.
 

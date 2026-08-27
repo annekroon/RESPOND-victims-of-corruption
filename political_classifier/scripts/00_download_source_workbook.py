@@ -1,8 +1,8 @@
 """Download the reviewed source-inclusion workbook from Research Drive.
 
 This avoids relying on the mounted WebDAV folder, which can raise I/O errors on
-large remote drives. The final source filter keeps only outlets where the
-workbook column ``conventional_journalism`` is ``Yes``.
+large remote drives. The final source filter removes only outlets where the
+workbook column ``conventional_journalism`` is explicitly ``No``.
 """
 
 from __future__ import annotations

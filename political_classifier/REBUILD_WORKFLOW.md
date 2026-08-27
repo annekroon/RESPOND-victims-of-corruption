@@ -11,7 +11,7 @@ Run all commands from the repository root on `annecuda`.
 ```text
 NewsAPI corruption-keyword article retrieval
 -> clean and exact-deduplicate within country
--> retain only country-source pairs with conventional_journalism == Yes
+-> remove country-source pairs with conventional_journalism == No
 -> draw a fresh country-balanced silver-training sample
 -> GPT-5.1 silver labels
 -> exclude all overlap with the human benchmark
@@ -76,9 +76,10 @@ This uses the WebDAV API, not the unreliable mounted WebDAV folder.
 python3 political_classifier/scripts/00_download_source_workbook.py --overwrite
 ```
 
-Only rows whose final `conventional_journalism` value is exactly `Yes` are
-eligible. `No`, review/unclear, blank, and unmatched country-source pairs are
-excluded.
+The workbook is used as an exclusion list. Only rows whose final
+`conventional_journalism` value is exactly `No` are removed. `Yes`, unresolved,
+blank, and unmatched country-source pairs are retained; unmatched pairs are
+reported in the source-filter audit.
 
 ## 2. Clean And Exact-Deduplicate Within Country
 
@@ -115,12 +116,11 @@ python3 political_classifier/scripts/02_create_source_filtered_corpus.py \
   --overwrite
 ```
 
-The step fails if more than 2% of rows lack a source decision. Inspect the
-ranked normalized domains in `source_filter_missing_sources.csv` rather than
-silently retaining unmatched sources. Add reviewed decisions to the canonical
-workbook and rerun step 02. Raise `--max-missing-source-share` only after the
-remaining unmatched rows have been substantively reviewed and their exclusion
-is documented.
+The ranked normalized domains without workbook decisions are written to
+`source_filter_missing_sources.csv`. They are retained under the exclusion-list
+policy, while every country-source pair explicitly marked `No` is removed.
+Adding later reviewed decisions to the canonical workbook and rerunning step 02
+updates the corpus deterministically.
 
 Outputs:
 

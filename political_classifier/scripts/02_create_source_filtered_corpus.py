@@ -1,8 +1,9 @@
 """Create the full cleaned/deduplicated/source-filtered corpus.
 
 This script starts from the existing ``*_cleaned_deduped.csv.gz`` files,
-retains only country/source pairs where the reviewed workbook has
-``conventional_journalism == Yes``, and writes a full source-filtered corpus.
+removes country/source pairs where the reviewed workbook explicitly has
+``conventional_journalism == No``, and writes a full source-filtered corpus.
+Missing and unresolved decisions are retained and audited.
 
 It does not sample rows. Sampling for classifier training happens in
 ``03_prepare_classifier_training_sample.py``.
@@ -73,8 +74,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-missing-source-share",
         type=float,
-        default=0.02,
-        help="Fail when more than this share lacks a country/source decision.",
+        default=None,
+        help=(
+            "Deprecated compatibility option. Missing source decisions are "
+            "retained under the exclusion-based policy and never trigger failure."
+        ),
     )
     parser.add_argument(
         "--write-combined-minimal",
@@ -148,7 +152,7 @@ def main() -> None:
 
     if args.chunksize < 1:
         raise ValueError("--chunksize must be positive.")
-    if not 0 <= args.max_missing_source_share <= 1:
+    if args.max_missing_source_share is not None and not 0 <= args.max_missing_source_share <= 1:
         raise ValueError("--max-missing-source-share must be between 0 and 1.")
 
     clean_manifest_path = args.pipeline_dir / "clean_dedupe_run_manifest.json"
@@ -291,14 +295,6 @@ def main() -> None:
             missing_source_counts,
             country_input_rows,
         )
-        if missing_share > args.max_missing_source_share:
-            temporary.unlink(missing_ok=True)
-            raise ValueError(
-                f"{country}: {missing_n:,}/{input_n:,} rows ({missing_share:.2%}) "
-                "lack a source decision, exceeding --max-missing-source-share. "
-                "Inspect source_filter_missing_sources.csv, then update the "
-                "workbook or explicitly relax the threshold."
-            )
         temporary.replace(output_path)
 
         summary_row = {
@@ -351,6 +347,7 @@ def main() -> None:
         "countries": args.countries,
         "chunksize": args.chunksize,
         "max_missing_source_share": args.max_missing_source_share,
+        "source_filter_policy": "exclude_explicit_no_retain_all_other_decisions",
         "input_rows": int(output_summary["input_rows"].sum()),
         "output_rows": int(output_summary["output_rows"].sum()),
         "missing_source_decision_rows": int(

@@ -47,8 +47,8 @@ The notebooks do not write the tracked notebook files during production. Step
 1. Clean and deduplicate each country independently. Production deduplication
    uses exact URI and normalized-text hashes; prefix-based near-deduplication is
    disabled.
-2. Keep a country-source pair only when the reviewed workbook explicitly says
-   `conventional_journalism == Yes`.
+2. Remove a country-source pair only when the reviewed workbook explicitly says
+   `conventional_journalism == No`; retain and audit all other pairs.
 3. Draw a new country-balanced silver-training set from that eligible corpus.
 4. Exclude URI and normalized-text overlap with all human benchmark records.
 5. Fit the pre-specified E5-large plus class-balanced logistic regression model.

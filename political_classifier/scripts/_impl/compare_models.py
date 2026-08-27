@@ -170,19 +170,19 @@ def parse_args() -> argparse.Namespace:
         "--source-decision-file",
         type=Path,
         default=DEFAULT_SOURCE_DECISION_FILE,
-        help="Source inclusion workbook/CSV. Only conventional_journalism == Yes is retained.",
+        help="Source decision workbook/CSV. Only conventional_journalism == No is excluded.",
     )
     parser.add_argument(
         "--no-source-filter",
         action="store_true",
-        help="Do not apply the source inclusion filter to silver-label training data.",
+        help="Do not remove explicitly excluded sources from silver-label training data.",
     )
     parser.add_argument(
         "--keep-unfiltered-validation",
         action="store_true",
         help=(
-            "Diagnostic override: retain human-validation rows from excluded or "
-            "unmatched sources. By default the benchmark matches the production "
+            "Diagnostic override: retain human-validation rows from explicitly "
+            "excluded sources. By default the benchmark matches the production "
             "source-eligible population."
         ),
     )

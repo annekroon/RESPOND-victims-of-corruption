@@ -1,9 +1,8 @@
-"""Source-inclusion filtering for the political-corruption sample.
+"""Source-exclusion filtering for the political-corruption sample.
 
-The source annotation workbook is treated strictly: articles are retained only
-when their country/source pair has ``conventional_journalism == "Yes"``.
-Everything else, including No, missing, or unknown sources, is excluded from
-the final analytical sample.
+Articles are removed only when their country/source pair has an explicit
+``conventional_journalism == "No"`` decision. Yes, unresolved, missing, and
+unknown sources remain eligible; missing pairs are retained but audited.
 """
 
 from __future__ import annotations
@@ -139,10 +138,10 @@ def load_source_decisions(path: Path = DEFAULT_SOURCE_DECISION_FILE):
     decisions["source_filter_decision_clean"] = (
         decisions[decision_column].astype(str).str.strip().str.upper()
     )
-    decisions["source_include"] = decisions["source_filter_decision_clean"].eq("YES")
+    decisions["source_include"] = decisions["source_filter_decision_clean"].ne("NO")
 
-    # If duplicate country/source rows exist, keep Yes only when all matching
-    # rows explicitly say Yes. This preserves the strict inclusion rule.
+    # If duplicate country/source rows conflict, any explicit No excludes the
+    # pair. Otherwise Yes, unresolved, and blank decisions remain eligible.
     grouped = (
         decisions.groupby(["country", "source_clean"], as_index=False)
         .agg(
@@ -162,7 +161,7 @@ def apply_source_inclusion_filter(
     country_column: str = "country",
     source_column: str | None = None,
 ):
-    """Return only rows whose country/source pair is explicitly Yes."""
+    """Return rows except country/source pairs explicitly coded No."""
     data = dataframe.copy()
     if source_column is None:
         source_column = choose_source_column(data)
@@ -178,7 +177,7 @@ def apply_source_inclusion_filter(
         suffixes=("", "_decision"),
     )
     filtered["source_include"] = (
-        filtered["source_include"].fillna(False).infer_objects(copy=False).astype(bool)
+        filtered["source_include"].astype("boolean").fillna(True).astype(bool)
     )
     filtered["source_filter_decision"] = filtered["source_filter_decision_clean"].fillna("MISSING")
     filtered["source_filter_source_column"] = source_column

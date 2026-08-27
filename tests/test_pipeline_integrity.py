@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from political_classifier.source_filter import normalize_country, normalize_source
+from political_classifier.source_filter import (
+    apply_source_inclusion_filter,
+    normalize_country,
+    normalize_source,
+)
 from political_classifier.split_integrity import (
     assert_no_validation_overlap,
     calibration_test_split,
@@ -83,6 +87,30 @@ class SourceFilterTests(unittest.TestCase):
     def test_country_aliases_match(self):
         self.assertEqual(normalize_country("United Kingdom"), "United_Kingdom")
         self.assertEqual(normalize_country("UK"), "United_Kingdom")
+
+    def test_only_explicit_no_sources_are_excluded(self):
+        data = pd.DataFrame(
+            {
+                "country": ["France"] * 4,
+                "source_uri": ["yes.fr", "no.fr", "review.fr", "missing.fr"],
+            }
+        )
+        decisions = pd.DataFrame(
+            {
+                "country": ["France"] * 3,
+                "source_clean": ["yes.fr", "no.fr", "review.fr"],
+                "source_include": [True, False, True],
+                "source_filter_decision_clean": ["YES", "NO", "REVIEW"],
+            }
+        )
+        filtered, merged = apply_source_inclusion_filter(data, decisions)
+        self.assertEqual(
+            set(filtered["source_uri"]),
+            {"yes.fr", "review.fr", "missing.fr"},
+        )
+        missing = merged.loc[merged["source_uri"].eq("missing.fr")].iloc[0]
+        self.assertTrue(missing["source_include"])
+        self.assertEqual(missing["source_filter_decision"], "MISSING")
 
 
 class SplitIntegrityTests(unittest.TestCase):
