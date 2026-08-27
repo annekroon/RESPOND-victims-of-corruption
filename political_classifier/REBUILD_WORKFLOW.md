@@ -29,10 +29,11 @@ NewsAPI weekly total-news counts
 -> political-corruption articles / all news articles
 ```
 
-The numbered Python scripts are the production workflow. The notebooks are
-optional inspection views and are never required to create a production file.
+The numbered Python scripts are the production workflow. The optional
+comparison notebook is a read-only inspection view and is never required to
+create a production file.
 
-## 0. Environment And Credentials
+## Before You Run
 
 Create or activate the server environment, install the declared dependencies,
 and save the exact installed versions with the run:
@@ -60,15 +61,15 @@ output reset. It preserves the reviewed source workbook, human annotations, UK
 benchmark supplement, cleaned country files, and content-codebook samples:
 
 ```bash
-python3 political_classifier/scripts/reset_rebuild_outputs.py
-python3 political_classifier/scripts/reset_rebuild_outputs.py \
+python3 political_classifier/tools/reset_rebuild_outputs.py
+python3 political_classifier/tools/reset_rebuild_outputs.py \
   --confirm DELETE_OLD_POLITICAL_CLASSIFIER_OUTPUTS
 ```
 
 The first command is a dry run. Read its list before running the confirmed
 deletion.
 
-## 1. Download The Reviewed Source Workbook
+## Step 00: Download The Reviewed Source Workbook
 
 This uses the WebDAV API, not the unreliable mounted WebDAV folder.
 
@@ -81,7 +82,7 @@ The workbook is used as an exclusion list. Only rows whose final
 blank, and unmatched country-source pairs are retained; unmatched pairs are
 reported in the source-filter audit.
 
-## 2. Clean And Exact-Deduplicate Within Country
+## Step 01: Clean And Exact-Deduplicate Within Country
 
 Run this when the raw NewsAPI exports or cleaning rules change. It downloads
 each country file to a local cache, processes it in chunks, and writes country
@@ -109,7 +110,7 @@ political_corruption_pipeline/clean_dedupe_audit.csv
 political_corruption_pipeline/denominator_country_*.csv
 ```
 
-## 3. Build The Full Source-Filtered Corpus
+## Step 02: Build The Full Source-Filtered Corpus
 
 ```bash
 python3 political_classifier/scripts/02_create_source_filtered_corpus.py \
@@ -134,7 +135,7 @@ political_corruption_pipeline/source_inclusion/
   source_filter_missing_sources.csv
 ```
 
-## 4. Draw A Fresh Silver-Training Candidate Set
+## Step 03: Draw A Fresh Silver-Training Candidate Set
 
 The script samples 500 articles per country from the source-filtered corpus. It
 automatically excludes URI and normalized-text overlap with both parts of the
@@ -146,7 +147,7 @@ python3 political_classifier/scripts/03_prepare_classifier_training_sample.py \
   --country-targets Bulgaria:500,France:500,Hungary:500,Italy:500,Netherlands:500,Serbia:500,Sweden:500,Ukraine:500,United_Kingdom:500
 ```
 
-## 5. Create Fresh GPT-5.1 Silver Labels
+## Step 04: Create Fresh GPT-5.1 Silver Labels
 
 ```bash
 nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
@@ -184,7 +185,7 @@ nohup python3 -u political_classifier/scripts/04_label_silver_batch.py \
   > 04_label_silver_batch.log 2>&1 &
 ```
 
-## 6. Calibrate And Evaluate The Classifier
+## Step 05: Calibrate And Evaluate The Classifier
 
 This is the statistical checkpoint. The pre-specified production model is
 E5-large plus class-balanced logistic regression. The human benchmark is
@@ -215,7 +216,7 @@ The threshold table is calibration-only. The selected silver-model row in
 `best_model_results.csv` is held-out performance. Human five-fold CV rows are
 diagnostics, not the selected model's held-out estimate.
 
-## 7. Refit And Validate The Final Model
+## Step 06A: Refit And Validate The Final Model
 
 First run step 06 without corpus scoring. It verifies that the silver files,
 source workbook, split, model, and threshold exactly match step 05.
@@ -237,7 +238,7 @@ silver_classifier/threshold_validation_results.csv
 `threshold_validation_results.csv` is still the calibration partition; country
 validation is held-out.
 
-## 8. Score The Full Source-Filtered Corpus
+## Step 06B: Score The Full Source-Filtered Corpus
 
 Run only after accepting step 07. Existing classified country files are not
 silently mixed with a new run, so a deliberate full rebuild uses
@@ -266,15 +267,16 @@ political_corruption_pipeline/silver_classifier/classified_country_files/
 political_corruption_pipeline/silver_classifier/classified_country_summary.csv
 ```
 
-## 9. Rebuild Attention, Tables, Figure 1, And LaTeX Values
+## Step 07: Rebuild Attention, Tables, Figure 1, And LaTeX Values
 
 ```bash
 python3 political_classifier/scripts/07_build_attention_outputs.py
 ```
 
-This executes a clean copy of the attention notebook outside Git and then
-builds all manuscript artifacts from saved CSVs. It fails if classifier input,
-source-filtered counts, attention counts, model, or threshold disagree.
+This runs the script-based attention analysis and then builds all manuscript
+artifacts from saved CSVs. No notebook execution is required. It fails if
+classifier input, source-filtered counts, attention counts, model, or threshold
+disagree.
 
 Generated LaTeX tables use `\scriptsize` and `adjustbox` with `max width`; they
 are never enlarged to the full text width. The manuscript preamble needs:
@@ -295,7 +297,7 @@ attention_tables/latex/political_corruption_manuscript_values.tex
 Both Method files input this file so corpus Ns, the threshold, split sizes, and
 held-out metrics are not copied by hand.
 
-## 10. Upload Current Manuscript Outputs
+## Step 08: Upload Current Manuscript Outputs
 
 ```bash
 python3 political_classifier/scripts/08_upload_outputs.py
@@ -304,7 +306,7 @@ python3 political_classifier/scripts/08_upload_outputs.py
 The uploader requires the fresh step-07 build manifest and refuses stale
 outputs.
 
-## 11. Archive An Immutable Reproducibility Snapshot
+## Step 09: Archive An Immutable Reproducibility Snapshot
 
 ```bash
 python3 political_classifier/scripts/09_archive_derived_data.py \
@@ -317,13 +319,13 @@ with SHA-256 checksums. It does not overwrite a previous run.
 To restore the newest archived snapshot on a fresh machine:
 
 ```bash
-python3 political_classifier/scripts/restore_derived_data_from_webdav.py
+python3 political_classifier/tools/restore_derived_data_from_webdav.py
 ```
 
 To restore one named snapshot:
 
 ```bash
-python3 political_classifier/scripts/restore_derived_data_from_webdav.py \
+python3 political_classifier/tools/restore_derived_data_from_webdav.py \
   --archive-version YYYYMMDDTHHMMSSZ_COMMIT
 ```
 

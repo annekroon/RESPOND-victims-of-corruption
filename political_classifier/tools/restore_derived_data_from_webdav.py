@@ -5,7 +5,7 @@ expected local political_corruption_pipeline folder from the reproducibility
 archive made by archive_derived_data_to_webdav.py.
 
 Example:
-    python3 political_classifier/scripts/restore_derived_data_from_webdav.py \
+    python3 political_classifier/tools/restore_derived_data_from_webdav.py \
       --groups classifier_outputs attention_outputs
 
 Default Research Drive source:

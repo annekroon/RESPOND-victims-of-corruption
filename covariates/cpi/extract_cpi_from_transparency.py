@@ -3,11 +3,11 @@
 This is the preferred CPI extractor for the project. It visits the official
 Transparency International CPI year pages, discovers the linked "Full Results"
 spreadsheet/archive, reads the country rows, and writes the same tidy output
-schema as `extract_cpi_from_pdfs.py`.
+schema as `covariates/cpi/extract_cpi_from_pdfs.py`.
 
 Example
 -------
-    python3 extract_cpi_from_transparency.py \
+    python3 covariates/cpi/extract_cpi_from_transparency.py \
       --years 2018 2019 2020 2021 2022 2023 2024 2025 \
       --output output/cpi_country_year_scores.csv
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urljoin, urlparse
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

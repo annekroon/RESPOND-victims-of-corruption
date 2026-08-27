@@ -44,7 +44,7 @@ Shared modules:
 | `dataloader.py` | Human annotation and corpus loaders |
 | `rd_io.py`, `rd_utils.py` | Retried, timeout-bounded Research Drive/WebDAV I/O |
 | `requirements.txt` | Declared dependency ranges |
-| `environment-lock.txt` | Exact server environment; regenerate for each production run |
+| `environment-lock.txt` | Generated exact server environment; archive with each production run |
 
 Create the exact environment record after installing dependencies:
 
@@ -77,9 +77,9 @@ Its numbered production spine is:
 09 archive an immutable checksummed Research Drive snapshot
 ```
 
-The notebooks under `political_classifier/notebooks/` are optional inspection
-views. They are not production entry points and do not need to be committed
-after local execution.
+The comparison notebook under `political_classifier/notebooks/` is an optional
+inspection view. It is not a production entry point and does not need to be
+committed after local execution.
 
 ## Manuscript Outputs
 
@@ -127,14 +127,14 @@ The preferred CPI route downloads official Transparency International structured
 results:
 
 ```bash
-python3 extract_cpi_from_transparency.py \
+python3 covariates/cpi/extract_cpi_from_transparency.py \
   --years 2018 2019 2020 2021 2022 2023 2024 2025 \
   --output output/cpi_country_year_scores.csv
-python3 upload_cpi_to_webdav.py
+python3 covariates/cpi/upload_cpi_to_webdav.py
 ```
 
-`extract_cpi_from_pdfs.py` is retained as an audit/fallback route for locally
-stored or Research Drive PDF reports.
+`covariates/cpi/extract_cpi_from_pdfs.py` is retained as an audit/fallback route
+for locally stored or Research Drive PDF reports.
 
 ## Git And Local Notebook Outputs
 
@@ -143,8 +143,7 @@ stash before pulling:
 
 ```bash
 git stash push -m "local notebook outputs before pull" -- \
-  political_classifier/notebooks/02_inspect_classifier_comparison.ipynb \
-  political_classifier/notebooks/03_analyze_political_corruption_attention.ipynb
+  political_classifier/notebooks/02_inspect_classifier_comparison.ipynb
 git pull
 ```
 

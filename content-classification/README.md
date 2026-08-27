@@ -21,7 +21,7 @@ substantive variables inside that corpus.
 | `scripts/classify_abroad_case.py` | `case_location`, `abroad_case` |
 | `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
 | `scripts/classify_all_content_categories.py` | convenience wrapper that runs all four GPT coders on one sample file |
-| `scripts/create_validation_sample.py` | country-year stratified validation sample for human/GPT comparison |
+| `scripts/create_validation_sample.py` | canonical stratified sampler for codebook development and held-out validation |
 | `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
 | `tools/annotation_flask_app.py` | Browser-based Flask app for manual coding with original and translated text |
 | `scripts/merge_content_labels.py` | one complete merged LLM-coded article-level dataset |
@@ -304,6 +304,7 @@ CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_
 
 python3 content-classification/scripts/create_validation_sample.py \
   --total-sample 100 \
+  --stratify-confidence \
   --sample-purpose codebook_development \
   --output-name content_codebook_dev_sample_100.csv.gz \
   --output-dir "$CODEBOOK_DIR"
@@ -316,8 +317,9 @@ content_codebook_dev_sample_100.csv.gz
 content_codebook_dev_sample_100_strata.csv
 ```
 
-The file includes `sample_purpose = codebook_development`, country-year stratum
-diagnostics, `validation_weight`, article text, and blank `human_*` columns.
+The file includes `sample_purpose = codebook_development`, country-year and
+classifier-confidence stratum diagnostics, stable `content_sample_id` values,
+`validation_weight`, article text, and blank `human_*` columns.
 Use it for codebook development, category clarification, coder training, and
 interface testing only.
 

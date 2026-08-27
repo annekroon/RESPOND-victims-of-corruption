@@ -29,18 +29,15 @@ one runbook avoids contradictory command lists and stale hard-coded results.
 | `scripts/04_label_silver_batch.py` | GPT-5.1 translation/silver labels with manifests and audit JSONL |
 | `scripts/05_compare_models.py` | Threshold calibration and held-out evaluation |
 | `scripts/06_train_final_classifier.py` | Refit, validate, and optionally score the full corpus |
-| `scripts/07_build_attention_outputs.py` | Rebuild attention outputs, tables, Figure 1, and LaTeX values |
+| `scripts/07_build_attention_outputs.py` | Rebuild attention CSVs, figures, tables, Figure 1, and LaTeX values |
 | `scripts/08_upload_outputs.py` | Upload only a current validated build |
 | `scripts/09_archive_derived_data.py` | Archive an immutable, checksummed Research Drive snapshot |
-| `scripts/10_sample_content_codebook_validation.py` | Draw later content-codebook development cases |
 | `scripts/_impl/` | Implementations behind the stable numbered entry points |
-| `scripts/legacy/` | Historical scripts, not part of the active workflow |
+| `tools/` | Manual annotation, reset, restore, and one-off migration utilities |
 | `notebooks/02_inspect_classifier_comparison.ipynb` | Optional comparison inspection |
-| `notebooks/03_analyze_political_corruption_attention.ipynb` | Optional attention inspection and plotting code |
-| `archive/` | Historical notebooks retained for provenance only |
 
-The notebooks do not write the tracked notebook files during production. Step
-07 executes a clean copy into the pipeline output directory.
+Production does not execute notebooks. The remaining comparison notebook is an
+optional read-only inspection layer over outputs written by the scripts.
 
 ## Methodological Contract
 
@@ -156,7 +153,7 @@ content-codebook development samples must be preserved across rebuilds. The
 reset helper deletes generated outputs only and supports a dry run:
 
 ```bash
-python3 political_classifier/scripts/reset_rebuild_outputs.py
+python3 political_classifier/tools/reset_rebuild_outputs.py
 ```
 
 Always read the dry-run list before using its explicit confirmation argument.
@@ -172,5 +169,5 @@ victims-of-corruption-paper/derived_data/political_classifier/runs/
 
 Each snapshot includes a manifest with Git commit, paths, sizes, and SHA-256
 checksums. Restore the latest or a named version with
-`scripts/restore_derived_data_from_webdav.py`; see the canonical runbook for the
+`tools/restore_derived_data_from_webdav.py`; see the canonical runbook for the
 commands.

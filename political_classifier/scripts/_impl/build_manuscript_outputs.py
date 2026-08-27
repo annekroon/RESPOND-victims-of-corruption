@@ -667,7 +667,7 @@ def corpus_construction_table(pipeline_dir: Path) -> list[Path]:
         raise ValueError(
             "Attention summaries do not match the final classified corpus for: "
             + ", ".join(stale_attention["country"].astype(str))
-            + ". Rerun step 07 without --skip-notebook."
+            + ". Rerun step 07 without --skip-analysis."
         )
     data["pc_share_of_source_filtered_query_pct"] = (
         data["political_corruption_articles"]

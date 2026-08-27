@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,9 +28,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from political_classifier.source_filter import (
     DEFAULT_SOURCE_DECISION_FILE,
-    apply_source_inclusion_filter,
     load_source_decisions,
-    source_filter_summary,
+)
+from political_classifier.classifier_data import (
+    choose_integrity_text_series,
+    choose_text_series,
+    filter_frame_by_source,
+    format_texts_for_embedding,
+    load_human_validation,
+    normalize_text,
 )
 from political_classifier.split_integrity import assert_no_validation_overlap
 from political_classifier.reproducibility import (
@@ -82,12 +87,6 @@ SILVER_LABEL_MAP = {
     "No": 0,
     "Mentioned but not central": 0,
 }
-HUMAN_LABEL_MAP = {
-    "political corruption": 1,
-    "no political corruption": 0,
-    "mentioned but not central": 0,
-}
-
 CLASSIFIED_OUTPUT_COLUMNS = [
     "uri",
     "country",
@@ -101,43 +100,6 @@ CLASSIFIED_OUTPUT_COLUMNS = [
     "pred_political_corruption",
     "article_text",
 ]
-
-
-def fix_mojibake(text):
-    if not isinstance(text, str):
-        return ""
-
-    candidates = [text]
-
-    try:
-        candidates.append(text.encode("latin1").decode("utf-8"))
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        pass
-
-    try:
-        candidates.append(text.encode("cp1252").decode("utf-8"))
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        pass
-
-    def badness(s):
-        markers = ["Ð", "Ñ", "Ã", "Â", "Ä", "Å", "�"]
-        return sum(s.count(m) for m in markers)
-
-    return min(candidates, key=badness)
-
-
-def normalize_text(text):
-    text = fix_mojibake(text)
-    text = text.replace("\u00a0", " ")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-def format_texts_for_embedding(texts, embedding_model):
-    """Apply model-family-specific text formatting when needed."""
-    if "multilingual-e5" in embedding_model.lower():
-        return [f"passage: {text}" for text in texts]
-    return texts
 
 
 def parse_args() -> argparse.Namespace:
@@ -229,35 +191,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def choose_text_series(data):
-    if "translated_text" in data.columns:
-        return data["translated_text"]
-    if "article_text" in data.columns:
-        return data["article_text"]
-    if "combined_text" in data.columns:
-        return data["combined_text"]
-
-    title = data["title"].fillna("").astype(str) if "title" in data.columns else ""
-    body = data["body"].fillna("").astype(str) if "body" in data.columns else ""
-    return title + "\n" + body
-
-
-def choose_integrity_text_series(data):
-    if "article_text" in data.columns:
-        return data["article_text"]
-    if "combined_text" in data.columns:
-        return data["combined_text"]
-    return choose_text_series(data)
-
-
-def filter_frame_by_source(data, decisions, label):
-    filtered, merged = apply_source_inclusion_filter(data, decisions, country_column="country")
-    summary = source_filter_summary(merged, group_columns=["country"])
-    print(f"\nSource filter for {label}: {len(filtered):,} / {len(data):,} rows retained", flush=True)
-    print(summary, flush=True)
-    return filtered
-
-
 def load_silver_labels(paths, source_decisions=None):
     import pandas as pd
 
@@ -299,62 +232,6 @@ def load_silver_labels(paths, source_decisions=None):
     if source_decisions is not None:
         silver = filter_frame_by_source(silver, source_decisions, "silver training")
     return silver
-
-
-def prepare_human_validation_frame(data, source_name):
-    label_column = next(
-        (
-            column
-            for column in ["corruption_label_m", "human_final_label", "label"]
-            if column in data.columns
-        ),
-        None,
-    )
-    if label_column is None:
-        raise ValueError(
-            f"No human validation label column found in {source_name}. "
-            "Expected one of: corruption_label_m, human_final_label, label."
-        )
-
-    data = data.copy()
-    data["label_clean"] = data[label_column].astype(str).str.strip().str.lower()
-    data["y"] = data["label_clean"].map(HUMAN_LABEL_MAP)
-    data = data[data["y"].notna()].copy()
-    data["y"] = data["y"].astype(int)
-    data["model_text"] = choose_text_series(data).fillna("").astype(str).map(normalize_text)
-    data["integrity_text"] = (
-        choose_integrity_text_series(data).fillna("").astype(str).map(normalize_text)
-    )
-    data = data[data["model_text"].str.strip().ne("")].copy()
-    data["human_validation_source"] = source_name
-    return data
-
-
-def load_human_validation(extra_paths=None, source_decisions=None):
-    import pandas as pd
-    from dataloader import load_human_annotated_for_translation_webdav
-
-    data = load_human_annotated_for_translation_webdav()
-    frames = [prepare_human_validation_frame(data, "original_human_validation")]
-
-    for path in extra_paths or []:
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Required extra human validation file not found: {path}"
-            )
-        extra = pd.read_csv(path)
-        frames.append(prepare_human_validation_frame(extra, path.name))
-
-    combined = pd.concat(frames, ignore_index=True)
-    if "uri" in combined.columns:
-        before = len(combined)
-        combined = combined.drop_duplicates(subset=["uri"], keep="first").copy()
-        dropped = before - len(combined)
-        if dropped:
-            print(f"Dropped duplicate human-validation URIs: {dropped:,}", flush=True)
-    if source_decisions is not None:
-        combined = filter_frame_by_source(combined, source_decisions, "human validation")
-    return combined
 
 
 def evaluate_thresholds(y_true, probabilities):

@@ -24,6 +24,10 @@ from political_classifier.scripts._impl.build_manuscript_outputs import (
     pipeline_counts,
 )
 from political_classifier.reproducibility import file_record
+from political_classifier.classifier_data import (
+    format_texts_for_embedding,
+    normalize_text,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +53,10 @@ CONTENT_COMMON = load_script(
 CONTENT_PROMPTS = load_script(
     "content_prompts_test",
     "content-classification/scripts/content_prompts.py",
+)
+CONTENT_SAMPLER = load_script(
+    "content_validation_sampler_test",
+    "content-classification/scripts/create_validation_sample.py",
 )
 
 
@@ -195,6 +203,63 @@ class ContentSchemaTests(unittest.TestCase):
         )
         self.assertEqual(actor["accused_actor_visibility"], "unclear")
         self.assertEqual(actor["accused_actor_visible"], "unclear")
+
+
+class ContentSamplingTests(unittest.TestCase):
+    def setUp(self):
+        rows = []
+        for country in ["A", "B"]:
+            for year in [2020, 2021]:
+                for index in range(10):
+                    rows.append(
+                        {
+                            "article_id": f"{country}-{year}-{index}",
+                            "country": country,
+                            "year": year,
+                            "prob_political_corruption": 0.51 + index / 20,
+                        }
+                    )
+        self.data = pd.DataFrame(rows)
+        self.data["probability_band"] = self.data[
+            "prob_political_corruption"
+        ].map(CONTENT_SAMPLER.probability_band)
+
+    def test_small_confidence_stratified_sample_has_exact_size(self):
+        columns = CONTENT_SAMPLER.sampling_columns(True)
+        sample = CONTENT_SAMPLER.sample_total(self.data, 12, 42, columns)
+        self.assertEqual(len(sample), 12)
+
+    def test_per_country_sample_has_requested_size(self):
+        columns = CONTENT_SAMPLER.sampling_columns(True)
+        sample = CONTENT_SAMPLER.sample_per_country(self.data, 3, 42, columns)
+        self.assertEqual(sample.groupby("country").size().to_dict(), {"A": 3, "B": 3})
+
+
+class ClassifierDataTests(unittest.TestCase):
+    def test_shared_text_preparation_preserves_model_contract(self):
+        self.assertEqual(normalize_text("  Example\u00a0 text  "), "Example text")
+        self.assertEqual(
+            format_texts_for_embedding(["article"], "intfloat/multilingual-e5-large"),
+            ["passage: article"],
+        )
+
+
+class WorkflowStructureTests(unittest.TestCase):
+    def test_attention_production_does_not_execute_a_notebook(self):
+        entrypoint = (
+            ROOT / "political_classifier/scripts/07_build_attention_outputs.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("nbconvert", entrypoint)
+        self.assertNotIn(".ipynb", entrypoint)
+
+    def test_attention_country_year_csv_is_written_before_it_is_read(self):
+        implementation = (
+            ROOT
+            / "political_classifier/scripts/_impl/build_attention_analysis.py"
+        ).read_text(encoding="utf-8")
+        write_position = implementation.index("yearly_attention.to_csv")
+        read_position = implementation.index("country_year_from_csv = pd.read_csv")
+        self.assertLess(write_position, read_position)
 
 
 class LatexTests(unittest.TestCase):

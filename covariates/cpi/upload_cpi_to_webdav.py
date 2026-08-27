@@ -1,11 +1,11 @@
 """Upload extracted CPI country-year scores to Research Drive/WebDAV.
 
-Run this after `extract_cpi_from_pdfs.py` has created the tidy CPI CSV and
-extraction log.
+Run this after either CPI extractor has created the tidy CPI CSV and extraction
+log.
 
 Example
 -------
-    python3 upload_cpi_to_webdav.py
+    python3 covariates/cpi/upload_cpi_to_webdav.py
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import posixpath
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 

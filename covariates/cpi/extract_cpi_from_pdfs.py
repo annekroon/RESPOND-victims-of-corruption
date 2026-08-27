@@ -14,13 +14,13 @@ Examples
 --------
 Parse PDFs from Research Drive/WebDAV:
 
-    python3 extract_cpi_from_pdfs.py \
+    python3 covariates/cpi/extract_cpi_from_pdfs.py \
       --source webdav \
       --output output/cpi_country_year_scores.csv
 
 Parse already downloaded PDFs:
 
-    python3 extract_cpi_from_pdfs.py \
+    python3 covariates/cpi/extract_cpi_from_pdfs.py \
       --source local \
       --local-dir /path/to/CPI \
       --output output/cpi_country_year_scores.csv
@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
