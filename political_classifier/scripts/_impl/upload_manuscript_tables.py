@@ -142,18 +142,7 @@ def main() -> None:
         upload_bytes(rd_path, path.read_bytes(), "text/plain; charset=utf-8")
         print(f"Uploaded {path.name} -> {rd_path}", flush=True)
 
-    manifest_rd_path = rd_join(args.rd_table_dir, args.build_manifest.name)
-    upload_bytes(
-        manifest_rd_path,
-        args.build_manifest.read_bytes(),
-        "application/json",
-    )
-    print(
-        f"Uploaded {args.build_manifest.name} -> {manifest_rd_path}",
-        flush=True,
-    )
-
-    print(f"Done. Uploaded {len(table_paths) + 1} file(s).", flush=True)
+    print(f"Done. Uploaded {len(table_paths)} file(s).", flush=True)
 
 
 if __name__ == "__main__":

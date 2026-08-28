@@ -110,6 +110,14 @@ The tracked manuscript fragments are `docs/method.tex`,
 only the selected held-out silver-model estimate; diagnostic model comparison,
 threshold, and country tables are assembled in the appendix fragment.
 
+Step 08 publishes one canonical latest tree below
+`victims-of-corruption-paper/output/`. Open
+`output/00_LATEST_MANUSCRIPT_BUILD.txt` first; it records the build date, Git
+commits, current N and threshold, and every exact Overleaf path. Manuscript
+fragments are under `output/manuscript/`, attention `.tex` files are directly
+under `output/tables/attention/`, and immutable historical builds remain under
+`derived_data/political_classifier/runs/`.
+
 ## Data And Archive Locations
 
 Default server pipeline root:

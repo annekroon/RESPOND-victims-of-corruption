@@ -15,7 +15,7 @@ import json
 import mimetypes
 import posixpath
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 PROJECT_ROOT = next(
     path for path in Path(__file__).resolve().parents if (path / "config.py").exists()
@@ -151,10 +151,18 @@ def validate_artifact_hashes(
             )
 
 
+def remote_relative_path(path: Path, local_base_dir: Path) -> PurePosixPath:
+    """Flatten the internal latex/ directory in the published output tree."""
+    relative = PurePosixPath(path.relative_to(local_base_dir).as_posix())
+    if relative.parts and relative.parts[0] == "latex":
+        relative = PurePosixPath(*relative.parts[1:])
+    return relative
+
+
 def upload_file(path: Path, local_base_dir: Path, rd_dir: str) -> str:
     from rd_utils import webdav_mkdirs, webdav_upload_bytes
 
-    relative_path = path.relative_to(local_base_dir)
+    relative_path = remote_relative_path(path, local_base_dir)
     rd_path = rd_join(rd_dir, relative_path.as_posix())
     content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     webdav_mkdirs(rd_parent(rd_path))

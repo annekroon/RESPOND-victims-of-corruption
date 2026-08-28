@@ -58,6 +58,10 @@ SILVER_LABELER = load_script(
     "silver_labeler_test",
     "political_classifier/scripts/_impl/label_silver_batch.py",
 )
+ATTENTION_UPLOADER = load_script(
+    "attention_uploader_test",
+    "political_classifier/scripts/_impl/upload_attention_outputs.py",
+)
 CONTENT_SAMPLER = load_script(
     "content_validation_sampler_test",
     "content-classification/scripts/create_validation_sample.py",
@@ -304,6 +308,19 @@ class LatexTests(unittest.TestCase):
         latex = format_latex_table(table, "Caption", "tab:test", "Note.")
         self.assertIn(r"\begin{adjustbox}{max width=\textwidth}", latex)
         self.assertNotIn(r"\resizebox", latex)
+
+    def test_published_attention_tex_paths_are_flat(self):
+        base = Path("/pipeline/attention_tables")
+        latex_path = base / "latex" / "table_attention_country_summary.tex"
+        csv_path = base / "political_corruption_attention_total_news_month.csv"
+        self.assertEqual(
+            ATTENTION_UPLOADER.remote_relative_path(latex_path, base).as_posix(),
+            "table_attention_country_summary.tex",
+        )
+        self.assertEqual(
+            ATTENTION_UPLOADER.remote_relative_path(csv_path, base).as_posix(),
+            "political_corruption_attention_total_news_month.csv",
+        )
 
     def test_pipeline_counts_use_audited_raw_total_and_completed_manifests(self):
         with tempfile.TemporaryDirectory() as directory:

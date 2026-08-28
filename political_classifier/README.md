@@ -137,6 +137,13 @@ diagnostics. The threshold appendix table is calibration-only, and the country
 appendix table is held-out. A ready-to-input appendix fragment is tracked at
 `docs/appendix_political_corruption.tex`.
 
+Step 08 flattens the internal `attention_tables/latex/` directory when
+publishing. The canonical latest Research Drive paths are therefore
+`output/tables/attention/*.tex`, while the three tracked manuscript fragments
+are published to `output/manuscript/`. Start with
+`output/00_LATEST_MANUSCRIPT_BUILD.txt`; timestamped historical runs belong only
+under the immutable archive.
+
 Generated tables use `\scriptsize` and `adjustbox` with `max width`, so they are
 not enlarged to fill the page. The Overleaf preamble needs:
 

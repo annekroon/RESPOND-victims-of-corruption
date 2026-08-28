@@ -1,7 +1,7 @@
 \subsection{Attention to Political Corruption Over Time}
 \label{sec:results-political-corruption-attention}
 
-\input{tables/attention/latex/political_corruption_manuscript_values}
+\input{output/tables/attention/political_corruption_manuscript_values}
 
 Across the nine-country corpus, the political-corruption classifier identified \PCFinalN{} articles as primarily about political corruption. This represents \PCFinalShare\% of the cleaned, deduplicated, and source-filtered corruption-query corpus. Relative to the separate total-news denominator, political-corruption coverage accounted for approximately \PCTotalNewsShare\% of all collected news articles in the observation period. This aggregate figure masks substantial cross-national variation.
 
@@ -9,11 +9,11 @@ Figure~\ref{fig:pc-attention-monthly} shows monthly relative attention to politi
 
 \begin{figure}
 \centering
-\includegraphics[width=\textwidth]{figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png}
+\includegraphics[width=\textwidth]{output/figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png}
 \caption{Monthly relative attention to political corruption by country. Relative attention is calculated as the number of articles classified as primarily about political corruption divided by total news coverage in the same country-month.}
 \label{fig:pc-attention-monthly}
 \end{figure}
 
-\input{tables/attention/latex/table_attention_country_summary}
+\input{output/tables/attention/table_attention_country_summary}
 
 The monthly series are reported rather than pooled absolute counts because the nine country corpora differ substantially in size. Peaks in the small-multiple panels indicate periods when political-corruption coverage occupied a comparatively larger share of each country's collected news agenda. Exact country-year values and peak months are generated from the current classified corpus in the accompanying appendix tables.

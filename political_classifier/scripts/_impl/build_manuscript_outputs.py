@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import numbers
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -938,6 +939,7 @@ def write_build_manifest(pipeline_dir: Path) -> Path:
         "attention_figures/*.png",
         "attention_figures/*.pdf",
         "attention_figures/*.svg",
+        "manuscript_tables/00_LATEST_MANUSCRIPT_BUILD.txt",
     ]
     artifacts = []
     for pattern in artifact_patterns:
@@ -953,6 +955,11 @@ def write_build_manifest(pipeline_dir: Path) -> Path:
     payload = {
         "built_at_utc": datetime.now(timezone.utc).isoformat(),
         "generator": "political_classifier/scripts/07_build_attention_outputs.py",
+        "generator_git_commit": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[3],
+            text=True,
+        ).strip(),
         "raw_corruption_query_articles": counts["raw_query"],
         "cleaned_corruption_query_articles": counts["cleaned_query"],
         "source_filtered_query_articles": counts["source_filtered_query"],
@@ -963,6 +970,68 @@ def write_build_manifest(pipeline_dir: Path) -> Path:
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(f"Saved {path}", flush=True)
+    return path
+
+
+def write_latest_build_index(pipeline_dir: Path) -> Path:
+    counts = pipeline_counts(pipeline_dir)
+    classifier_manifest = read_required_json(
+        pipeline_dir / "silver_classifier" / "classifier_run_manifest.json"
+    )
+    generator_commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parents[3],
+        text=True,
+    ).strip()
+    path = (
+        pipeline_dir
+        / "manuscript_tables"
+        / "00_LATEST_MANUSCRIPT_BUILD.txt"
+    )
+    lines = [
+        "LATEST RESPOND VICTIMS-OF-CORRUPTION MANUSCRIPT BUILD",
+        "====================================================",
+        "",
+        f"Built (UTC): {datetime.now(timezone.utc).isoformat()}",
+        f"Generator Git commit: {generator_commit}",
+        f"Classifier Git commit: {classifier_manifest.get('git_commit', 'unknown')}",
+        f"Final political-corruption N: {int(counts['political_corruption']):,}",
+        f"Source-filtered query N: {int(counts['source_filtered_query']):,}",
+        f"Selected threshold: {float(counts['threshold']):.2f}",
+        "",
+        "CANONICAL LATEST FILES ON RESEARCH DRIVE",
+        "----------------------------------------",
+        "output/manuscript/method.tex",
+        "output/manuscript/results_political_corruption_attention.tex",
+        "output/manuscript/appendix_political_corruption.tex",
+        "output/tables/table_pc_classifier_comparison_main.tex",
+        "output/tables/table_pc_classifier_comparison_appendix.tex",
+        "output/tables/table_pc_classifier_threshold_sweep_appendix.tex",
+        "output/tables/table_pc_classifier_country_validation_appendix.tex",
+        "output/tables/attention/political_corruption_manuscript_values.tex",
+        "output/tables/attention/figure_political_corruption_data_pipeline_tikz.tex",
+        "output/tables/attention/table_attention_corpus_construction_country_summary.tex",
+        "output/tables/attention/table_attention_country_summary.tex",
+        "output/tables/attention/table_attention_country_year_matrix.tex",
+        "output/tables/attention/table_attention_peak_months.tex",
+        "output/figures/attention/political_corruption_relative_attention_total_news_month_small_multiples.png",
+        "output/figures/attention/political_corruption_absolute_volume_month_stacked.png",
+        "output/manuscript_output_manifest.json",
+        "",
+        "OVERLEAF INPUTS",
+        "---------------",
+        r"\input{output/manuscript/method}",
+        r"\input{output/manuscript/results_political_corruption_attention}",
+        r"\appendix",
+        r"\input{output/manuscript/appendix_political_corruption}",
+        "",
+        "The output/ tree is overwritten with the latest validated build.",
+        "Immutable timestamped runs are stored under derived_data/political_classifier/runs/.",
+        "",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
     print(f"Saved {path}", flush=True)
     return path
 
@@ -979,6 +1048,7 @@ def main() -> None:
     corpus_construction_table(args.pipeline_dir)
     write_pipeline_tikz(args.pipeline_dir)
     write_manuscript_values(args.pipeline_dir)
+    write_latest_build_index(args.pipeline_dir)
     write_build_manifest(args.pipeline_dir)
 
 
