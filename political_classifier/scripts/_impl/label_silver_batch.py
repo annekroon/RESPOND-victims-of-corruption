@@ -36,6 +36,15 @@ PROMPT_VERSION = "political_corruption_silver_label_v1"
 ALLOWED_LABELS = {"Yes", "Mentioned but not central", "No", "Unsure"}
 
 
+class LLMResponseParseError(ValueError):
+    """Preserve an LLM response when its JSON cannot be normalized."""
+
+    def __init__(self, message: str, *, prompt: str, raw_response: str) -> None:
+        super().__init__(message)
+        self.prompt = prompt
+        self.raw_response = raw_response
+
+
 def build_annotation_prompt(article_text: str) -> str:
     return f"""
 You are helping annotate multilingual news articles for a research project.
@@ -85,12 +94,26 @@ def extract_json(text: str) -> dict:
     text = text.strip()
     text = re.sub(r"^```(?:json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
+
+    def parse(candidate: str) -> dict:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as strict_error:
+            try:
+                # Some models occasionally place a literal newline or tab in a
+                # JSON string. Python's non-strict mode accepts those control
+                # characters but still rejects truncated or structurally
+                # malformed JSON.
+                return json.loads(candidate, strict=False)
+            except json.JSONDecodeError:
+                raise strict_error
+
     try:
-        return json.loads(text)
+        return parse(text)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if match:
-            return json.loads(match.group(0))
+            return parse(match.group(0))
         raise
 
 
@@ -140,7 +163,15 @@ def llm_translate_and_suggest(
         temperature=0,
     )
     raw = response.choices[0].message.content
-    return normalize_result(extract_json(raw)), prompt, raw
+    try:
+        result = normalize_result(extract_json(raw))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise LLMResponseParseError(
+            str(exc),
+            prompt=prompt,
+            raw_response=raw,
+        ) from exc
+    return result, prompt, raw
 
 
 def row_id(data):
@@ -355,6 +386,9 @@ def main() -> None:
                 out["llm_error"] = ""
                 break
             except Exception as exc:
+                if isinstance(exc, LLMResponseParseError):
+                    prompt = exc.prompt
+                    raw = exc.raw_response
                 out.update(
                     {
                         "translated_text": "",

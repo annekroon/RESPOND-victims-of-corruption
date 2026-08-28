@@ -54,6 +54,10 @@ CONTENT_PROMPTS = load_script(
     "content_prompts_test",
     "content-classification/scripts/content_prompts.py",
 )
+SILVER_LABELER = load_script(
+    "silver_labeler_test",
+    "political_classifier/scripts/_impl/label_silver_batch.py",
+)
 CONTENT_SAMPLER = load_script(
     "content_validation_sampler_test",
     "content-classification/scripts/create_validation_sample.py",
@@ -168,6 +172,38 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(
             CONTENT_COMMON.is_non_retryable_model_error(RuntimeError("temporary 503"))
         )
+
+    def test_silver_parser_accepts_unescaped_control_characters(self):
+        parsed = SILVER_LABELER.extract_json(
+            '{"translated_text":"line\nbreak","llm_label_suggestion":"No"}'
+        )
+        self.assertEqual(parsed["translated_text"], "line\nbreak")
+
+    def test_silver_parse_error_preserves_raw_response(self):
+        raw = '{"translated_text":"truncated"'
+
+        class Message:
+            content = raw
+
+        class Choice:
+            message = Message()
+
+        class Completions:
+            @staticmethod
+            def create(**_kwargs):
+                return type("Response", (), {"choices": [Choice()]})()
+
+        client = type(
+            "Client",
+            (),
+            {"chat": type("Chat", (), {"completions": Completions()})()},
+        )()
+
+        with self.assertRaises(SILVER_LABELER.LLMResponseParseError) as context:
+            SILVER_LABELER.llm_translate_and_suggest(client, "Article", "model", 100)
+
+        self.assertEqual(context.exception.raw_response, raw)
+        self.assertIn("Article", context.exception.prompt)
 
 
 class ContentSchemaTests(unittest.TestCase):

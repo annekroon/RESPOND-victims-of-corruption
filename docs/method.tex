@@ -96,10 +96,13 @@ held-out reporting partition, the classifier achieved accuracy =
 political-corruption recall = \PCTestRecall{}, political-corruption F1 =
 \PCTestFOne{}, macro F1 = \PCTestMacroFOne{}, and weighted F1 =
 \PCTestWeightedFOne{}. Table~\ref{tab:pc-classifier-comparison-main}
-reports the main model comparison. Appendix
-Tables~\ref{tab:pc-classifier-threshold-sweep}
-and~\ref{tab:pc-classifier-country-validation} report the threshold sweep and
-country-level validation results, respectively.
+reports the selected classifier's held-out performance. Appendix
+Tables~\ref{tab:pc-classifier-comparison-appendix},
+\ref{tab:pc-classifier-threshold-sweep},
+and~\ref{tab:pc-classifier-country-validation} report the full diagnostic
+comparison, threshold sweep, and country-level results, respectively.
+
+\input{tables/table_pc_classifier_comparison_main}
 
 The selected model was applied to all \PCSourceFilteredN{} source-filtered
 corruption-query articles. Articles with predicted probabilities at or above
@@ -191,13 +194,14 @@ from the final validation estimate.
 
 The four substantive concepts were implemented as separate prompt-based LLM
 coding tasks through the UvA LLM proxy. GPT-5.1 was used during iterative
-codebook development. Before final corpus coding, GPT-5.1 and
-\texttt{gpt-5.6-terra} are evaluated with identical frozen prompts on the same
-human-coded development articles using agreement, Cohen's kappa, macro F1,
-weighted F1, and substantive disagreement review. The selected model is then
-frozen for the final run and recorded in the run manifests; the development
-articles are not used as the final held-out validation sample. Separating the
-four tasks prevented one concept's
+codebook development and for the reported pilot classifications. Alternative
+models are considered only after access through the same proxy and an
+identical-prompt comparison have been verified; unavailable models are not
+treated as evaluated candidates. Before final corpus coding, the selected
+model and prompt versions are frozen and recorded in the run manifests, and
+performance is assessed on the separate held-out human-coded sample. The
+development articles are not used as the final validation sample. Separating
+the four tasks prevented one concept's
 decision from mechanically determining another. Each request supplied the
 publication country and up to the first 6,000 normalized characters of article
 text. The prompts instructed the model to use only the article, to code the

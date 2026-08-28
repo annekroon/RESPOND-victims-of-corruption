@@ -379,13 +379,22 @@ def classifier_tables(pipeline_dir: Path) -> list[Path]:
         "macro_f1": "Macro F1",
         "weighted_f1": "Wtd. F1",
     }
-    main_table = report_rows[metric_columns].rename(columns=rename_metrics)
+    main_row = report_rows[
+        report_rows["label_source"].eq("silver_labelled_training_set")
+        & report_rows["evaluation_split"].eq("held_out_test")
+    ].copy()
+    if len(main_row) != 1:
+        raise ValueError(
+            "Expected exactly one held-out silver-model row for the main table; "
+            f"found {len(main_row)}."
+        )
+    main_table = main_row[metric_columns].rename(columns=rename_metrics)
 
     outputs = [
         write_latex_table(
             main_table,
             table_dir / "table_pc_classifier_comparison_main.tex",
-            "Validation performance of political-corruption classification models.",
+            "Held-out validation performance of the selected political-corruption classifier.",
             "tab:pc-classifier-comparison-main",
         )
     ]

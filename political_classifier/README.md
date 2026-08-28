@@ -131,9 +131,11 @@ attention_figures/political_corruption_relative_attention_total_news_month_small
 attention_figures/political_corruption_absolute_volume_month_stacked.png
 ```
 
-The main classifier table reports the silver model on the held-out partition and
-marks human five-fold CV rows as diagnostics. The threshold appendix table is
-calibration-only. The country appendix table is held-out.
+The main classifier table contains only the selected silver model's held-out
+performance. The full appendix comparison marks human five-fold CV rows as
+diagnostics. The threshold appendix table is calibration-only, and the country
+appendix table is held-out. A ready-to-input appendix fragment is tracked at
+`docs/appendix_political_corruption.tex`.
 
 Generated tables use `\scriptsize` and `adjustbox` with `max width`, so they are
 not enlarged to fill the page. The Overleaf preamble needs:
