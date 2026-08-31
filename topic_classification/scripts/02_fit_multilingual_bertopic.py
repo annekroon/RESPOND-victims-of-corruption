@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -11,6 +12,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from political_classifier.reproducibility import embedding_revision
+from topic_classification.provenance import validate_verified_topic_sample
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -37,6 +40,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-docs", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--allow-unverified-sample",
+        action="store_true",
+        help="Permit an exploratory sample without final-classifier provenance.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Remove known outputs from an earlier run in this output directory.",
+    )
     return parser.parse_args()
 
 
@@ -63,8 +76,62 @@ def parse_nr_topics(value: str):
         raise argparse.ArgumentTypeError("--nr-topics must be 'auto' or an integer.") from exc
 
 
+GENERATED_OUTPUTS = [
+    "topic_info.csv",
+    "document_topics.csv.gz",
+    "topic_model",
+    "run_manifest.json",
+    "topic_labels_llm.csv",
+    "topic_labels_llm_audit.jsonl",
+    "topic_labels_run_manifest.json",
+    "topic_groups_llm.csv",
+    "topic_groups_llm_audit.json",
+    "topic_group_summaries_llm.csv",
+    "topic_groups_run_manifest.json",
+    "inspection_tables",
+    "inspection_notebooks",
+    "visualizations",
+    "topic_model_build_summary.json",
+    "topic_model_output_manifest.json",
+    "00_LATEST_TOPIC_MODEL_BUILD.txt",
+]
+
+
+def prepare_output_dir(output_dir: Path, overwrite: bool) -> None:
+    existing = [output_dir / name for name in GENERATED_OUTPUTS if (output_dir / name).exists()]
+    if existing and not overwrite:
+        raise FileExistsError(
+            "BERTopic outputs already exist. Pass --overwrite for a deliberate clean "
+            "rebuild: "
+            + ", ".join(str(path) for path in existing)
+        )
+    if overwrite:
+        for path in existing:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+
 def main() -> None:
     args = parse_args()
+
+    if not args.sample.exists():
+        raise FileNotFoundError(args.sample)
+    sample_provenance = None
+    if args.allow_unverified_sample:
+        print("WARNING: fitting an unverified exploratory topic sample.", flush=True)
+    else:
+        sample_provenance = validate_verified_topic_sample(args.sample)
+        upstream = sample_provenance["upstream_classifier"]
+        print(
+            "Verified topic sample from final classifier: "
+            f"threshold={float(upstream['threshold']):.2f}, "
+            f"political-corruption N={int(upstream['political_corruption_articles']):,}",
+            flush=True,
+        )
+    prepare_output_dir(args.output_dir, args.overwrite)
 
     try:
         import pandas as pd
@@ -78,9 +145,6 @@ def main() -> None:
             "Missing topic-modeling dependencies. Install them with:\n"
             "python3 -m pip install -r topic_classification/requirements-topic.txt"
         ) from exc
-
-    if not args.sample.exists():
-        raise FileNotFoundError(args.sample)
 
     data = pd.read_csv(args.sample)
     if args.text_column not in data.columns:
@@ -136,7 +200,6 @@ def main() -> None:
 
     topics, _ = topic_model.fit_transform(docs, embeddings)
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
     topic_info = topic_model.get_topic_info()
     topic_info.to_csv(args.output_dir / "topic_info.csv", index=False)
 
@@ -150,11 +213,23 @@ def main() -> None:
         save_embedding_model=False,
     )
 
+    upstream_classifier = (
+        sample_provenance["upstream_classifier"]
+        if sample_provenance is not None
+        else {"verified_final_classifier": False}
+    )
+    inlier_documents = int(sum(topic != -1 for topic in topics))
+    outlier_documents = int(len(topics) - inlier_documents)
+    non_outlier_topics = int(topic_info["Topic"].ne(-1).sum())
+    manifest_inputs = {"sample": args.sample}
+    if sample_provenance is not None:
+        manifest_inputs["sample_manifest"] = sample_provenance["manifest_path"]
+
     write_run_manifest(
         args.output_dir,
         script_name=Path(__file__).name,
         args=args,
-        inputs={"sample": args.sample},
+        inputs=manifest_inputs,
         outputs={
             "topic_info": args.output_dir / "topic_info.csv",
             "document_topics": args.output_dir / "document_topics.csv.gz",
@@ -162,11 +237,21 @@ def main() -> None:
         extra={
             "documents_for_model": int(len(docs)),
             "embedding_model": args.embedding_model,
-            "embedding_model_revision": "not pinned",
+            "embedding_model_revision": embedding_revision(embedder),
             "random_state": args.random_state,
             "min_topic_size": args.min_topic_size,
             "nr_topics": args.nr_topics,
             "bertopic_model_dir": str(args.output_dir / "topic_model"),
+            "non_outlier_topics": non_outlier_topics,
+            "inlier_documents": inlier_documents,
+            "outlier_documents": outlier_documents,
+            "outlier_share": outlier_documents / len(docs),
+            "topic_sample_manifest_sha256": (
+                sample_provenance["manifest_sha256"]
+                if sample_provenance is not None
+                else None
+            ),
+            "upstream_classifier": upstream_classifier,
         },
     )
 

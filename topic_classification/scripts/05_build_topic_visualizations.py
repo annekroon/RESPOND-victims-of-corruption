@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from topic_classification.provenance import (
+    validate_topic_group_outputs,
+    validate_topic_label_outputs,
+)
+from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -11,12 +22,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bertopic-dir", type=Path, required=True)
     parser.add_argument("--labels", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
-    parser.add_argument("--top-n", type=int, default=12)
     parser.add_argument(
-        "--label-mode",
-        choices=["topic", "primary-domain", "generic-domain"],
-        default="topic",
-        help="Use GPT inductive topic labels by default. Legacy domain-label modes are optional.",
+        "--top-n",
+        type=int,
+        default=6,
+        help="Maximum topics/groups to display; the final higher-order solution has six.",
+    )
+    parser.add_argument(
+        "--analysis-level",
+        choices=["higher-order", "fine-grained"],
+        default="higher-order",
+        help="Plot the six interpretive groups or the inductive BERTopic labels.",
     )
     parser.add_argument(
         "--include-outlier",
@@ -32,33 +48,41 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_topic_labels(topic_info, labels_path):
+def load_analysis_labels(topic_info, labels_path, groups_path, analysis_level):
     if labels_path is None or not labels_path.exists():
-        topic_info["topic_label"] = topic_info["Name"]
-        return topic_info[["Topic", "topic_label"]]
+        raise FileNotFoundError(labels_path)
 
     import pandas as pd
 
     labels = pd.read_csv(labels_path)
     label_col = "llm_topic_short_label" if "llm_topic_short_label" in labels.columns else "llm_topic_label"
-    labels["topic_label"] = labels[label_col].fillna("").astype(str)
-    labels.loc[labels["topic_label"].str.strip().eq(""), "topic_label"] = labels["Name"]
-    if "llm_primary_domain" in labels.columns:
-        labels["primary_domain"] = labels["llm_primary_domain"].fillna("").astype(str)
-    elif "llm_corruption_type" in labels.columns:
-        labels["primary_domain"] = labels["llm_corruption_type"].fillna("").astype(str)
-    else:
-        labels["primary_domain"] = ""
-    labels.loc[labels["primary_domain"].str.strip().eq(""), "primary_domain"] = labels["topic_label"]
+    labels["analysis_label"] = labels[label_col].fillna("").astype(str)
+    labels = topic_info[["Topic", "Name"]].merge(
+        labels[["Topic", "analysis_label"]], on="Topic", how="left"
+    )
+    labels = labels[labels["Topic"].ne(-1)].copy()
+    labels.loc[
+        labels["analysis_label"].fillna("").str.strip().eq(""), "analysis_label"
+    ] = labels["Name"]
 
-    if "llm_generic_domain_short_label" in labels.columns:
-        labels["generic_domain_label"] = labels["llm_generic_domain_short_label"].fillna("").astype(str)
-    elif "llm_corruption_type" in labels.columns:
-        labels["generic_domain_label"] = labels["llm_corruption_type"].fillna("").astype(str)
-    else:
-        labels["generic_domain_label"] = ""
-    labels.loc[labels["generic_domain_label"].str.strip().eq(""), "generic_domain_label"] = labels["primary_domain"]
-    return labels[["Topic", "topic_label", "primary_domain", "generic_domain_label"]]
+    if analysis_level == "higher-order":
+        if not groups_path.exists():
+            raise FileNotFoundError(groups_path)
+        groups = pd.read_csv(groups_path)
+        required = {"Topic", "topic_group_short_label"}
+        if not required.issubset(groups.columns):
+            raise ValueError(
+                f"Topic-group file is missing columns: {sorted(required - set(groups.columns))}"
+            )
+        labels = labels.drop(columns=["analysis_label"]).merge(
+            groups[["Topic", "topic_group_short_label"]], on="Topic", how="left"
+        )
+        labels = labels.rename(
+            columns={"topic_group_short_label": "analysis_label"}
+        )
+        if labels["analysis_label"].fillna("").str.strip().eq("").any():
+            raise ValueError("At least one fine-grained topic lacks a higher-order assignment.")
+    return labels[["Topic", "analysis_label"]]
 
 
 def weighted_group_share(data, group_cols, weight_col):
@@ -81,23 +105,28 @@ def main() -> None:
     if not topic_info_path.exists():
         raise FileNotFoundError(topic_info_path)
 
+    if args.analysis_level == "higher-order":
+        provenance = validate_topic_group_outputs(args.bertopic_dir)
+    else:
+        provenance = validate_topic_label_outputs(args.bertopic_dir)
+
     output_dir = args.output_dir or (args.bertopic_dir / "visualizations")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     docs = pd.read_csv(document_topics_path)
     topic_info = pd.read_csv(topic_info_path)
-    labels = load_topic_labels(topic_info, args.labels or (args.bertopic_dir / "topic_labels_llm.csv"))
+    labels_path = args.labels or (args.bertopic_dir / "topic_labels_llm.csv")
+    groups_path = args.bertopic_dir / "topic_groups_llm.csv"
+    labels = load_analysis_labels(
+        topic_info,
+        labels_path,
+        groups_path,
+        args.analysis_level,
+    )
 
     docs = docs.merge(labels, left_on="topic", right_on="Topic", how="left")
-    docs["topic_label"] = docs["topic_label"].fillna(docs["topic"].astype(str))
-    docs["primary_domain"] = docs.get("primary_domain", docs["topic_label"]).fillna(docs["topic_label"])
-    docs["generic_domain_label"] = docs.get("generic_domain_label", docs["topic_label"]).fillna(docs["topic_label"])
-    if args.label_mode == "generic-domain":
-        analysis_label = "generic_domain_label"
-    elif args.label_mode == "primary-domain":
-        analysis_label = "primary_domain"
-    else:
-        analysis_label = "topic_label"
+    analysis_label = "analysis_label"
+    docs[analysis_label] = docs[analysis_label].fillna(docs["topic"].astype(str))
     if not args.include_outlier:
         docs = docs[docs["topic"].ne(-1)].copy()
 
@@ -113,8 +142,15 @@ def main() -> None:
     )
     top_labels = topic_totals.head(args.top_n)[analysis_label].tolist()
     docs_top = docs[docs[analysis_label].isin(top_labels)].copy()
+    display_n = len(top_labels)
+    display_level = (
+        "higher-order groups"
+        if args.analysis_level == "higher-order"
+        else "topics"
+    )
 
-    topic_totals.to_csv(output_dir / "topic_weighted_totals.csv", index=False)
+    topic_totals_path = output_dir / "topic_weighted_totals.csv"
+    topic_totals.to_csv(topic_totals_path, index=False)
 
     country_topic = weighted_group_share(docs_top, ["country", analysis_label], "analysis_weight")
     fig_country = px.imshow(
@@ -122,10 +158,11 @@ def main() -> None:
         aspect="auto",
         color_continuous_scale="Viridis",
         labels={"color": "Within-country share"},
-        title=f"Top {args.top_n} political-corruption topics by country",
+        title=f"{display_n} political-corruption {display_level} by country",
     )
     fig_country.update_layout(height=650)
-    fig_country.write_html(output_dir / "country_topic_heatmap.html")
+    country_heatmap_path = output_dir / "country_topic_heatmap.html"
+    fig_country.write_html(country_heatmap_path)
 
     if args.time_unit == "month":
         if "date_parsed" not in docs_top.columns:
@@ -141,11 +178,12 @@ def main() -> None:
         x="period",
         y="share",
         color=analysis_label,
-        title=f"Top {args.top_n} political-corruption topic shares over time",
+        title=f"Political-corruption {display_level} over time",
         labels={"period": args.time_unit.title(), "share": "Topic share", analysis_label: "Topic"},
     )
     fig_time.update_layout(height=650, hovermode="x unified")
-    fig_time.write_html(output_dir / "topic_shares_over_time.html")
+    time_path = output_dir / "topic_shares_over_time.html"
+    fig_time.write_html(time_path)
 
     country_time = (
         docs_top.groupby(["country", "period", analysis_label], dropna=False)["analysis_weight"]
@@ -159,12 +197,37 @@ def main() -> None:
         y="weighted_articles",
         color=analysis_label,
         facet_row="country",
-        title=f"Top {args.top_n} political-corruption topic volume by country over time",
+        title=f"Political-corruption {display_level} by country over time",
         labels={"period": args.time_unit.title(), "weighted_articles": "Weighted articles", analysis_label: "Topic"},
         height=1400,
     )
     fig_country_time.update_yaxes(matches=None)
-    fig_country_time.write_html(output_dir / "country_topic_trends.html")
+    country_time_path = output_dir / "country_topic_trends.html"
+    fig_country_time.write_html(country_time_path)
+
+    write_run_manifest(
+        output_dir,
+        script_name=Path(__file__).name,
+        args=args,
+        inputs={
+            "document_topics": document_topics_path,
+            "topic_info": topic_info_path,
+            "topic_labels": labels_path,
+            "topic_groups": groups_path,
+            "topic_group_manifest": provenance["manifest_path"],
+        },
+        outputs={
+            "topic_weighted_totals": topic_totals_path,
+            "country_topic_heatmap": country_heatmap_path,
+            "topic_shares_over_time": time_path,
+            "country_topic_trends": country_time_path,
+        },
+        extra={
+            "analysis_level": args.analysis_level,
+            "upstream_classifier": provenance["upstream_classifier"],
+        },
+        manifest_name="visualizations_run_manifest.json",
+    )
 
     print(f"Saved visualizations under: {output_dir}", flush=True)
 

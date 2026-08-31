@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
+from topic_classification.provenance import validate_topic_label_outputs
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -90,11 +91,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-groups",
         type=int,
-        default=12,
-        help="Kept for backward compatibility; higher-order topics are fixed by the prompt.",
+        default=len(HIGHER_ORDER_TOPICS),
+        help="Compatibility check; must equal the six predefined interpretive groups.",
     )
-    parser.add_argument("--min-groups", type=int, default=8, help=argparse.SUPPRESS)
-    parser.add_argument("--max-groups", type=int, default=16, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace higher-order assignments from an earlier topic-label run.",
+    )
     return parser.parse_args()
 
 
@@ -240,9 +244,32 @@ def main() -> None:
 
     if not LLMPROXY_API_KEY:
         raise RuntimeError("Set LLMPROXY_API_KEY in your environment or config_local.py.")
+    if args.target_groups != len(HIGHER_ORDER_TOPICS):
+        raise ValueError(
+            f"--target-groups must be {len(HIGHER_ORDER_TOPICS)} because the "
+            "interpretive grouping scheme is fixed and explicitly documented."
+        )
+
+    label_provenance = validate_topic_label_outputs(args.bertopic_dir)
 
     output_path = args.output or (args.bertopic_dir / "topic_groups_llm.csv")
     audit_path = output_path.with_name(output_path.stem + "_audit.json")
+    summaries_path = output_path.with_name("topic_group_summaries_llm.csv")
+    group_manifest_path = args.bertopic_dir / "topic_groups_run_manifest.json"
+    existing_outputs = [
+        path
+        for path in [output_path, audit_path, summaries_path, group_manifest_path]
+        if path.exists()
+    ]
+    if existing_outputs and not args.overwrite:
+        raise FileExistsError(
+            "Topic-group outputs already exist. Pass --overwrite for a deliberate "
+            "rebuild: "
+            + ", ".join(str(path) for path in existing_outputs)
+        )
+    if args.overwrite:
+        for path in existing_outputs:
+            path.unlink()
     topics = load_topic_table(args.bertopic_dir)
 
     client = OpenAI(api_key=LLMPROXY_API_KEY, base_url=LLMPROXY_BASE_URL)
@@ -314,7 +341,6 @@ def main() -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output_path, index=False)
-    summaries_path = output_path.with_name("topic_group_summaries_llm.csv")
     pd.DataFrame(group_rows).to_csv(summaries_path, index=False)
     audit_path.write_text(
         json.dumps(
@@ -337,7 +363,11 @@ def main() -> None:
         args.bertopic_dir,
         script_name=Path(__file__).name,
         args=args,
-        inputs={"topic_labels": args.bertopic_dir / "topic_labels_llm.csv"},
+        inputs={
+            "topic_labels": args.bertopic_dir / "topic_labels_llm.csv",
+            "topic_labels_manifest": label_provenance["manifest_path"],
+            "topic_model_manifest": label_provenance["model"]["manifest_path"],
+        },
         outputs={
             "topic_groups": output_path,
             "topic_group_summaries": summaries_path,
@@ -348,6 +378,10 @@ def main() -> None:
             "model": args.model,
             "temperature": 0,
             "higher_order_topics": HIGHER_ORDER_TOPICS,
+            "topic_labels_manifest_sha256": label_provenance[
+                "manifest_sha256"
+            ],
+            "upstream_classifier": label_provenance["upstream_classifier"],
         },
         manifest_name="topic_groups_run_manifest.json",
     )

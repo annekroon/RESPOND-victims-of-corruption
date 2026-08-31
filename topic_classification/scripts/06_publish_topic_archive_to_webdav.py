@@ -10,7 +10,7 @@ Default archive target:
 
 Default LaTeX table target:
     ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/
-      victims-of-corruption-paper/output/tables/topic models/
+      victims-of-corruption-paper/output/tables/topic_models/
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import config
 from config import RD_BASE_DIR
+from topic_classification.provenance import validate_final_topic_outputs
 
 
 DEFAULT_RD_ARCHIVE_DIR = posixpath.join(
@@ -46,6 +47,11 @@ DEFAULT_RD_TABLE_DIR = posixpath.join(
     "victims-of-corruption-paper",
     "output",
     "tables",
+)
+DEFAULT_RD_OUTPUT_DIR = posixpath.join(
+    RD_BASE_DIR,
+    "victims-of-corruption-paper",
+    "output",
 )
 
 
@@ -81,8 +87,21 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--tables-folder-name",
-        default="topic models",
+        default="topic_models",
         help="Subfolder to create under rd-table-dir.",
+    )
+    parser.add_argument(
+        "--rd-output-dir",
+        default=DEFAULT_RD_OUTPUT_DIR,
+        help="Research Drive canonical output directory for build metadata.",
+    )
+    parser.add_argument(
+        "--upload-full-inventory",
+        action="store_true",
+        help=(
+            "Also publish the long fine-grained topic inventory to the manuscript "
+            "table folder. It is archive-only by default."
+        ),
     )
     return parser.parse_args()
 
@@ -106,6 +125,10 @@ def stage_archive_contents(args: argparse.Namespace, staging_dir: Path) -> None:
     # Code and documentation needed to understand/recreate the workflow.
     copy_file(PROJECT_ROOT / "topic_classification" / "README.md", staging_dir / "code" / "topic_classification" / "README.md")
     copy_file(
+        PROJECT_ROOT / "topic_classification" / "provenance.py",
+        staging_dir / "code" / "topic_classification" / "provenance.py",
+    )
+    copy_file(
         PROJECT_ROOT / "topic_classification" / "requirements-topic.txt",
         staging_dir / "code" / "topic_classification" / "requirements-topic.txt",
     )
@@ -116,6 +139,11 @@ def stage_archive_contents(args: argparse.Namespace, staging_dir: Path) -> None:
     copy_tree(
         PROJECT_ROOT / "topic_classification" / "notebooks",
         staging_dir / "code" / "topic_classification" / "notebooks",
+    )
+    copy_file(PROJECT_ROOT / "docs" / "method.tex", staging_dir / "manuscript" / "method.tex")
+    copy_file(
+        PROJECT_ROOT / "docs" / "appendix_political_corruption.tex",
+        staging_dir / "manuscript" / "appendix_political_corruption.tex",
     )
 
     if args.sample is not None:
@@ -136,6 +164,9 @@ def stage_archive_contents(args: argparse.Namespace, staging_dir: Path) -> None:
         "run_manifest.json",
         "topic_labels_run_manifest.json",
         "topic_groups_run_manifest.json",
+        "topic_model_build_summary.json",
+        "topic_model_output_manifest.json",
+        "00_LATEST_TOPIC_MODEL_BUILD.txt",
     ]
     for name in output_files:
         copy_file(bertopic_dir / name, staging_dir / "outputs" / name)
@@ -155,6 +186,9 @@ def stage_archive_contents(args: argparse.Namespace, staging_dir: Path) -> None:
                 "",
                 "Key manuscript tables:",
                 "- outputs/inspection_tables/latex/table_topic_higher_order_summary.tex",
+                "- outputs/inspection_tables/latex/topic_model_manuscript_values.tex",
+                "",
+                "Archive-only detailed inventory:",
                 "- outputs/inspection_tables/latex/table_all_topics_llm_higher_order_topics.tex",
                 "",
                 "The CSV/JSON outputs are the archival source of truth for published topic labels and LLM group assignments.",
@@ -233,12 +267,18 @@ def upload_bytes(rd_path: str, data: bytes, content_type: str) -> None:
     webdav_upload_bytes(rd_path, data, content_type)
 
 
-def latex_table_paths(bertopic_dir: Path) -> list[Path]:
+def manuscript_table_paths(
+    bertopic_dir: Path,
+    *,
+    include_full_inventory: bool,
+) -> list[Path]:
     latex_dir = bertopic_dir / "inspection_tables" / "latex"
     paths = [
+        latex_dir / "topic_model_manuscript_values.tex",
         latex_dir / "table_topic_higher_order_summary.tex",
-        latex_dir / "table_all_topics_llm_higher_order_topics.tex",
     ]
+    if include_full_inventory:
+        paths.append(latex_dir / "table_all_topics_llm_higher_order_topics.tex")
     missing = [path for path in paths if not path.exists()]
     if missing:
         raise FileNotFoundError("Missing LaTeX table(s): " + ", ".join(str(path) for path in missing))
@@ -247,6 +287,13 @@ def latex_table_paths(bertopic_dir: Path) -> list[Path]:
 
 def main() -> None:
     args = parse_args()
+    args.bertopic_dir = args.bertopic_dir.resolve()
+    final_provenance = validate_final_topic_outputs(args.bertopic_dir)
+    print(
+        "Validated topic publication chain: "
+        f"{final_provenance['manifest_sha256']}",
+        flush=True,
+    )
 
     if args.tables_only and not args.upload_latex_tables:
         raise RuntimeError("--tables-only requires --upload-latex-tables.")
@@ -272,10 +319,28 @@ def main() -> None:
 
     if args.upload_latex_tables:
         rd_table_dir = rd_join(args.rd_table_dir, args.tables_folder_name)
-        for table_path in latex_table_paths(args.bertopic_dir):
+        for table_path in manuscript_table_paths(
+            args.bertopic_dir,
+            include_full_inventory=args.upload_full_inventory,
+        ):
             rd_path = rd_join(rd_table_dir, table_path.name)
             upload_bytes(rd_path, table_path.read_bytes(), "text/plain; charset=utf-8")
             print(f"Uploaded LaTeX table {table_path.name} -> {rd_path}", flush=True)
+
+        canonical_metadata = [
+            args.bertopic_dir / "00_LATEST_TOPIC_MODEL_BUILD.txt",
+            args.bertopic_dir / "topic_model_output_manifest.json",
+        ]
+        for metadata_path in canonical_metadata:
+            rd_path = rd_join(args.rd_output_dir, metadata_path.name)
+            upload_bytes(
+                rd_path,
+                metadata_path.read_bytes(),
+                "text/plain; charset=utf-8"
+                if metadata_path.suffix == ".txt"
+                else "application/json",
+            )
+            print(f"Uploaded build metadata {metadata_path.name} -> {rd_path}", flush=True)
 
 
 if __name__ == "__main__":

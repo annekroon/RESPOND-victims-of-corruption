@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
+from topic_classification.provenance import validate_topic_model_outputs
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -39,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retry-sleep", type=float, default=5.0)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Discard labels and audit records from an earlier topic-model run.",
+    )
     return parser.parse_args()
 
 
@@ -171,6 +177,8 @@ def write_checkpoint(existing, new_rows: list[dict], output_path: Path) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True)
+    if "Topic" in checkpoint.columns:
+        checkpoint = checkpoint.drop_duplicates(subset=["Topic"], keep="last")
     tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
     checkpoint.to_csv(tmp_path, index=False)
     tmp_path.replace(output_path)
@@ -184,8 +192,8 @@ def main() -> None:
     from openai import OpenAI
     from tqdm.auto import tqdm
 
-    if not LLMPROXY_API_KEY:
-        raise RuntimeError("Set LLMPROXY_API_KEY in your environment or config_local.py.")
+    model_provenance = validate_topic_model_outputs(args.bertopic_dir)
+    model_manifest_sha256 = model_provenance["manifest_sha256"]
 
     topic_info_path = args.bertopic_dir / "topic_info.csv"
     document_topics_path = args.bertopic_dir / "document_topics.csv.gz"
@@ -196,6 +204,12 @@ def main() -> None:
 
     output_path = args.output or (args.bertopic_dir / "topic_labels_llm.csv")
     audit_path = output_path.with_name(output_path.stem + "_audit.jsonl")
+    label_manifest_path = args.bertopic_dir / "topic_labels_run_manifest.json"
+    if args.overwrite:
+        for path in [output_path, audit_path, label_manifest_path]:
+            path.unlink(missing_ok=True)
+    if not LLMPROXY_API_KEY:
+        raise RuntimeError("Set LLMPROXY_API_KEY in your environment or config_local.py.")
     topic_info = pd.read_csv(topic_info_path)
     docs = pd.read_csv(document_topics_path)
     if args.text_column not in docs.columns:
@@ -220,15 +234,33 @@ def main() -> None:
             "llm_label_prompt_version" in existing.columns
             and existing["llm_label_prompt_version"].fillna("").astype(str).eq(PROMPT_VERSION).all()
         )
-        if not required_generic_columns.issubset(existing.columns) or not has_current_prompt:
-            print(
-                f"Existing label file is not prompt version {PROMPT_VERSION}; relabelling topics: {output_path}",
-                flush=True,
+        has_current_model_run = (
+            "topic_model_manifest_sha256" in existing.columns
+            and existing["topic_model_manifest_sha256"]
+            .fillna("")
+            .astype(str)
+            .eq(model_manifest_sha256)
+            .all()
+        )
+        if not required_generic_columns.issubset(existing.columns) or not has_current_prompt or not has_current_model_run:
+            raise ValueError(
+                "Existing topic labels belong to an older prompt or BERTopic run. "
+                f"Rerun with --overwrite: {output_path}"
             )
-            existing = pd.DataFrame()
-            done_topics = set()
         else:
-            done_topics = set(existing["Topic"].dropna().astype(int)) if "Topic" in existing.columns else set()
+            valid_existing = existing[
+                existing.get("llm_error", pd.Series("", index=existing.index))
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .eq("")
+                & existing["llm_topic_label"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .ne("")
+            ]
+            done_topics = set(valid_existing["Topic"].dropna().astype(int))
             print(f"Resuming from {output_path}; already done: {len(done_topics):,}", flush=True)
     else:
         existing = pd.DataFrame()
@@ -251,6 +283,7 @@ def main() -> None:
             random_state=args.random_state + topic_id,
         )
         out = topic_row.to_dict()
+        out["topic_model_manifest_sha256"] = model_manifest_sha256
 
         for attempt in range(1, args.retries + 1):
             try:
@@ -291,6 +324,23 @@ def main() -> None:
             time.sleep(args.sleep)
 
     write_checkpoint(existing, new_rows, output_path)
+    completed = pd.read_csv(output_path)
+    expected_topics = set(topic_info["Topic"].astype(int))
+    completed_topics = set(completed["Topic"].dropna().astype(int))
+    error_mask = completed.get(
+        "llm_error", pd.Series("", index=completed.index)
+    ).fillna("").astype(str).str.strip().ne("")
+    label_mask = completed.get(
+        "llm_topic_label", pd.Series("", index=completed.index)
+    ).fillna("").astype(str).str.strip().ne("")
+    if completed_topics != expected_topics or error_mask.any() or not label_mask.all():
+        missing_topics = sorted(expected_topics - completed_topics)
+        raise RuntimeError(
+            "Topic labelling is incomplete: "
+            f"missing topics={missing_topics}, errors={int(error_mask.sum())}, "
+            f"blank labels={int((~label_mask).sum())}. Rerun without --overwrite "
+            "to resume valid checkpoints."
+        )
     write_run_manifest(
         args.bertopic_dir,
         script_name=Path(__file__).name,
@@ -298,6 +348,7 @@ def main() -> None:
         inputs={
             "topic_info": topic_info_path,
             "document_topics": document_topics_path,
+            "topic_model_manifest": model_provenance["manifest_path"],
         },
         outputs={
             "topic_labels": output_path,
@@ -310,6 +361,8 @@ def main() -> None:
             "examples_per_topic": args.examples_per_topic,
             "max_example_chars": args.max_example_chars,
             "min_topic_count": args.min_topic_count,
+            "topic_model_manifest_sha256": model_manifest_sha256,
+            "upstream_classifier": model_provenance["upstream_classifier"],
         },
         manifest_name="topic_labels_run_manifest.json",
     )

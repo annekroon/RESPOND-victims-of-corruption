@@ -23,6 +23,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import ALL_COUNTRIES, RD_BASE_DIR
+from topic_classification.provenance import (
+    load_verified_classifier_run,
+    verify_classified_country_frame,
+)
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -32,6 +36,7 @@ DEFAULT_PIPELINE_DIR = Path(
 )
 DEFAULT_SOURCE_FILTERED_DIR = DEFAULT_PIPELINE_DIR / "cleaned_deduped_source_filtered"
 DEFAULT_CLASSIFIED_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier" / "classified_country_files"
+DEFAULT_CLASSIFIER_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
 DEFAULT_OUTPUT_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "topic_classification"
@@ -97,6 +102,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-filtered-dir", type=Path, default=DEFAULT_SOURCE_FILTERED_DIR)
     parser.add_argument("--classified-dir", type=Path, default=DEFAULT_CLASSIFIED_DIR)
     parser.add_argument(
+        "--classifier-output-dir",
+        type=Path,
+        default=DEFAULT_CLASSIFIER_OUTPUT_DIR,
+        help=(
+            "Directory containing classifier_run_manifest.json, "
+            "classified_country_summary.csv, and selected_threshold.txt."
+        ),
+    )
+    parser.add_argument(
         "--source-filtered-rd-dir",
         "--cleaned-rd-dir",
         dest="source_filtered_rd_dir",
@@ -131,8 +145,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep only pred_political_corruption == 1. Requires classified source.",
     )
-    parser.add_argument("--min-words", type=int, default=30)
+    parser.add_argument(
+        "--allow-unverified-classifier",
+        action="store_true",
+        help="Permit legacy/exploratory classified inputs without final-run verification.",
+    )
+    parser.add_argument("--min-words", type=int, default=1)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing sample and its diagnostics deliberately.",
+    )
     return parser.parse_args()
 
 
@@ -195,12 +219,18 @@ def read_country_csv(args: argparse.Namespace, country: str):
     return frame, str(path)
 
 
-def load_country_file(args: argparse.Namespace, country: str):
+def load_country_file(args: argparse.Namespace, country: str, classifier_run=None):
     import pandas as pd
 
     data, source_path = read_country_csv(args, country)
     if data is None:
         return None
+    if classifier_run is not None:
+        verify_classified_country_frame(
+            data,
+            country=country,
+            classifier_run=classifier_run,
+        )
     data["country"] = country
     data["article_text"] = choose_text(data).map(normalize_text)
     data = data[data["article_text"].str.split().str.len().fillna(0).ge(args.min_words)].copy()
@@ -288,9 +318,43 @@ def main() -> None:
 
     import pandas as pd
 
+    output_name = args.output_name or default_output_name(args)
+    output_path = args.output_dir / output_name
+    diagnostics_path = output_path.with_name(
+        output_path.name.replace(".csv.gz", "_strata.csv")
+    )
+    manifest_path = output_path.with_name(
+        output_path.name.replace(".csv.gz", "_run_manifest.json")
+    )
+    existing_outputs = [
+        path for path in [output_path, diagnostics_path, manifest_path] if path.exists()
+    ]
+    if existing_outputs and not args.overwrite:
+        raise FileExistsError(
+            "Topic sample outputs already exist. Pass --overwrite for a deliberate "
+            "rebuild: "
+            + ", ".join(str(path) for path in existing_outputs)
+        )
+
+    classifier_run = None
+    if args.political_only and not args.allow_unverified_classifier:
+        classifier_run = load_verified_classifier_run(
+            args.classifier_output_dir,
+            list(args.countries),
+            classified_dir=args.classified_dir,
+            require_local_country_files=not args.source.endswith("-webdav"),
+        )
+        print(
+            "Verified final classifier run: "
+            f"threshold={classifier_run.threshold:.2f}, "
+            f"source-filtered N={classifier_run.total_articles:,}, "
+            f"political-corruption N={classifier_run.political_articles:,}",
+            flush=True,
+        )
+
     frames = []
     for country in args.countries:
-        frame = load_country_file(args, country)
+        frame = load_country_file(args, country, classifier_run=classifier_run)
         if frame is not None and not frame.empty:
             frames.append(frame)
 
@@ -299,6 +363,13 @@ def main() -> None:
 
     data = pd.concat(frames, ignore_index=True)
     print(f"Loaded eligible rows: {len(data):,}", flush=True)
+    if classifier_run is not None and len(data) != classifier_run.political_articles:
+        raise ValueError(
+            "Topic eligibility filters changed the final political-corruption corpus: "
+            f"{len(data):,} eligible rows versus "
+            f"{classifier_run.political_articles:,} classifier positives. "
+            "Resolve missing text/date fields instead of silently changing the universe."
+        )
 
     if args.total_sample is not None:
         sample = sample_total(data, args.total_sample, args.random_state)
@@ -309,10 +380,16 @@ def main() -> None:
     sample = sample.sample(frac=1, random_state=args.random_state).reset_index(drop=True)
     sample["topic_sample_source"] = args.source
     sample["topic_sample_political_only"] = args.political_only
+    if classifier_run is not None:
+        sample["upstream_classifier_threshold"] = classifier_run.threshold
+        sample["upstream_classifier_git_commit"] = classifier_run.manifest.get(
+            "git_commit", ""
+        )
+        sample["upstream_classifier_manifest_sha256"] = (
+            classifier_run.manifest_sha256
+        )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    output_name = args.output_name or default_output_name(args)
-    output_path = args.output_dir / output_name
     sample.to_csv(output_path, index=False, compression="gzip")
 
     diagnostics = (
@@ -322,13 +399,24 @@ def main() -> None:
         .reset_index()
         .sort_values(["country", "year"])
     )
-    diagnostics_path = output_path.with_name(output_path.name.replace(".csv.gz", "_strata.csv"))
     diagnostics.to_csv(diagnostics_path, index=False)
+
+    manifest_inputs = {}
+    upstream_classifier = {"verified_final_classifier": False}
+    if classifier_run is not None:
+        manifest_inputs = {
+            "classifier_manifest": classifier_run.manifest_path,
+            "classified_country_summary": classifier_run.summary_path,
+            "selected_threshold": classifier_run.threshold_path,
+            "source_filter_manifest": classifier_run.source_filter_manifest_path,
+        }
+        upstream_classifier = classifier_run.provenance_record()
 
     write_run_manifest(
         args.output_dir,
         script_name=Path(__file__).name,
         args=args,
+        inputs=manifest_inputs,
         outputs={
             "sample": output_path,
             "strata_diagnostics": diagnostics_path,
@@ -337,8 +425,10 @@ def main() -> None:
             "loaded_eligible_rows": int(len(data)),
             "saved_sample_rows": int(len(sample)),
             "nonempty_country_year_strata": int(diagnostics.shape[0]),
+            "political_only": bool(args.political_only),
+            "upstream_classifier": upstream_classifier,
         },
-        manifest_name=output_path.name.replace(".csv.gz", "_run_manifest.json"),
+        manifest_name=manifest_path.name,
     )
 
     print(f"Saved sample rows: {len(sample):,}", flush=True)
