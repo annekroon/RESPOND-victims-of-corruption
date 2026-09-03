@@ -146,9 +146,11 @@ class TopicWorkflowStructureTests(unittest.TestCase):
             ROOT
             / "topic_classification/scripts/07_run_compact_descriptive_topic_model.sh"
         ).read_text(encoding="utf-8")
-        self.assertIn("--per-country-year 50", runner)
+        self.assertIn('PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"', runner)
+        self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-8}"', runner)
+        self.assertIn('--per-country-year "$PER_COUNTRY_YEAR"', runner)
         self.assertIn("02_create_descriptive_abstractions.py", runner)
-        self.assertIn("--nr-topics 8", runner)
+        self.assertIn('--nr-topics "$TARGET_TOPICS"', runner)
         self.assertIn("04_label_descriptive_topics_with_llm.py", runner)
         self.assertNotIn("--input-kind", runner)
         self.assertIn("--analysis-level fine-grained", runner)

@@ -10,10 +10,13 @@ TOPIC_ROOT="${TOPIC_ROOT:-$DATA_ROOT/topic_classification}"
 CLASSIFIED_DIR="${CLASSIFIED_DIR:-$PIPELINE_DIR/silver_classifier/classified_country_files}"
 MODEL="${LLMPROXY_MODEL:-gpt-5.1}"
 CUDA_DEVICE="${CUDA_VISIBLE_DEVICES:-1}"
+PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"
+TARGET_TOPICS="${TARGET_TOPICS:-8}"
+MIN_TOPIC_SIZE="${MIN_TOPIC_SIZE:-40}"
 
-SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_50.csv.gz}"
-ABSTRACTION_PATH="${ABSTRACTION_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_50_english_abstracts.csv.gz}"
-BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_8}"
+SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}.csv.gz}"
+ABSTRACTION_PATH="${ABSTRACTION_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}_english_abstracts.csv.gz}"
+BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_${TARGET_TOPICS}_sample_${PER_COUNTRY_YEAR}}"
 ABSTRACTION_COMPLETE="$ABSTRACTION_PATH.complete.json"
 
 mkdir -p "$TOPIC_ROOT"
@@ -25,16 +28,19 @@ echo "Country-year sample: $SAMPLE_PATH"
 echo "English abstractions: $ABSTRACTION_PATH"
 echo "BERTopic output: $BERTOPIC_DIR"
 echo "LLM: $MODEL"
+echo "Maximum per country-year: $PER_COUNTRY_YEAR"
+echo "Target topics: $TARGET_TOPICS"
+echo "Minimum topic size: $MIN_TOPIC_SIZE"
 echo
 
 if [[ ! -f "$SAMPLE_PATH" ]]; then
-  echo "1/6 Creating a verified sample of up to 50 articles per country-year..."
+  echo "1/6 Creating a verified sample of up to $PER_COUNTRY_YEAR articles per country-year..."
   python3 topic_classification/scripts/01_create_stratified_topic_sample.py \
     --source classified \
     --classified-dir "$CLASSIFIED_DIR" \
     --classifier-output-dir "$PIPELINE_DIR/silver_classifier" \
     --political-only \
-    --per-country-year 50 \
+    --per-country-year "$PER_COUNTRY_YEAR" \
     --output-name "$(basename "$SAMPLE_PATH")" \
     --output-dir "$(dirname "$SAMPLE_PATH")" \
     --overwrite
@@ -74,7 +80,7 @@ PY
 then
   echo "3/6 Reusing verified compact BERTopic model: $BERTOPIC_DIR"
 else
-  echo "3/6 Fitting an eight-topic BERTopic model to usable abstractions..."
+  echo "3/6 Fitting a target-$TARGET_TOPICS BERTopic model to usable abstractions..."
   TMPDIR="${TMPDIR:-/home/akroon/data/1t_storage/tmp}" \
   HF_HOME="${HF_HOME:-/home/akroon/data/1t_storage/huggingface_cache}" \
   CUDA_VISIBLE_DEVICES="$CUDA_DEVICE" \
@@ -84,8 +90,8 @@ else
     --text-column topic_description_english \
     --status-column topic_abstraction_status \
     --include-status usable \
-    --min-topic-size 40 \
-    --nr-topics 8 \
+    --min-topic-size "$MIN_TOPIC_SIZE" \
+    --nr-topics "$TARGET_TOPICS" \
     --overwrite
 fi
 
@@ -114,7 +120,7 @@ echo "5/6 Building direct-topic visualizations..."
 python3 topic_classification/scripts/05_build_topic_visualizations.py \
   --bertopic-dir "$BERTOPIC_DIR" \
   --analysis-level fine-grained \
-  --top-n 8
+  --top-n "$TARGET_TOPICS"
 
 echo
 echo "6/6 Building the direct topic table, diagnostics, and manual-review packet..."

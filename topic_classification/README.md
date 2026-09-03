@@ -93,6 +93,17 @@ command reuses the verified sample, resumes unfinished GPT abstractions, and
 reuses valid model and label stages. It does not touch classifier outputs,
 human annotations, or the archived multilingual sensitivity model.
 
+For a cheaper end-to-end smoke test before the default run, use a separate
+five-per-stratum, six-topic output tree:
+
+```bash
+PER_COUNTRY_YEAR=5 TARGET_TOPICS=6 MIN_TOPIC_SIZE=15 \
+  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
+```
+
+These parameters are recorded in the manifests and produce different paths,
+so the smoke test cannot overwrite the default 50-per-stratum run.
+
 GPT-5.1 is the currently permitted UvA proxy model. GPT-5.6-terra was tested
 but denied for the project key and must not be selected without a fresh access
 test.
@@ -124,7 +135,7 @@ test.
     political_corruption_descriptive_country_year_sample_50_run_manifest.json
     political_corruption_descriptive_country_year_sample_50_english_abstracts.csv.gz
     political_corruption_descriptive_country_year_sample_50_english_abstracts_run_manifest.json
-    bertopic_political_corruption_descriptive_8/
+    bertopic_political_corruption_descriptive_8_sample_50/
       topic_info.csv
       document_topics.csv.gz
       topic_model/
