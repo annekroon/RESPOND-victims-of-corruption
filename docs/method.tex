@@ -152,11 +152,12 @@ countries, outlets, dates, exact amounts, and other case-specific identifiers;
 articles without a clear substantive political-corruption focus were marked as
 boundary or unclear and excluded from clustering while remaining in the audit
 data. BERTopic was fitted to the remaining abstractions using
-\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings, a
-minimum topic size of 40, and a target of eight direct descriptive topics.
-HDBSCAN leaf clustering first identified narrower clusters, which BERTopic
-then merged toward the prespecified target. GPT-5.1 proposed readable labels
-from representative abstractions. No
+\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings,
+HDBSCAN leaf clustering, and automatic topic reduction. The number of topics
+was therefore determined by the structure of the abstraction embeddings rather
+than fixed for presentation. Class-based TF-IDF supplied each cluster's topic
+representation. GPT-5.1 proposed readable labels from representative
+abstractions. No
 higher-order taxonomy was imposed. Prompts, selected examples, raw responses,
 model metadata, diagnostic country distributions, and checksummed run
 manifests were retained. The topics are exploratory descriptions rather than

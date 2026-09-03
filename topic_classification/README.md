@@ -15,12 +15,13 @@ shared substantive topic. That completed run remains in Research Drive as a
 reproducible sensitivity analysis, but its six-group prevalence table must not
 be interpreted as a distribution of corruption types.
 
-The maintained pilot now has a narrower purpose: produce a small and readable
+The maintained pilot has a narrower purpose: produce a small and readable
 description of recurring political-corruption coverage. GPT-5.1 first converts
 each sampled article into a short English abstraction that preserves the
 alleged practice, institutional setting, and response while removing names,
 countries, outlets, dates, and case-specific details. BERTopic then estimates
-at most roughly eight direct descriptive topics from those abstractions. No
+a compact number of direct descriptive topics from those abstractions. The
+topic count is learned from the data rather than fixed for presentation. No
 higher-order grouping is imposed.
 
 ## Input And Sampling
@@ -49,7 +50,7 @@ descriptive model and keeps the auditable GPT abstraction stage tractable.
 |---|---|---|
 | 01 | `01_create_stratified_topic_sample.py` | Verified country-year sample |
 | 02 | `02_create_descriptive_abstractions.py` | Language-neutral English case abstractions |
-| 03 | `03_fit_descriptive_bertopic.py` | Direct BERTopic solution, target eight topics |
+| 03 | `03_fit_descriptive_bertopic.py` | Data-driven direct BERTopic solution |
 | 04 | `04_label_descriptive_topics_with_llm.py` | Readable labels from neutral abstractions |
 | 05 | `05_build_topic_visualizations.py` | Direct-topic country and time diagnostics |
 | 06 | `06_build_descriptive_topic_review.py` | Table, diagnostics, and manual-review packet |
@@ -94,10 +95,11 @@ reuses valid model and label stages. It does not touch classifier outputs,
 human annotations, or the archived multilingual sensitivity model.
 
 For a cheaper end-to-end smoke test before the default run, use a separate
-five-per-stratum, six-topic output tree:
+five-per-stratum output tree with a smaller density threshold:
 
 ```bash
-PER_COUNTRY_YEAR=5 TARGET_TOPICS=6 MIN_TOPIC_SIZE=15 \
+PER_COUNTRY_YEAR=5 TARGET_TOPICS=auto MIN_TOPIC_SIZE=10 \
+  HDBSCAN_MIN_SAMPLES=3 CLUSTERER=hdbscan \
   bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
@@ -122,8 +124,10 @@ test.
   the audit data but excluded from BERTopic.
 - Embeddings: `intfloat/multilingual-e5-large`, using the already verified and
   cached model; all clustering inputs are English.
-- BERTopic: HDBSCAN leaf clustering with minimum cluster size 40, followed by
-  reduction to target `nr_topics = 8`, seed 42.
+- BERTopic: HDBSCAN leaf clustering with minimum topic size 40 and
+  `min_samples = 10`, followed by BERTopic's automatic topic reduction. The
+  topic count is not fixed. Topic representations use class-based TF-IDF;
+  seed 42.
 - Reporting: direct BERTopic topics only; no forced higher-order taxonomy.
 - Shares: inverse country-year weighted and calculated among non-outliers.
 
@@ -136,7 +140,7 @@ test.
     political_corruption_descriptive_country_year_sample_50_run_manifest.json
     political_corruption_descriptive_country_year_sample_50_english_abstracts.csv.gz
     political_corruption_descriptive_country_year_sample_50_english_abstracts_run_manifest.json
-    bertopic_political_corruption_descriptive_8_sample_50/
+    bertopic_political_corruption_descriptive_hdbscan_auto_sample_50/
       topic_info.csv
       document_topics.csv.gz
       topic_model/

@@ -147,7 +147,9 @@ class TopicWorkflowStructureTests(unittest.TestCase):
             / "topic_classification/scripts/07_run_compact_descriptive_topic_model.sh"
         ).read_text(encoding="utf-8")
         self.assertIn('PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"', runner)
-        self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-8}"', runner)
+        self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-auto}"', runner)
+        self.assertIn('CLUSTERER="${CLUSTERER:-hdbscan}"', runner)
+        self.assertIn('HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"', runner)
         self.assertIn('--per-country-year "$PER_COUNTRY_YEAR"', runner)
         self.assertIn("02_create_descriptive_abstractions.py", runner)
         self.assertIn('--nr-topics "$TARGET_TOPICS"', runner)
@@ -228,7 +230,10 @@ class TopicTableBuilderTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("min_df=1", script)
         self.assertIn("max_df=1.0", script)
-        self.assertIn('default="leaf"', script)
+        self.assertIn('default="hdbscan"', script)
+        self.assertIn("n_init=20", script)
+        self.assertIn("min_samples=args.hdbscan_min_samples", script)
+        self.assertIn("save_embedding_model=args.embedding_model", script)
 
     def test_topic_label_prompt_cannot_reconstruct_case_identifiers(self):
         script_path = (

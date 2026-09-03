@@ -11,12 +11,14 @@ CLASSIFIED_DIR="${CLASSIFIED_DIR:-$PIPELINE_DIR/silver_classifier/classified_cou
 MODEL="${LLMPROXY_MODEL:-gpt-5.1}"
 CUDA_DEVICE="${CUDA_VISIBLE_DEVICES:-1}"
 PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"
-TARGET_TOPICS="${TARGET_TOPICS:-8}"
+TARGET_TOPICS="${TARGET_TOPICS:-auto}"
 MIN_TOPIC_SIZE="${MIN_TOPIC_SIZE:-40}"
+HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"
+CLUSTERER="${CLUSTERER:-hdbscan}"
 
 SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}.csv.gz}"
 ABSTRACTION_PATH="${ABSTRACTION_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}_english_abstracts.csv.gz}"
-BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_${TARGET_TOPICS}_sample_${PER_COUNTRY_YEAR}}"
+BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_${CLUSTERER}_${TARGET_TOPICS}_sample_${PER_COUNTRY_YEAR}}"
 ABSTRACTION_COMPLETE="$ABSTRACTION_PATH.complete.json"
 
 mkdir -p "$TOPIC_ROOT"
@@ -31,6 +33,8 @@ echo "LLM: $MODEL"
 echo "Maximum per country-year: $PER_COUNTRY_YEAR"
 echo "Target topics: $TARGET_TOPICS"
 echo "Minimum topic size: $MIN_TOPIC_SIZE"
+echo "HDBSCAN minimum samples: $HDBSCAN_MIN_SAMPLES"
+echo "Clusterer: $CLUSTERER"
 echo
 
 if [[ ! -f "$SAMPLE_PATH" ]]; then
@@ -80,7 +84,7 @@ PY
 then
   echo "3/6 Reusing verified compact BERTopic model: $BERTOPIC_DIR"
 else
-  echo "3/6 Fitting a target-$TARGET_TOPICS BERTopic model to usable abstractions..."
+  echo "3/6 Fitting BERTopic to usable abstractions (reduction=$TARGET_TOPICS)..."
   TMPDIR="${TMPDIR:-/home/akroon/data/1t_storage/tmp}" \
   HF_HOME="${HF_HOME:-/home/akroon/data/1t_storage/huggingface_cache}" \
   CUDA_VISIBLE_DEVICES="$CUDA_DEVICE" \
@@ -90,7 +94,9 @@ else
     --text-column topic_description_english \
     --status-column topic_abstraction_status \
     --include-status usable \
+    --clusterer "$CLUSTERER" \
     --min-topic-size "$MIN_TOPIC_SIZE" \
+    --hdbscan-min-samples "$HDBSCAN_MIN_SAMPLES" \
     --nr-topics "$TARGET_TOPICS" \
     --overwrite
 fi
@@ -120,7 +126,7 @@ echo "5/6 Building direct-topic visualizations..."
 python3 topic_classification/scripts/05_build_topic_visualizations.py \
   --bertopic-dir "$BERTOPIC_DIR" \
   --analysis-level fine-grained \
-  --top-n "$TARGET_TOPICS"
+  --top-n 12
 
 echo
 echo "6/6 Building the direct topic table, diagnostics, and manual-review packet..."

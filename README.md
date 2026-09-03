@@ -131,7 +131,7 @@ personality-driven clustering. Its maintained entry point is:
 topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
-This creates a target-eight-topic descriptive pilot with direct labels,
+This creates a data-driven compact descriptive solution with direct labels,
 diagnostics, visualizations, a compact table, and a manual-review packet. It
 does not impose the earlier six higher-order groups and does not publish files
 until the solution passes substantive review. The completed earlier model is

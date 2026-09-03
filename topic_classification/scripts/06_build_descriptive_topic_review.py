@@ -296,6 +296,10 @@ def main() -> None:
         "country_dominated_topics": int(summary["country_dominated"].sum()),
         "country_dominance_threshold": args.country_dominance_threshold,
         "topic_country_normalized_mutual_information_unweighted": topic_country_nmi,
+        "silhouette_cosine_original_embeddings": model_extra.get(
+            "silhouette_cosine_original_embeddings"
+        ),
+        "clusterer": model_extra.get("clusterer"),
         "interpretation_warning": (
             "Topic-country NMI and country-dominated-topic counts diagnose residual "
             "country structure using the balanced sample rather than population "
@@ -353,6 +357,8 @@ def main() -> None:
                 f"Largest weighted topic: {100 * diagnostics['largest_weighted_topic_share']:.1f}%",
                 f"Country-dominated topics: {diagnostics['country_dominated_topics']}",
                 f"Topic-country NMI: {topic_country_nmi:.3f}",
+                "Embedding-space silhouette: "
+                f"{diagnostics['silhouette_cosine_original_embeddings']}",
                 "",
                 f"Review first: {review_path}",
                 f"Direct topic table: {table_path}",

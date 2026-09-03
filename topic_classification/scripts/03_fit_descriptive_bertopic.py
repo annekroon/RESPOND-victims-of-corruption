@@ -53,12 +53,27 @@ def parse_args() -> argparse.Namespace:
         help="Target number of raw topics after reduction. Use 'auto' to preserve discovered granularity.",
     )
     parser.add_argument(
+        "--clusterer",
+        choices=["kmeans", "hdbscan"],
+        default="hdbscan",
+        help=(
+            "Clustering algorithm. K-means produces exactly --nr-topics broad "
+            "descriptive topics; HDBSCAN estimates a density-based count."
+        ),
+    )
+    parser.add_argument(
         "--cluster-selection-method",
         choices=["leaf", "eom"],
         default="leaf",
+        help="HDBSCAN-only cluster selection method.",
+    )
+    parser.add_argument(
+        "--hdbscan-min-samples",
+        type=int,
+        default=10,
         help=(
-            "HDBSCAN cluster selection. 'leaf' first discovers narrower clusters; "
-            "BERTopic then merges them to --nr-topics."
+            "HDBSCAN core-density requirement. Values below min topic size can "
+            "recover stable smaller structures without fixing the topic count."
         ),
     )
     parser.add_argument("--max-docs", type=int, default=None)
@@ -171,11 +186,14 @@ def main() -> None:
     prepare_output_dir(args.output_dir, args.overwrite)
 
     try:
+        import numpy as np
         import pandas as pd
         from bertopic import BERTopic
         from hdbscan import HDBSCAN
         from sentence_transformers import SentenceTransformer
+        from sklearn.cluster import KMeans
         from sklearn.feature_extraction.text import CountVectorizer
+        from sklearn.metrics import silhouette_score
         from umap import UMAP
     except ImportError as exc:
         raise SystemExit(
@@ -223,18 +241,36 @@ def main() -> None:
         metric="cosine",
         random_state=args.random_state,
     )
-    hdbscan_model = HDBSCAN(
-        min_cluster_size=args.min_topic_size,
-        metric="euclidean",
-        cluster_selection_method=args.cluster_selection_method,
-        prediction_data=True,
-    )
+    requested_topics = parse_nr_topics(str(args.nr_topics))
+    if args.clusterer == "kmeans":
+        if requested_topics == "auto":
+            raise ValueError("--clusterer kmeans requires an integer --nr-topics.")
+        if not 2 <= requested_topics < len(docs):
+            raise ValueError(
+                "For K-means, --nr-topics must be at least 2 and smaller than "
+                "the number of modeled documents."
+            )
+        cluster_model = KMeans(
+            n_clusters=requested_topics,
+            random_state=args.random_state,
+            n_init=20,
+        )
+        bertopic_nr_topics = None
+    else:
+        cluster_model = HDBSCAN(
+            min_cluster_size=args.min_topic_size,
+            min_samples=args.hdbscan_min_samples,
+            metric="euclidean",
+            cluster_selection_method=args.cluster_selection_method,
+            prediction_data=True,
+        )
+        bertopic_nr_topics = requested_topics
     vectorizer_model = CountVectorizer(
         lowercase=True,
         stop_words="english",
         # BERTopic fits this vectorizer to one concatenated document per topic,
         # not to every article. min_df must therefore remain valid even for a
-        # deliberately compact six- or eight-topic solution.
+        # deliberately compact solution with only a few topic documents.
         min_df=1,
         max_df=1.0,
         ngram_range=(1, 2),
@@ -244,15 +280,27 @@ def main() -> None:
         language="english",
         embedding_model=embedder,
         umap_model=umap_model,
-        hdbscan_model=hdbscan_model,
+        hdbscan_model=cluster_model,
         vectorizer_model=vectorizer_model,
         min_topic_size=args.min_topic_size,
-        nr_topics=parse_nr_topics(str(args.nr_topics)),
+        nr_topics=bertopic_nr_topics,
         calculate_probabilities=False,
         verbose=True,
     )
 
     topics, _ = topic_model.fit_transform(docs, embeddings)
+    topic_array = np.asarray(topics)
+    inlier_mask = topic_array != -1
+    observed_topic_ids = sorted(set(int(topic) for topic in topic_array[inlier_mask]))
+    silhouette = None
+    if 1 < len(observed_topic_ids) < int(inlier_mask.sum()):
+        silhouette = float(
+            silhouette_score(
+                embeddings[inlier_mask],
+                topic_array[inlier_mask],
+                metric="cosine",
+            )
+        )
 
     topic_info = topic_model.get_topic_info()
     topic_info.to_csv(args.output_dir / "topic_info.csv", index=False)
@@ -264,7 +312,7 @@ def main() -> None:
         args.output_dir / "topic_model",
         serialization="safetensors",
         save_ctfidf=True,
-        save_embedding_model=False,
+        save_embedding_model=args.embedding_model,
     )
 
     upstream_classifier = (
@@ -298,7 +346,10 @@ def main() -> None:
             "random_state": args.random_state,
             "min_topic_size": args.min_topic_size,
             "nr_topics": args.nr_topics,
+            "clusterer": args.clusterer,
             "cluster_selection_method": args.cluster_selection_method,
+            "hdbscan_min_samples": args.hdbscan_min_samples,
+            "silhouette_cosine_original_embeddings": silhouette,
             "bertopic_model_dir": str(args.output_dir / "topic_model"),
             "non_outlier_topics": non_outlier_topics,
             "inlier_documents": inlier_documents,
