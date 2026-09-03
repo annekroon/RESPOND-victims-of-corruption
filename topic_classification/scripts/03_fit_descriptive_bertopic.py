@@ -1,4 +1,4 @@
-"""Fit a multilingual BERTopic model on a stratified topic sample."""
+"""Fit compact BERTopic topics to language-neutral English abstractions."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import re
 import shutil
 import sys
+import unicodedata
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -21,10 +22,23 @@ DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fit BERTopic on a multilingual sample.")
+    parser = argparse.ArgumentParser(
+        description="Fit compact BERTopic topics to verified English abstractions."
+    )
     parser.add_argument("--sample", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--text-column", default="article_text")
+    parser.add_argument(
+        "--status-column",
+        default=None,
+        help="Optional abstraction-status column used to filter model inputs.",
+    )
+    parser.add_argument(
+        "--include-status",
+        nargs="+",
+        default=None,
+        help="Status values retained when --status-column is supplied.",
+    )
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
@@ -56,7 +70,18 @@ def parse_args() -> argparse.Namespace:
 def normalize_text(text: object) -> str:
     if not isinstance(text, str):
         return ""
-    text = text.replace("\u00a0", " ")
+    try:
+        from ftfy import fix_text
+
+        text = fix_text(text)
+    except ImportError:
+        pass
+    text = unicodedata.normalize("NFKC", text).replace("\u00a0", " ")
+    text = "".join(
+        char
+        for char in text
+        if char in "\n\t" or unicodedata.category(char) != "Cc"
+    )
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -94,6 +119,9 @@ GENERATED_OUTPUTS = [
     "topic_model_build_summary.json",
     "topic_model_output_manifest.json",
     "00_LATEST_TOPIC_MODEL_BUILD.txt",
+    "descriptive_outputs",
+    "descriptive_topic_output_manifest.json",
+    "00_LATEST_DESCRIPTIVE_TOPIC_BUILD.txt",
 ]
 
 
@@ -150,6 +178,19 @@ def main() -> None:
     if args.text_column not in data.columns:
         raise ValueError(f"Text column not found: {args.text_column}")
 
+    input_rows = len(data)
+    if args.status_column is not None:
+        if args.status_column not in data.columns:
+            raise ValueError(f"Status column not found: {args.status_column}")
+        if not args.include_status:
+            raise ValueError("--include-status is required with --status-column.")
+        data = data[data[args.status_column].isin(args.include_status)].copy()
+        print(
+            f"Status filter retained {len(data):,} / {input_rows:,} rows: "
+            f"{args.status_column} in {args.include_status}",
+            flush=True,
+        )
+
     data[args.text_column] = data[args.text_column].map(normalize_text)
     data = data[data[args.text_column].str.strip().ne("")].copy()
     if args.max_docs is not None:
@@ -181,13 +222,14 @@ def main() -> None:
     )
     vectorizer_model = CountVectorizer(
         lowercase=True,
+        stop_words="english",
         min_df=5,
         max_df=0.80,
         ngram_range=(1, 2),
     )
 
     topic_model = BERTopic(
-        language="multilingual",
+        language="english",
         embedding_model=embedder,
         umap_model=umap_model,
         hdbscan_model=hdbscan_model,
@@ -236,6 +278,9 @@ def main() -> None:
         },
         extra={
             "documents_for_model": int(len(docs)),
+            "input_rows_before_status_filter": int(input_rows),
+            "status_column": args.status_column,
+            "included_statuses": args.include_status,
             "embedding_model": args.embedding_model,
             "embedding_model_revision": embedding_revision(embedder),
             "random_state": args.random_state,

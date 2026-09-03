@@ -119,25 +119,23 @@ fragments are under `output/manuscript/`, attention `.tex` files are directly
 under `output/tables/attention/`, and immutable historical builds remain under
 `derived_data/political_classifier/runs/`.
 
-## Exploratory Topic-Model Run Order
+## Descriptive Topic-Model Run Order
 
 Run topic modelling only after political-classifier step 06 has completed. The
-topic workflow verifies the final classifier manifest, threshold, country
-files, row counts, and source-filtered corpus before sampling. Its maintained
-one-command entry point is:
+topic workflow verifies the final classifier provenance and draws a compact
+country-year sample. GPT-5.1 converts the multilingual articles into neutral
+English case abstractions before BERTopic, reducing language, country, and
+personality-driven clustering. Its maintained entry point is:
 
 ```bash
-topic_classification/scripts/07_rerun_final_source_filtered_topic_solution.sh
+topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
-This recreates the country-year-stratified sample, multilingual BERTopic model,
-GPT-5.1 labels, six higher-order assignments, exploratory visualizations,
-appendix table, generated LaTeX values, and the final topic output manifest.
-Use `--upload-tables` for the canonical manuscript files and
-`--upload-archive` for the full reproducibility archive. On Research Drive,
-open `output/00_LATEST_TOPIC_MODEL_BUILD.txt` first. Manuscript topic files are
-under `output/tables/topic_models/`; the fine-grained inventory remains in the
-archive under `derived_data/topic_classification/`.
+This creates a target-eight-topic descriptive pilot with direct labels,
+diagnostics, visualizations, a compact table, and a manual-review packet. It
+does not impose the earlier six higher-order groups and does not publish files
+until the solution passes substantive review. The completed earlier model is
+retained in Research Drive as a reproducible sensitivity analysis.
 
 ## Data And Archive Locations
 

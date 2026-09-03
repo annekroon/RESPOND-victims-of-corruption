@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 import pandas as pd
@@ -13,12 +14,6 @@ from topic_classification.provenance import (
     validate_verified_topic_sample,
     verify_classified_country_frame,
 )
-from topic_classification.scripts._impl.build_topic_tables import (
-    higher_order_latex,
-    weighted_analyses,
-)
-
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -146,42 +141,35 @@ class TopicClassifierProvenanceTests(unittest.TestCase):
 
 
 class TopicWorkflowStructureTests(unittest.TestCase):
-    def test_final_runner_uses_six_groups_and_finalizes_outputs(self):
+    def test_compact_descriptive_runner_has_no_forced_grouping(self):
         runner = (
             ROOT
-            / "topic_classification/scripts/07_rerun_final_source_filtered_topic_solution.sh"
+            / "topic_classification/scripts/07_run_compact_descriptive_topic_model.sh"
         ).read_text(encoding="utf-8")
-        self.assertIn("--target-groups 6", runner)
-        self.assertNotIn("--target-groups 12", runner)
-        self.assertIn("finalize_topic_outputs.py", runner)
-        self.assertIn("build_topic_tables.py", runner)
-        self.assertIn("--analysis-level higher-order", runner)
-        self.assertNotIn("nbconvert", runner)
-        self.assertNotIn(".ipynb", runner)
-        self.assertGreaterEqual(runner.count("--overwrite"), 4)
+        self.assertIn("--per-country-year 50", runner)
+        self.assertIn("02_create_descriptive_abstractions.py", runner)
+        self.assertIn("--nr-topics 8", runner)
+        self.assertIn("04_label_descriptive_topics_with_llm.py", runner)
+        self.assertNotIn("--input-kind", runner)
+        self.assertIn("--analysis-level fine-grained", runner)
+        self.assertIn("06_build_descriptive_topic_review.py", runner)
+        self.assertNotIn("04_group_topics_with_llm.py", runner)
+        self.assertNotIn("--upload", runner)
 
-    def test_appendix_uses_only_compact_canonical_topic_table(self):
+    def test_appendix_uses_direct_descriptive_topic_table(self):
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )
         self.assertIn(
-            "output/tables/topic_models/table_topic_higher_order_summary",
+            "output/tables/topic_models/table_topic_descriptive_summary",
             appendix,
         )
         self.assertIn(
-            "output/tables/topic_models/topic_model_manuscript_values",
+            "output/tables/topic_models/descriptive_topic_manuscript_values",
             appendix,
         )
+        self.assertNotIn("table_topic_higher_order_summary", appendix)
         self.assertNotIn("table_all_topics_llm_higher_order_topics", appendix)
-
-    def test_publisher_uses_canonical_topic_models_folder(self):
-        publisher = (
-            ROOT
-            / "topic_classification/scripts/06_publish_topic_archive_to_webdav.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn('default="topic_models"', publisher)
-        self.assertNotIn('default="topic models"', publisher)
-        self.assertIn("validate_final_topic_outputs", publisher)
 
     def test_readme_has_no_stale_fixed_topic_solution(self):
         readme = (ROOT / "topic_classification/README.md").read_text(
@@ -189,38 +177,62 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         )
         self.assertNotIn("67 non-outlier", readme)
         self.assertNotIn("target-groups 12", readme)
-        self.assertIn("00_LATEST_TOPIC_MODEL_BUILD.txt", readme)
+        self.assertIn("00_LATEST_DESCRIPTIVE_TOPIC_BUILD.txt", readme)
+        self.assertIn("language-neutral english", readme.lower())
 
 
 class TopicTableBuilderTests(unittest.TestCase):
-    def test_weighted_summaries_exclude_outliers_and_use_compact_latex(self):
-        documents = pd.DataFrame(
-            {
-                "topic": [0, 0, 1, -1],
-                "country": ["France", "Italy", "France", "France"],
-                "year": [2023, 2023, 2024, 2024],
-                "analysis_weight": [2.0, 1.0, 1.0, 50.0],
-            }
+    def test_direct_descriptive_table_is_compact(self):
+        script_path = (
+            ROOT
+            / "topic_classification/scripts/06_build_descriptive_topic_review.py"
         )
-        groups = pd.DataFrame(
-            {
-                "Topic": [0, 1],
-                "llm_topic_short_label": ["Tender cases", "Court cases"],
-                "llm_topic_summary": ["Tender summary", "Court summary"],
-                "topic_group_id": ["local", "elite"],
-                "topic_group_short_label": ["Local cases", "Elite scandals"],
-                "topic_group_label": ["Local cases", "Elite scandals"],
-                "topic_group_summary": ["Local summary", "Elite summary"],
-                "topic_group_assignment_rationale": ["local", "elite"],
-            }
+        spec = spec_from_file_location("descriptive_topic_review", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        summary = pd.DataFrame(
+            [
+                {
+                    "llm_topic_short_label": "Public contracting",
+                    "weighted_share": 0.6,
+                    "top_countries": "France (40.0%); Italy (30.0%)",
+                    "llm_topic_summary": "Cases concerning manipulation of public contracts.",
+                }
+            ]
         )
-        analyses = weighted_analyses(documents, groups)
-        self.assertAlmostEqual(analyses["summary"]["weighted_share"].sum(), 1.0)
-        self.assertEqual(analyses["inliers"]["analysis_weight"].sum(), 4.0)
-        latex = higher_order_latex(analyses["summary"])
+        latex = module.direct_topic_latex(summary)
         self.assertIn(r"\scriptsize", latex)
         self.assertIn(r"\begin{tabularx}", latex)
         self.assertNotIn(r"\resizebox", latex)
+
+    def test_abstraction_prompt_removes_case_identifiers(self):
+        script_path = (
+            ROOT
+            / "topic_classification/scripts/02_create_descriptive_abstractions.py"
+        )
+        spec = spec_from_file_location("descriptive_abstractions", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        prompt = module.build_prompt("Article text")
+        self.assertIn("Do not include names", prompt)
+        self.assertIn("institutional or sectoral setting", prompt)
+        self.assertIn("boundary_or_unclear", prompt)
+
+    def test_topic_label_prompt_cannot_reconstruct_case_identifiers(self):
+        script_path = (
+            ROOT
+            / "topic_classification/scripts/04_label_descriptive_topics_with_llm.py"
+        )
+        spec = spec_from_file_location("descriptive_topic_labels", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        prompt = module.build_prompt(0, "keywords", 10, ["Neutral abstraction"])
+        self.assertIn("Do not reconstruct removed countries", prompt)
+        self.assertIn("Labels must remain country-neutral", prompt)
+        self.assertNotIn("acceptable for a label to mention a country", prompt.lower())
 
 
 if __name__ == "__main__":

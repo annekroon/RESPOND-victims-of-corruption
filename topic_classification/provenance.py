@@ -308,6 +308,45 @@ def validate_verified_topic_sample(sample_path: Path) -> dict[str, Any]:
         raise ValueError("Final topic modelling requires a political-only sample.")
     if int(extra.get("saved_sample_rows", -1)) <= 0:
         raise ValueError("Topic sample manifest records no sampled rows.")
+
+    abstraction = extra.get("topic_abstraction") or {}
+    if abstraction:
+        inputs = manifest.get("inputs") or {}
+        source_record = inputs.get("source_sample") or {}
+        source_path = Path(str(source_record.get("path", "")))
+        if not source_path.is_absolute():
+            source_path = sample_path.parent / source_path.name
+        assert_file_hash(
+            source_path,
+            source_record.get("sha256"),
+            "Topic abstraction source sample",
+        )
+        source_provenance = validate_verified_topic_sample(source_path)
+        source_manifest_record = inputs.get("source_sample_manifest") or {}
+        recorded_source_manifest_hash = source_manifest_record.get("sha256")
+        expected_source_manifest_hash = source_provenance["manifest_sha256"]
+        if recorded_source_manifest_hash != expected_source_manifest_hash:
+            raise ValueError(
+                "Topic abstractions belong to a different source-sample manifest. "
+                "Rerun 02_create_descriptive_abstractions.py."
+            )
+        if (
+            abstraction.get("source_sample_manifest_sha256")
+            != expected_source_manifest_hash
+        ):
+            raise ValueError(
+                "Topic abstraction metadata does not match its source sample. "
+                "Rerun 02_create_descriptive_abstractions.py."
+            )
+        source_classifier_hash = source_provenance["upstream_classifier"].get(
+            "classifier_manifest_sha256"
+        )
+        abstraction_classifier_hash = upstream.get("classifier_manifest_sha256")
+        if abstraction_classifier_hash != source_classifier_hash:
+            raise ValueError(
+                "Topic abstractions and their source sample point to different "
+                "classifier runs."
+            )
     return {
         "manifest": manifest,
         "manifest_path": manifest_path,
@@ -331,7 +370,7 @@ def validate_topic_model_outputs(bertopic_dir: Path) -> dict[str, Any]:
     if recorded_sample_manifest.get("sha256") != sample_provenance["manifest_sha256"]:
         raise ValueError(
             "BERTopic model belongs to a different topic sample manifest. "
-            "Rerun 02_fit_multilingual_bertopic.py with --overwrite."
+            "Rerun 03_fit_descriptive_bertopic.py with --overwrite."
         )
     for name in ["topic_info", "document_topics"]:
         record = (manifest.get("outputs") or {}).get(name) or {}
@@ -371,7 +410,7 @@ def validate_topic_label_outputs(bertopic_dir: Path) -> dict[str, Any]:
     if recorded_model.get("sha256") != model["manifest_sha256"]:
         raise ValueError(
             "Topic-label manifest belongs to a different BERTopic run. "
-            "Rerun 03_label_topics_with_llm.py with --overwrite."
+            "Rerun 04_label_descriptive_topics_with_llm.py with --overwrite."
         )
     outputs = manifest.get("outputs") or {}
     for name in ["topic_labels", "topic_label_audit"]:

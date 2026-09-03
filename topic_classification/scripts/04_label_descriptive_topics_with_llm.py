@@ -1,9 +1,4 @@
-"""Use the UvA LLM proxy to create human-readable topic labels.
-
-The input is a BERTopic output directory containing topic_info.csv and
-document_topics.csv.gz. The script asks GPT 5.1 by default to summarize each
-non-outlier topic using topic keywords plus representative documents.
-"""
+"""Label compact descriptive BERTopic topics from neutral abstractions."""
 
 from __future__ import annotations
 
@@ -23,10 +18,12 @@ from topic_classification.provenance import validate_topic_model_outputs
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
-PROMPT_VERSION = "inductive_topic_labels_v1"
+PROMPT_VERSION = "descriptive_abstract_topic_labels_v2"
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Label BERTopic topics with GPT via the UvA LLM proxy.")
+    parser = argparse.ArgumentParser(
+        description="Label compact BERTopic topics from neutral English abstractions."
+    )
     parser.add_argument("--bertopic-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--model", default=LLMPROXY_MODEL)
@@ -52,28 +49,61 @@ def extract_json(text: str) -> dict:
     text = text.strip()
     text = re.sub(r"^```(?:json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
+    def parse(candidate: str) -> dict:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as strict_error:
+            try:
+                return json.loads(candidate, strict=False)
+            except json.JSONDecodeError:
+                raise strict_error
+
     try:
-        return json.loads(text)
+        return parse(text)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if match:
-            return json.loads(match.group(0))
+            return parse(match.group(0))
         raise
 
 
-def normalize_result(parsed: dict) -> dict:
-    return {
-        "llm_label_prompt_version": PROMPT_VERSION,
-        "llm_topic_label": parsed.get("topic_label", ""),
-        "llm_topic_short_label": parsed.get("short_label", ""),
-        "llm_topic_summary": parsed.get("summary", ""),
-        "llm_inclusion_rule": parsed.get("inclusion_rule", ""),
-        "llm_exclusion_rule": parsed.get("exclusion_rule", ""),
-        "llm_country_event_specific": parsed.get("country_event_specific", ""),
-        "llm_cross_country_comparability": parsed.get("cross_country_comparability", ""),
-        "llm_label_rationale": parsed.get("label_rationale", ""),
-        "llm_confidence": parsed.get("confidence", ""),
+def normalize_result(parsed: dict, prompt_version: str) -> dict:
+    result = {
+        "llm_label_prompt_version": prompt_version,
+        "llm_topic_label": compact_text(parsed.get("topic_label", ""), 500),
+        "llm_topic_short_label": compact_text(parsed.get("short_label", ""), 200),
+        "llm_topic_summary": compact_text(parsed.get("summary", ""), 1500),
+        "llm_inclusion_rule": compact_text(parsed.get("inclusion_rule", ""), 1000),
+        "llm_exclusion_rule": compact_text(parsed.get("exclusion_rule", ""), 1000),
+        "llm_country_event_specific": parsed.get("country_event_specific"),
+        "llm_cross_country_comparability": compact_text(
+            parsed.get("cross_country_comparability", ""), 50
+        ).lower(),
+        "llm_label_rationale": compact_text(parsed.get("label_rationale", ""), 1000),
     }
+    required = [
+        "llm_topic_label",
+        "llm_topic_short_label",
+        "llm_topic_summary",
+        "llm_inclusion_rule",
+        "llm_exclusion_rule",
+        "llm_label_rationale",
+    ]
+    blank = [name for name in required if not result[name]]
+    if blank:
+        raise ValueError(f"Topic-label response has blank fields: {blank}")
+    if result["llm_country_event_specific"] is not False:
+        raise ValueError("Descriptive topic labels must remain country-neutral.")
+    if result["llm_cross_country_comparability"] not in {"high", "medium", "low"}:
+        raise ValueError("Invalid cross_country_comparability value.")
+    try:
+        confidence = float(parsed.get("confidence"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("confidence must be numeric") from exc
+    if not 0 <= confidence <= 100:
+        raise ValueError("confidence must be between 0 and 100")
+    result["llm_confidence"] = confidence
+    return result
 
 
 def compact_text(text: object, max_chars: int) -> str:
@@ -83,14 +113,21 @@ def compact_text(text: object, max_chars: int) -> str:
     return text[:max_chars]
 
 
-def format_example(row, text_column: str, max_chars: int) -> str:
-    country = row.get("country", "")
-    year = row.get("year", "")
-    text = compact_text(row.get(text_column, ""), max_chars)
-    return f"Country: {country}; year: {year}; text: {text}"
+def format_example(
+    row,
+    text_column: str,
+    max_chars: int,
+) -> str:
+    return compact_text(row.get(text_column, ""), max_chars)
 
 
-def select_diverse_examples(topic_docs, text_column: str, n: int, max_chars: int, random_state: int) -> list[str]:
+def select_diverse_examples(
+    topic_docs,
+    text_column: str,
+    n: int,
+    max_chars: int,
+    random_state: int,
+) -> list[str]:
     if topic_docs.empty:
         return []
 
@@ -109,26 +146,34 @@ def select_diverse_examples(topic_docs, text_column: str, n: int, max_chars: int
         examples.append(remaining.sample(n=min(remaining_n, len(remaining)), random_state=random_state))
 
     selected = topic_docs.head(0) if not examples else __import__("pandas").concat(examples).head(n)
-    return [format_example(row, text_column, max_chars) for _, row in selected.iterrows()]
+    return [
+        format_example(row, text_column, max_chars)
+        for _, row in selected.iterrows()
+    ]
 
 
-def build_prompt(topic_id: int, topic_name: str, count: int, examples: list[str]) -> str:
+def build_prompt(
+    topic_id: int,
+    topic_name: str,
+    count: int,
+    examples: list[str],
+) -> str:
     example_block = "\n\n".join(f"Example {i + 1}: {example}" for i, example in enumerate(examples))
     return f"""
-You are helping interpret multilingual BERTopic clusters for a research project on political corruption.
+You are helping interpret compact BERTopic clusters for a research project on political corruption.
 
-The documents were already classified as primarily discussing political corruption. Your job is to
-label the topic inductively from the examples and BERTopic keywords. Do not apply a predefined
-corruption-type taxonomy. Do not force the topic into categories such as procurement, patronage, or
-campaign finance unless that is clearly what the examples themselves show.
+The documents were already classified as primarily discussing political corruption.
+The examples are short English abstractions generated from multilingual articles. Names,
+countries, outlets, dates, and case-specific details were deliberately removed. Label the recurring
+substantive kind of coverage directly from those abstractions. Prefer a concrete description of the
+practice, institutional setting, or response. Do not reconstruct removed countries, people, parties,
+companies, or events. Do not apply a predefined corruption-type taxonomy.
 
 Research goal:
 - We want topics that can reveal variation across countries and over time.
 - Use specific, substantive labels that describe what actually binds the examples together.
-- It is acceptable for a label to mention a country, person, institution, or event when the cluster is
-  genuinely country/event-specific. In that case, set country_event_specific to true.
-- If a cross-country theme is visible, prefer a country-neutral label. If not, do not pretend it is
-  cross-country.
+- Labels must remain country-neutral and must not mention or guess a person, party, company,
+  country, outlet, or one-off event removed during abstraction.
 - Avoid generic labels such as "corruption investigations", "political corruption", "scandals",
   "legal proceedings", "elite corruption", or "accountability" unless the examples truly contain no
   more specific common thread.
@@ -148,14 +193,21 @@ Return valid JSON only with these keys:
   "summary": "2-3 sentence interpretation of what binds these articles together",
   "inclusion_rule": "what belongs in this topic, based only on this cluster",
   "exclusion_rule": "what should not be coded as this topic",
-  "country_event_specific": true | false,
+  "country_event_specific": false,
   "cross_country_comparability": "high" | "medium" | "low",
   "label_rationale": "brief explanation of the evidence for the label and whether it captures cross-country variation",
   "confidence": 0-100
 }}
 """.strip()
 
-def llm_label_topic(client, model: str, topic_id: int, topic_name: str, count: int, examples: list[str]) -> tuple[dict, str, str]:
+def llm_label_topic(
+    client,
+    model: str,
+    topic_id: int,
+    topic_name: str,
+    count: int,
+    examples: list[str],
+) -> tuple[dict, str, str]:
     prompt = build_prompt(topic_id, topic_name, count, examples)
     response = client.chat.completions.create(
         model=model,
@@ -163,7 +215,7 @@ def llm_label_topic(client, model: str, topic_id: int, topic_name: str, count: i
         temperature=0,
     )
     raw = response.choices[0].message.content
-    return normalize_result(extract_json(raw)), prompt, raw
+    return normalize_result(extract_json(raw), PROMPT_VERSION), prompt, raw
 
 
 def append_audit_record(path: Path, record: dict) -> None:
@@ -194,6 +246,7 @@ def main() -> None:
 
     model_provenance = validate_topic_model_outputs(args.bertopic_dir)
     model_manifest_sha256 = model_provenance["manifest_sha256"]
+    prompt_version = PROMPT_VERSION
 
     topic_info_path = args.bertopic_dir / "topic_info.csv"
     document_topics_path = args.bertopic_dir / "document_topics.csv.gz"
@@ -232,7 +285,7 @@ def main() -> None:
         }
         has_current_prompt = (
             "llm_label_prompt_version" in existing.columns
-            and existing["llm_label_prompt_version"].fillna("").astype(str).eq(PROMPT_VERSION).all()
+            and existing["llm_label_prompt_version"].fillna("").astype(str).eq(prompt_version).all()
         )
         has_current_model_run = (
             "topic_model_manifest_sha256" in existing.columns
@@ -301,7 +354,7 @@ def main() -> None:
                 append_audit_record(
                     audit_path,
                     {
-                        "prompt_version": PROMPT_VERSION,
+                        "prompt_version": prompt_version,
                         "topic_id": topic_id,
                         "model": args.model,
                         "temperature": 0,
@@ -355,7 +408,7 @@ def main() -> None:
             "topic_label_audit": audit_path,
         },
         extra={
-            "prompt_version": PROMPT_VERSION,
+            "prompt_version": prompt_version,
             "model": args.model,
             "temperature": 0,
             "examples_per_topic": args.examples_per_topic,

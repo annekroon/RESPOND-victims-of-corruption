@@ -136,25 +136,30 @@ inferential predictor. Its purpose was exploratory: representative articles,
 keywords, country distributions, and temporal patterns were examined to
 sensitize the later codebook to recurring forms of corruption coverage.
 
-To reduce domination by large countries and years, the topic-model sample was
-stratified by country and publication year, with up to 200 political-corruption
-articles drawn per non-empty stratum and sampling weights retained. The
-multilingual BERTopic specification used
-\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings, a minimum
-topic size of 10, and automatic topic reduction. GPT-5.1 proposed readable
-labels for the discovered clusters. The researchers then defined six broad
-interpretive groupings, and GPT-5.1 assigned the fine-grained clusters to those
-predefined groupings using labels and summaries derived from topic keywords and
-representative documents.
-These groupings are analyst-defined summaries of an inductive topic solution,
-not additional inductively estimated topics. Prompts, selected examples, raw
-responses, model metadata, and run
-manifests were retained for audit. The resulting topic solution is reported as
-exploratory appendix material in Appendix~\ref{app:exploratory-topic-model} and
-informed, but did not determine, the substantive coding categories. The topic
-sample, model, labels, grouping assignments, visualizations, and manuscript
-table are connected by checksummed run manifests to the completed
-source-filtered classifier output.
+To reduce domination by large countries and years, the descriptive sample was
+stratified by country and publication year, with up to 50
+political-corruption articles drawn per non-empty stratum and inverse sampling
+weights retained. Direct clustering of multilingual articles was first tested
+as a sensitivity specification, but manual inspection showed that its clusters
+were strongly structured by publication language, country, and recurring
+events. It was therefore archived rather than interpreted as a distribution of
+corruption types.
+
+For the maintained descriptive specification, GPT-5.1 converted each sampled
+article into a short English abstraction of the alleged corrupt practice,
+institutional setting, and central response. The prompt removed names,
+countries, outlets, dates, exact amounts, and other case-specific identifiers;
+articles without a clear substantive political-corruption focus were marked as
+boundary or unclear and excluded from clustering while remaining in the audit
+data. BERTopic was fitted to the remaining abstractions using
+\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings, a
+minimum topic size of 40, and a target of eight direct descriptive topics.
+GPT-5.1 proposed readable labels from representative abstractions. No
+higher-order taxonomy was imposed. Prompts, selected examples, raw responses,
+model metadata, diagnostic country distributions, and checksummed run
+manifests were retained. The topics are exploratory descriptions rather than
+validated measures and informed, but did not determine, the substantive coding
+categories.
 
 \subsection{Article-Level Codebook Development}
 \label{sec:method-codebook-development}

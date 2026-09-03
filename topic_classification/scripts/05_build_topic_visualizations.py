@@ -10,10 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from topic_classification.provenance import (
-    validate_topic_group_outputs,
-    validate_topic_label_outputs,
-)
+from topic_classification.provenance import validate_topic_label_outputs
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -25,14 +22,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--top-n",
         type=int,
-        default=6,
-        help="Maximum topics/groups to display; the final higher-order solution has six.",
+        default=8,
+        help="Maximum directly labelled topics to display.",
     )
     parser.add_argument(
         "--analysis-level",
-        choices=["higher-order", "fine-grained"],
-        default="higher-order",
-        help="Plot the six interpretive groups or the inductive BERTopic labels.",
+        choices=["fine-grained"],
+        default="fine-grained",
+        help="Plot the directly labelled BERTopic topics.",
     )
     parser.add_argument(
         "--include-outlier",
@@ -48,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_analysis_labels(topic_info, labels_path, groups_path, analysis_level):
+def load_analysis_labels(topic_info, labels_path):
     if labels_path is None or not labels_path.exists():
         raise FileNotFoundError(labels_path)
 
@@ -65,23 +62,6 @@ def load_analysis_labels(topic_info, labels_path, groups_path, analysis_level):
         labels["analysis_label"].fillna("").str.strip().eq(""), "analysis_label"
     ] = labels["Name"]
 
-    if analysis_level == "higher-order":
-        if not groups_path.exists():
-            raise FileNotFoundError(groups_path)
-        groups = pd.read_csv(groups_path)
-        required = {"Topic", "topic_group_short_label"}
-        if not required.issubset(groups.columns):
-            raise ValueError(
-                f"Topic-group file is missing columns: {sorted(required - set(groups.columns))}"
-            )
-        labels = labels.drop(columns=["analysis_label"]).merge(
-            groups[["Topic", "topic_group_short_label"]], on="Topic", how="left"
-        )
-        labels = labels.rename(
-            columns={"topic_group_short_label": "analysis_label"}
-        )
-        if labels["analysis_label"].fillna("").str.strip().eq("").any():
-            raise ValueError("At least one fine-grained topic lacks a higher-order assignment.")
     return labels[["Topic", "analysis_label"]]
 
 
@@ -105,10 +85,7 @@ def main() -> None:
     if not topic_info_path.exists():
         raise FileNotFoundError(topic_info_path)
 
-    if args.analysis_level == "higher-order":
-        provenance = validate_topic_group_outputs(args.bertopic_dir)
-    else:
-        provenance = validate_topic_label_outputs(args.bertopic_dir)
+    provenance = validate_topic_label_outputs(args.bertopic_dir)
 
     output_dir = args.output_dir or (args.bertopic_dir / "visualizations")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -116,13 +93,7 @@ def main() -> None:
     docs = pd.read_csv(document_topics_path)
     topic_info = pd.read_csv(topic_info_path)
     labels_path = args.labels or (args.bertopic_dir / "topic_labels_llm.csv")
-    groups_path = args.bertopic_dir / "topic_groups_llm.csv"
-    labels = load_analysis_labels(
-        topic_info,
-        labels_path,
-        groups_path,
-        args.analysis_level,
-    )
+    labels = load_analysis_labels(topic_info, labels_path)
 
     docs = docs.merge(labels, left_on="topic", right_on="Topic", how="left")
     analysis_label = "analysis_label"
@@ -143,11 +114,7 @@ def main() -> None:
     top_labels = topic_totals.head(args.top_n)[analysis_label].tolist()
     docs_top = docs[docs[analysis_label].isin(top_labels)].copy()
     display_n = len(top_labels)
-    display_level = (
-        "higher-order groups"
-        if args.analysis_level == "higher-order"
-        else "topics"
-    )
+    display_level = "topics"
 
     topic_totals_path = output_dir / "topic_weighted_totals.csv"
     topic_totals.to_csv(topic_totals_path, index=False)
@@ -191,14 +158,21 @@ def main() -> None:
         .rename("weighted_articles")
         .reset_index()
     )
+    country_time["share"] = country_time["weighted_articles"] / country_time.groupby(
+        ["country", "period"]
+    )["weighted_articles"].transform("sum")
     fig_country_time = px.line(
         country_time.sort_values("period"),
         x="period",
-        y="weighted_articles",
+        y="share",
         color=analysis_label,
         facet_row="country",
         title=f"Political-corruption {display_level} by country over time",
-        labels={"period": args.time_unit.title(), "weighted_articles": "Weighted articles", analysis_label: "Topic"},
+        labels={
+            "period": args.time_unit.title(),
+            "share": "Within-country topic share",
+            analysis_label: "Topic",
+        },
         height=1400,
     )
     fig_country_time.update_yaxes(matches=None)
@@ -213,8 +187,7 @@ def main() -> None:
             "document_topics": document_topics_path,
             "topic_info": topic_info_path,
             "topic_labels": labels_path,
-            "topic_groups": groups_path,
-            "topic_group_manifest": provenance["manifest_path"],
+            "topic_label_manifest": provenance["manifest_path"],
         },
         outputs={
             "topic_weighted_totals": topic_totals_path,

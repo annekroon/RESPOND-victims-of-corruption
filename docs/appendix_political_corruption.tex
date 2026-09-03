@@ -29,28 +29,24 @@ analysis.
 \section{Exploratory Topic Model}
 \label{app:exploratory-topic-model}
 
-\input{output/tables/topic_models/topic_model_manuscript_values}
+\input{output/tables/topic_models/descriptive_topic_manuscript_values}
 
-The exploratory topic model was estimated on a country-year-stratified sample
-of \TopicModelSampleN{} articles from the final source-filtered
-political-corruption corpus ($N=\TopicModelClassifierN{}$; classifier threshold
-$=\TopicModelClassifierThreshold{}$). BERTopic identified
-\TopicModelFineTopicN{} non-outlier fine-grained clusters. Of the sampled
-articles, \TopicModelInlierN{} (\TopicModelInlierShare\%) were assigned to
-these clusters and \TopicModelOutlierN{} (\TopicModelOutlierShare\%) were
-treated as outliers.
+The descriptive topic model began with a country-year-stratified sample of
+\DescriptiveTopicSourceSampleN{} articles. GPT-5.1 produced language-neutral
+English abstractions of their political-corruption content;
+\DescriptiveTopicBoundaryN{} boundary or unclear cases were retained for audit
+but excluded from clustering. BERTopic assigned
+\DescriptiveTopicInlierN{} of the \DescriptiveTopicUsableN{} usable
+abstractions to \DescriptiveTopicN{} direct topics and treated
+\DescriptiveTopicOutlierN{} (\DescriptiveTopicOutlierShare\%) as outliers.
 
-GPT-5.1 generated descriptive labels for the fine-grained clusters from their
-keywords and representative documents. The researchers then defined
-\TopicModelConfiguredGroupN{} broad interpretive groupings, and GPT-5.1
-assigned each fine-grained cluster to one grouping. These groups summarize how
-political-corruption coverage is organized in this corpus; they are not
-validated corruption-type measures and are not used as inferential outcomes.
-Table~\ref{tab:topic_higher_order_summary} reports their weighted distribution.
+Table~\ref{tab:pc-descriptive-topics} reports the weighted distribution of the
+direct descriptive topics. These are exploratory summaries of recurring
+coverage, not validated corruption-type measures or inferential outcomes.
 
-\input{output/tables/topic_models/table_topic_higher_order_summary}
+\input{output/tables/topic_models/table_topic_descriptive_summary}
 
-The complete fine-grained topic inventory, prompts, representative examples,
-raw model responses, assignments, interactive visualizations, and checksummed
-run manifests are retained in the Research Drive topic-model archive. The full
-inventory is archived rather than inserted into the manuscript by default.
+The sampled articles, abstractions, prompts, representative examples, raw model
+responses, interactive visualizations, country-dependence diagnostics, and
+checksummed run manifests are retained in the Research Drive topic-model
+archive.

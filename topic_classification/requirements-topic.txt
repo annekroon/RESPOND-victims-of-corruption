@@ -3,3 +3,4 @@ umap-learn
 hdbscan
 plotly
 kaleido
+ftfy
