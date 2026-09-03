@@ -122,7 +122,8 @@ test.
   the audit data but excluded from BERTopic.
 - Embeddings: `intfloat/multilingual-e5-large`, using the already verified and
   cached model; all clustering inputs are English.
-- BERTopic: minimum cluster size 40, target `nr_topics = 8`, seed 42.
+- BERTopic: HDBSCAN leaf clustering with minimum cluster size 40, followed by
+  reduction to target `nr_topics = 8`, seed 42.
 - Reporting: direct BERTopic topics only; no forced higher-order taxonomy.
 - Shares: inverse country-year weighted and calculated among non-outliers.
 

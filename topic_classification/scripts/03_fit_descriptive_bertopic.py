@@ -52,6 +52,15 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         help="Target number of raw topics after reduction. Use 'auto' to preserve discovered granularity.",
     )
+    parser.add_argument(
+        "--cluster-selection-method",
+        choices=["leaf", "eom"],
+        default="leaf",
+        help=(
+            "HDBSCAN cluster selection. 'leaf' first discovers narrower clusters; "
+            "BERTopic then merges them to --nr-topics."
+        ),
+    )
     parser.add_argument("--max-docs", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument(
@@ -217,14 +226,17 @@ def main() -> None:
     hdbscan_model = HDBSCAN(
         min_cluster_size=args.min_topic_size,
         metric="euclidean",
-        cluster_selection_method="eom",
+        cluster_selection_method=args.cluster_selection_method,
         prediction_data=True,
     )
     vectorizer_model = CountVectorizer(
         lowercase=True,
         stop_words="english",
-        min_df=5,
-        max_df=0.80,
+        # BERTopic fits this vectorizer to one concatenated document per topic,
+        # not to every article. min_df must therefore remain valid even for a
+        # deliberately compact six- or eight-topic solution.
+        min_df=1,
+        max_df=1.0,
         ngram_range=(1, 2),
     )
 
@@ -286,6 +298,7 @@ def main() -> None:
             "random_state": args.random_state,
             "min_topic_size": args.min_topic_size,
             "nr_topics": args.nr_topics,
+            "cluster_selection_method": args.cluster_selection_method,
             "bertopic_model_dir": str(args.output_dir / "topic_model"),
             "non_outlier_topics": non_outlier_topics,
             "inlier_documents": inlier_documents,

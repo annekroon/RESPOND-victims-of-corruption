@@ -154,7 +154,9 @@ boundary or unclear and excluded from clustering while remaining in the audit
 data. BERTopic was fitted to the remaining abstractions using
 \texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings, a
 minimum topic size of 40, and a target of eight direct descriptive topics.
-GPT-5.1 proposed readable labels from representative abstractions. No
+HDBSCAN leaf clustering first identified narrower clusters, which BERTopic
+then merged toward the prespecified target. GPT-5.1 proposed readable labels
+from representative abstractions. No
 higher-order taxonomy was imposed. Prompts, selected examples, raw responses,
 model metadata, diagnostic country distributions, and checksummed run
 manifests were retained. The topics are exploratory descriptions rather than

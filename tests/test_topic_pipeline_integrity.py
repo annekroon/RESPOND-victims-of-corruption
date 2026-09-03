@@ -222,6 +222,14 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn("institutional or sectoral setting", prompt)
         self.assertIn("boundary_or_unclear", prompt)
 
+    def test_compact_vectorizer_supports_few_topic_documents(self):
+        script = (
+            ROOT / "topic_classification/scripts/03_fit_descriptive_bertopic.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("min_df=1", script)
+        self.assertIn("max_df=1.0", script)
+        self.assertIn('default="leaf"', script)
+
     def test_topic_label_prompt_cannot_reconstruct_case_identifiers(self):
         script_path = (
             ROOT
