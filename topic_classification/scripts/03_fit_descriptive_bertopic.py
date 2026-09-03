@@ -50,7 +50,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--nr-topics",
         default="auto",
-        help="Target number of raw topics after reduction. Use 'auto' to preserve discovered granularity.",
+        help=(
+            "Topic reduction: integer for a target, 'auto' for automatic "
+            "reduction, or 'none' to preserve the original clusters."
+        ),
     )
     parser.add_argument(
         "--clusterer",
@@ -117,12 +120,17 @@ def format_texts_for_embedding(texts: list[str], embedding_model: str) -> list[s
 
 
 def parse_nr_topics(value: str):
-    if value == "auto":
-        return value
+    normalized = value.strip().lower()
+    if normalized == "auto":
+        return normalized
+    if normalized in {"none", "null"}:
+        return None
     try:
-        return int(value)
+        return int(normalized)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("--nr-topics must be 'auto' or an integer.") from exc
+        raise argparse.ArgumentTypeError(
+            "--nr-topics must be 'auto', 'none', or an integer."
+        ) from exc
 
 
 GENERATED_OUTPUTS = [
@@ -243,7 +251,7 @@ def main() -> None:
     )
     requested_topics = parse_nr_topics(str(args.nr_topics))
     if args.clusterer == "kmeans":
-        if requested_topics == "auto":
+        if requested_topics in {"auto", None}:
             raise ValueError("--clusterer kmeans requires an integer --nr-topics.")
         if not 2 <= requested_topics < len(docs):
             raise ValueError(

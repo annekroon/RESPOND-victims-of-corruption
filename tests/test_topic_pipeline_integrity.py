@@ -235,6 +235,18 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn("min_samples=args.hdbscan_min_samples", script)
         self.assertIn("save_embedding_model=args.embedding_model", script)
 
+    def test_topic_reduction_can_be_disabled(self):
+        script_path = (
+            ROOT / "topic_classification/scripts/03_fit_descriptive_bertopic.py"
+        )
+        spec = spec_from_file_location("descriptive_topic_fit", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        self.assertIsNone(module.parse_nr_topics("none"))
+        self.assertEqual(module.parse_nr_topics("auto"), "auto")
+        self.assertEqual(module.parse_nr_topics("7"), 7)
+
     def test_topic_label_prompt_cannot_reconstruct_case_identifiers(self):
         script_path = (
             ROOT

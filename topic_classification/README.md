@@ -185,6 +185,18 @@ No single threshold proves validity. Promotion requires substantive manual
 coherence plus clearly lower country dependence than the archived direct-text
 specification.
 
+If automatic reduction merges substantively distinct clusters, compare the
+unreduced density solution without regenerating the sample or abstractions:
+
+```bash
+PER_COUNTRY_YEAR=5 CLUSTERER=hdbscan TARGET_TOPICS=none \
+  MIN_TOPIC_SIZE=10 HDBSCAN_MIN_SAMPLES=3 \
+  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
+```
+
+The unreduced run receives its own output directory. Prefer it only when its
+additional topics are internally coherent rather than minor lexical variants.
+
 ## Interpretation Rules
 
 - Call the procedure **LLM-assisted descriptive BERTopic modelling**.
