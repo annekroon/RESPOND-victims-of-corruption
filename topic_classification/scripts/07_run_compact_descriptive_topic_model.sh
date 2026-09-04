@@ -15,10 +15,17 @@ TARGET_TOPICS="${TARGET_TOPICS:-auto}"
 MIN_TOPIC_SIZE="${MIN_TOPIC_SIZE:-40}"
 HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"
 CLUSTERER="${CLUSTERER:-hdbscan}"
+CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"
+
+if [[ "$CLUSTERER" == "hdbscan" ]]; then
+  CLUSTER_SPEC="${CLUSTERER}_${CLUSTER_SELECTION_METHOD}_${TARGET_TOPICS}_min${MIN_TOPIC_SIZE}_ms${HDBSCAN_MIN_SAMPLES}"
+else
+  CLUSTER_SPEC="${CLUSTERER}_${TARGET_TOPICS}"
+fi
 
 SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}.csv.gz}"
 ABSTRACTION_PATH="${ABSTRACTION_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}_english_abstracts.csv.gz}"
-BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_${CLUSTERER}_${TARGET_TOPICS}_sample_${PER_COUNTRY_YEAR}}"
+BERTOPIC_DIR="${BERTOPIC_DIR:-$TOPIC_ROOT/bertopic_political_corruption_descriptive_${CLUSTER_SPEC}_sample_${PER_COUNTRY_YEAR}}"
 ABSTRACTION_COMPLETE="$ABSTRACTION_PATH.complete.json"
 
 mkdir -p "$TOPIC_ROOT"
@@ -35,6 +42,7 @@ echo "Target topics: $TARGET_TOPICS"
 echo "Minimum topic size: $MIN_TOPIC_SIZE"
 echo "HDBSCAN minimum samples: $HDBSCAN_MIN_SAMPLES"
 echo "Clusterer: $CLUSTERER"
+echo "Cluster selection method: $CLUSTER_SELECTION_METHOD"
 echo
 
 if [[ ! -f "$SAMPLE_PATH" ]]; then
@@ -95,6 +103,7 @@ else
     --status-column topic_abstraction_status \
     --include-status usable \
     --clusterer "$CLUSTERER" \
+    --cluster-selection-method "$CLUSTER_SELECTION_METHOD" \
     --min-topic-size "$MIN_TOPIC_SIZE" \
     --hdbscan-min-samples "$HDBSCAN_MIN_SAMPLES" \
     --nr-topics "$TARGET_TOPICS" \

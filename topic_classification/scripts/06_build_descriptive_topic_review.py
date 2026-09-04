@@ -76,7 +76,7 @@ def direct_topic_latex(summary) -> str:
         r"\renewcommand{\arraystretch}{1.08}",
         r"\begin{tabularx}{\textwidth}{@{}p{0.18\textwidth}r p{0.22\textwidth} X@{}}",
         r"\toprule",
-        r"\textbf{Topic} & \textbf{Share} & \textbf{Largest contributors} & \textbf{Interpretation} \\",
+        r"\textbf{Topic} & \textbf{Share} & \textbf{Largest weighted country contributions} & \textbf{Interpretation} \\",
         r"\midrule",
     ]
     for _, row in summary.iterrows():

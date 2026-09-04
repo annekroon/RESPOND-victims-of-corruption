@@ -100,6 +100,7 @@ five-per-stratum output tree with a smaller density threshold:
 ```bash
 PER_COUNTRY_YEAR=5 TARGET_TOPICS=auto MIN_TOPIC_SIZE=10 \
   HDBSCAN_MIN_SAMPLES=3 CLUSTERER=hdbscan \
+  CLUSTER_SELECTION_METHOD=leaf \
   bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
@@ -140,7 +141,7 @@ test.
     political_corruption_descriptive_country_year_sample_50_run_manifest.json
     political_corruption_descriptive_country_year_sample_50_english_abstracts.csv.gz
     political_corruption_descriptive_country_year_sample_50_english_abstracts_run_manifest.json
-    bertopic_political_corruption_descriptive_hdbscan_auto_sample_50/
+    bertopic_political_corruption_descriptive_hdbscan_leaf_auto_min40_ms10_sample_50/
       topic_info.csv
       document_topics.csv.gz
       topic_model/
@@ -196,6 +197,24 @@ PER_COUNTRY_YEAR=5 CLUSTERER=hdbscan TARGET_TOPICS=none \
 
 The unreduced run receives its own output directory. Prefer it only when its
 additional topics are internally coherent rather than minor lexical variants.
+
+Clustering parameters are encoded in the default output-directory name. This
+prevents a run with different HDBSCAN settings from silently reusing an older
+model. To compare a broader, fully density-selected solution that does not
+apply BERTopic's post-hoc topic reduction, reuse the completed sample and
+abstractions with:
+
+```bash
+PER_COUNTRY_YEAR=50 CLUSTERER=hdbscan \
+  CLUSTER_SELECTION_METHOD=eom TARGET_TOPICS=none \
+  MIN_TOPIC_SIZE=40 HDBSCAN_MIN_SAMPLES=5 \
+  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
+```
+
+`max_sample_country_share` is an unweighted leakage diagnostic for the balanced
+sample. The country percentages printed under `top_countries` are inverse
+country-year weighted estimates of corpus composition; they answer a different
+question and therefore need not be equal.
 
 ## Interpretation Rules
 

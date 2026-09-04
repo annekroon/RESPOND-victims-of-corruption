@@ -149,10 +149,17 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         self.assertIn('PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"', runner)
         self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-auto}"', runner)
         self.assertIn('CLUSTERER="${CLUSTERER:-hdbscan}"', runner)
+        self.assertIn(
+            'CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"', runner
+        )
         self.assertIn('HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"', runner)
         self.assertIn('--per-country-year "$PER_COUNTRY_YEAR"', runner)
         self.assertIn("02_create_descriptive_abstractions.py", runner)
         self.assertIn('--nr-topics "$TARGET_TOPICS"', runner)
+        self.assertIn(
+            '--cluster-selection-method "$CLUSTER_SELECTION_METHOD"', runner
+        )
+        self.assertIn("CLUSTER_SPEC", runner)
         self.assertIn("04_label_descriptive_topics_with_llm.py", runner)
         self.assertNotIn("--input-kind", runner)
         self.assertIn("--analysis-level fine-grained", runner)
