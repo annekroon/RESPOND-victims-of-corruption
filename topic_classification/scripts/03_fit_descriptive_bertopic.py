@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -57,11 +58,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--clusterer",
-        choices=["kmeans", "hdbscan"],
+        choices=["kmeans", "hdbscan", "hdbscan-stability"],
         default="hdbscan",
         help=(
             "Clustering algorithm. K-means produces exactly --nr-topics broad "
-            "descriptive topics; HDBSCAN estimates a density-based count."
+            "descriptive topics; HDBSCAN estimates a density-based count; "
+            "hdbscan-stability selects a density specification by resampling "
+            "without fixing the topic count."
         ),
     )
     parser.add_argument(
@@ -78,6 +81,44 @@ def parse_args() -> argparse.Namespace:
             "HDBSCAN core-density requirement. Values below min topic size can "
             "recover stable smaller structures without fixing the topic count."
         ),
+    )
+    parser.add_argument(
+        "--search-umap-neighbors",
+        nargs="+",
+        type=int,
+        default=[15, 30, 50],
+        help="UMAP neighborhood sizes compared by hdbscan-stability.",
+    )
+    parser.add_argument(
+        "--search-min-topic-sizes",
+        nargs="+",
+        type=int,
+        default=[30, 40, 60, 80, 120],
+        help="Minimum HDBSCAN cluster sizes compared by hdbscan-stability.",
+    )
+    parser.add_argument(
+        "--search-min-samples",
+        nargs="+",
+        type=int,
+        default=[2, 5, 10],
+        help="HDBSCAN density requirements compared by hdbscan-stability.",
+    )
+    parser.add_argument(
+        "--stability-repeats",
+        type=int,
+        default=5,
+        help="Number of 80-percent resamples used to assess partition stability.",
+    )
+    parser.add_argument("--stability-subsample", type=float, default=0.80)
+    parser.add_argument("--selection-min-topics", type=int, default=4)
+    parser.add_argument("--selection-max-topics", type=int, default=12)
+    parser.add_argument("--selection-max-outlier-share", type=float, default=0.45)
+    parser.add_argument(
+        "--selection-max-largest-topic-share", type=float, default=0.40
+    )
+    parser.add_argument("--selection-max-country-nmi", type=float, default=0.25)
+    parser.add_argument(
+        "--selection-min-resample-common-share", type=float, default=0.35
     )
     parser.add_argument("--max-docs", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
@@ -133,6 +174,33 @@ def parse_nr_topics(value: str):
         ) from exc
 
 
+def candidate_meets_guardrails(
+    *,
+    topic_count: int,
+    outlier_share: float,
+    largest_topic_share: float,
+    country_nmi: float,
+    minimum_topics: int,
+    maximum_topics: int,
+    maximum_outlier_share: float,
+    maximum_largest_topic_share: float,
+    maximum_country_nmi: float,
+    mean_resample_common_share: float = 1.0,
+    minimum_resample_common_share: float = 0.0,
+) -> bool:
+    """Apply predeclared descriptive-adequacy limits without selecting a count."""
+    import math
+
+    return (
+        minimum_topics <= topic_count <= maximum_topics
+        and outlier_share <= maximum_outlier_share
+        and largest_topic_share <= maximum_largest_topic_share
+        and math.isfinite(country_nmi)
+        and country_nmi <= maximum_country_nmi
+        and mean_resample_common_share >= minimum_resample_common_share
+    )
+
+
 GENERATED_OUTPUTS = [
     "topic_info.csv",
     "document_topics.csv.gz",
@@ -154,6 +222,8 @@ GENERATED_OUTPUTS = [
     "descriptive_outputs",
     "descriptive_topic_output_manifest.json",
     "00_LATEST_DESCRIPTIVE_TOPIC_BUILD.txt",
+    "hdbscan_stability_candidates.csv",
+    "hdbscan_stability_selection.json",
 ]
 
 
@@ -201,7 +271,11 @@ def main() -> None:
         from sentence_transformers import SentenceTransformer
         from sklearn.cluster import KMeans
         from sklearn.feature_extraction.text import CountVectorizer
-        from sklearn.metrics import silhouette_score
+        from sklearn.metrics import (
+            adjusted_rand_score,
+            normalized_mutual_info_score,
+            silhouette_score,
+        )
         from umap import UMAP
     except ImportError as exc:
         raise SystemExit(
@@ -242,14 +316,9 @@ def main() -> None:
         normalize_embeddings=True,
     )
 
-    umap_model = UMAP(
-        n_neighbors=15,
-        n_components=5,
-        min_dist=0.0,
-        metric="cosine",
-        random_state=args.random_state,
-    )
     requested_topics = parse_nr_topics(str(args.nr_topics))
+    selected_spec = None
+    candidate_diagnostics_path = None
     if args.clusterer == "kmeans":
         if requested_topics in {"auto", None}:
             raise ValueError("--clusterer kmeans requires an integer --nr-topics.")
@@ -264,7 +333,8 @@ def main() -> None:
             n_init=20,
         )
         bertopic_nr_topics = None
-    else:
+        selected_umap_neighbors = 15
+    elif args.clusterer == "hdbscan":
         cluster_model = HDBSCAN(
             min_cluster_size=args.min_topic_size,
             min_samples=args.hdbscan_min_samples,
@@ -273,6 +343,318 @@ def main() -> None:
             prediction_data=True,
         )
         bertopic_nr_topics = requested_topics
+        selected_umap_neighbors = 15
+    else:
+        if requested_topics is not None:
+            raise ValueError(
+                "hdbscan-stability requires --nr-topics none because the topic "
+                "count must be selected by density and stability rather than "
+                "post-hoc reduction."
+            )
+        if not 0.5 <= args.stability_subsample < 1.0:
+            raise ValueError("--stability-subsample must be in [0.5, 1.0).")
+        if args.stability_repeats < 2:
+            raise ValueError("--stability-repeats must be at least 2.")
+        if args.selection_min_topics < 2:
+            raise ValueError("--selection-min-topics must be at least 2.")
+        if args.selection_max_topics < args.selection_min_topics:
+            raise ValueError(
+                "--selection-max-topics must be at least --selection-min-topics."
+            )
+
+        countries = data["country"].fillna("missing").astype(str).to_numpy()
+        rng = np.random.default_rng(args.random_state)
+        subsample_n = max(2, int(round(len(docs) * args.stability_subsample)))
+        resamples = [
+            np.sort(rng.choice(len(docs), size=subsample_n, replace=False))
+            for _ in range(args.stability_repeats)
+        ]
+        candidate_rows = []
+
+        for n_neighbors in sorted(set(args.search_umap_neighbors)):
+            if not 2 <= n_neighbors < len(docs):
+                raise ValueError(
+                    "Each --search-umap-neighbors value must be at least 2 and "
+                    "smaller than the number of documents."
+                )
+            selector_umap = UMAP(
+                n_neighbors=n_neighbors,
+                n_components=5,
+                min_dist=0.0,
+                metric="cosine",
+                random_state=args.random_state,
+            )
+            # Match BERTopic's final training path: UMAP uses fit_transform on
+            # the complete training set before HDBSCAN is fitted.
+            reduced = selector_umap.fit_transform(embeddings)
+            resampled_geometries = []
+            for indices in resamples:
+                resample_umap = UMAP(
+                    n_neighbors=n_neighbors,
+                    n_components=5,
+                    min_dist=0.0,
+                    metric="cosine",
+                    random_state=args.random_state,
+                )
+                resampled_reduced = resample_umap.fit_transform(
+                    embeddings[indices]
+                )
+                resampled_geometries.append((indices, resampled_reduced))
+
+            for min_topic_size in sorted(set(args.search_min_topic_sizes)):
+                if not 2 <= min_topic_size < len(docs):
+                    raise ValueError(
+                        "Each --search-min-topic-sizes value must be at least 2 "
+                        "and smaller than the number of documents."
+                    )
+                for min_samples in sorted(set(args.search_min_samples)):
+                    if min_samples < 1:
+                        raise ValueError(
+                            "Each --search-min-samples value must be positive."
+                        )
+                    for selection_method in ["leaf", "eom"]:
+                        candidate = HDBSCAN(
+                            min_cluster_size=min_topic_size,
+                            min_samples=min_samples,
+                            metric="euclidean",
+                            cluster_selection_method=selection_method,
+                            prediction_data=True,
+                            gen_min_span_tree=True,
+                        )
+                        labels = candidate.fit_predict(reduced)
+                        inlier_mask = labels != -1
+                        topic_ids, topic_counts = np.unique(
+                            labels[inlier_mask], return_counts=True
+                        )
+                        topic_count = int(len(topic_ids))
+                        outlier_share = float(1.0 - inlier_mask.mean())
+                        largest_topic_share = (
+                            float(topic_counts.max() / topic_counts.sum())
+                            if topic_count
+                            else 1.0
+                        )
+                        if 1 < topic_count < int(inlier_mask.sum()):
+                            country_nmi = float(
+                                normalized_mutual_info_score(
+                                    countries[inlier_mask], labels[inlier_mask]
+                                )
+                            )
+                        else:
+                            country_nmi = float("nan")
+
+                        persistence = np.asarray(
+                            getattr(candidate, "cluster_persistence_", []),
+                            dtype=float,
+                        )
+                        if len(persistence) == len(topic_counts) and len(persistence):
+                            weighted_persistence = float(
+                                np.average(persistence, weights=topic_counts)
+                            )
+                        else:
+                            weighted_persistence = float("nan")
+                        try:
+                            relative_validity = float(candidate.relative_validity_)
+                        except (AttributeError, ValueError):
+                            relative_validity = float("nan")
+
+                        bootstrap_ari = []
+                        bootstrap_common_share = []
+                        for indices, resampled_fit_reduced in resampled_geometries:
+                            try:
+                                resampled_labels = HDBSCAN(
+                                    min_cluster_size=min_topic_size,
+                                    min_samples=min_samples,
+                                    metric="euclidean",
+                                    cluster_selection_method=selection_method,
+                                ).fit_predict(resampled_fit_reduced)
+                            except ValueError:
+                                bootstrap_ari.append(0.0)
+                                bootstrap_common_share.append(0.0)
+                                continue
+                            baseline_labels = labels[indices]
+                            common = (baseline_labels != -1) & (
+                                resampled_labels != -1
+                            )
+                            bootstrap_common_share.append(float(common.mean()))
+                            if (
+                                int(common.sum()) >= 20
+                                and len(np.unique(baseline_labels[common])) >= 2
+                                and len(np.unique(resampled_labels[common])) >= 2
+                            ):
+                                bootstrap_ari.append(
+                                    float(
+                                        adjusted_rand_score(
+                                            baseline_labels[common],
+                                            resampled_labels[common],
+                                        )
+                                    )
+                                )
+                            else:
+                                bootstrap_ari.append(0.0)
+
+                        adequate = candidate_meets_guardrails(
+                            topic_count=topic_count,
+                            outlier_share=outlier_share,
+                            largest_topic_share=largest_topic_share,
+                            country_nmi=country_nmi,
+                            minimum_topics=args.selection_min_topics,
+                            maximum_topics=args.selection_max_topics,
+                            maximum_outlier_share=args.selection_max_outlier_share,
+                            maximum_largest_topic_share=(
+                                args.selection_max_largest_topic_share
+                            ),
+                            maximum_country_nmi=args.selection_max_country_nmi,
+                            mean_resample_common_share=float(
+                                np.mean(bootstrap_common_share)
+                            ),
+                            minimum_resample_common_share=(
+                                args.selection_min_resample_common_share
+                            ),
+                        )
+                        candidate_rows.append(
+                            {
+                                "umap_n_neighbors": int(n_neighbors),
+                                "min_topic_size": int(min_topic_size),
+                                "min_samples": int(min_samples),
+                                "cluster_selection_method": selection_method,
+                                "topics": topic_count,
+                                "inliers": int(inlier_mask.sum()),
+                                "outliers": int((~inlier_mask).sum()),
+                                "outlier_share": outlier_share,
+                                "largest_inlier_topic_share": largest_topic_share,
+                                "country_topic_nmi": country_nmi,
+                                "weighted_cluster_persistence": weighted_persistence,
+                                "relative_validity": relative_validity,
+                                "mean_resample_ari": float(np.mean(bootstrap_ari)),
+                                "min_resample_ari": float(np.min(bootstrap_ari)),
+                                "mean_resample_common_share": float(
+                                    np.mean(bootstrap_common_share)
+                                ),
+                                "adequate": bool(adequate),
+                            }
+                        )
+
+        candidates = pd.DataFrame(candidate_rows)
+        candidate_diagnostics_path = (
+            args.output_dir / "hdbscan_stability_candidates.csv"
+        )
+        candidates.sort_values(
+            ["adequate", "mean_resample_ari", "weighted_cluster_persistence"],
+            ascending=[False, False, False],
+        ).to_csv(candidate_diagnostics_path, index=False)
+        adequate = candidates[candidates["adequate"]].copy()
+        if adequate.empty:
+            raise RuntimeError(
+                "No HDBSCAN candidate met the pre-specified adequacy guardrails. "
+                f"Inspect {candidate_diagnostics_path}; do not publish a forced "
+                "topic solution."
+            )
+        selected = adequate.sort_values(
+            [
+                "mean_resample_ari",
+                "mean_resample_common_share",
+                "weighted_cluster_persistence",
+                "relative_validity",
+                "outlier_share",
+                "topics",
+            ],
+            ascending=[False, False, False, False, True, True],
+            na_position="last",
+        ).iloc[0]
+        integer_keys = {
+            "umap_n_neighbors",
+            "min_topic_size",
+            "min_samples",
+            "topics",
+            "inliers",
+            "outliers",
+        }
+        float_keys = {
+            "outlier_share",
+            "largest_inlier_topic_share",
+            "country_topic_nmi",
+            "weighted_cluster_persistence",
+            "relative_validity",
+            "mean_resample_ari",
+            "min_resample_ari",
+            "mean_resample_common_share",
+        }
+        selected_spec = {}
+        for key in selected.index:
+            if key == "adequate":
+                continue
+            value = selected[key]
+            if pd.isna(value):
+                selected_spec[key] = None
+            elif key in integer_keys:
+                selected_spec[key] = int(value)
+            elif key in float_keys:
+                selected_spec[key] = float(value)
+            else:
+                selected_spec[key] = str(value)
+        candidates["selected"] = (
+            candidates["umap_n_neighbors"].eq(selected["umap_n_neighbors"])
+            & candidates["min_topic_size"].eq(selected["min_topic_size"])
+            & candidates["min_samples"].eq(selected["min_samples"])
+            & candidates["cluster_selection_method"].eq(
+                selected["cluster_selection_method"]
+            )
+        )
+        candidates.sort_values(
+            ["selected", "adequate", "mean_resample_ari", "weighted_cluster_persistence"],
+            ascending=[False, False, False, False],
+        ).to_csv(candidate_diagnostics_path, index=False)
+        selection_path = args.output_dir / "hdbscan_stability_selection.json"
+        selection_path.write_text(
+            json.dumps(
+                {
+                    "selection_rule": (
+                        "Among candidates satisfying the declared topic-count, "
+                        "coverage, dominance, and country-NMI guardrails: maximize "
+                        "mean resample adjusted Rand index, then the mean share "
+                        "mutually assigned across refits, weighted cluster persistence, "
+                        "and relative validity; break remaining ties by baseline "
+                        "coverage and the more compact solution."
+                    ),
+                    "guardrails": {
+                        "minimum_topics": args.selection_min_topics,
+                        "maximum_topics": args.selection_max_topics,
+                        "maximum_outlier_share": args.selection_max_outlier_share,
+                        "maximum_largest_inlier_topic_share": args.selection_max_largest_topic_share,
+                        "maximum_country_topic_nmi": args.selection_max_country_nmi,
+                        "minimum_mean_resample_common_share": (
+                            args.selection_min_resample_common_share
+                        ),
+                    },
+                    "selected": selected_spec,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        print("Selected stability-based HDBSCAN specification:", flush=True)
+        print(pd.Series(selected_spec).to_string(), flush=True)
+
+        selected_umap_neighbors = int(selected["umap_n_neighbors"])
+        cluster_model = HDBSCAN(
+            min_cluster_size=int(selected["min_topic_size"]),
+            min_samples=int(selected["min_samples"]),
+            metric="euclidean",
+            cluster_selection_method=str(selected["cluster_selection_method"]),
+            prediction_data=True,
+            gen_min_span_tree=True,
+        )
+        bertopic_nr_topics = None
+
+    umap_model = UMAP(
+        n_neighbors=selected_umap_neighbors,
+        n_components=5,
+        min_dist=0.0,
+        metric="cosine",
+        random_state=args.random_state,
+    )
     vectorizer_model = CountVectorizer(
         lowercase=True,
         stop_words="english",
@@ -300,6 +682,36 @@ def main() -> None:
     topic_array = np.asarray(topics)
     inlier_mask = topic_array != -1
     observed_topic_ids = sorted(set(int(topic) for topic in topic_array[inlier_mask]))
+    if selected_spec is not None:
+        actual_outlier_share = float(1.0 - inlier_mask.mean())
+        _, actual_counts = np.unique(topic_array[inlier_mask], return_counts=True)
+        actual_largest_share = float(actual_counts.max() / actual_counts.sum())
+        actual_country_nmi = float(
+            normalized_mutual_info_score(
+                data["country"].fillna("missing").astype(str).to_numpy()[inlier_mask],
+                topic_array[inlier_mask],
+            )
+        )
+        if not candidate_meets_guardrails(
+            topic_count=len(observed_topic_ids),
+            outlier_share=actual_outlier_share,
+            largest_topic_share=actual_largest_share,
+            country_nmi=actual_country_nmi,
+            minimum_topics=args.selection_min_topics,
+            maximum_topics=args.selection_max_topics,
+            maximum_outlier_share=args.selection_max_outlier_share,
+            maximum_largest_topic_share=args.selection_max_largest_topic_share,
+            maximum_country_nmi=args.selection_max_country_nmi,
+            mean_resample_common_share=float(
+                selected_spec["mean_resample_common_share"]
+            ),
+            minimum_resample_common_share=args.selection_min_resample_common_share,
+        ):
+            raise RuntimeError(
+                "The final fit of the selected specification did not satisfy the "
+                "declared adequacy guardrails. Preserve the diagnostics and "
+                "inspect the environment before publishing."
+            )
     silhouette = None
     if 1 < len(observed_topic_ids) < int(inlier_mask.sum()):
         silhouette = float(
@@ -335,15 +747,22 @@ def main() -> None:
     if sample_provenance is not None:
         manifest_inputs["sample_manifest"] = sample_provenance["manifest_path"]
 
+    manifest_outputs = {
+        "topic_info": args.output_dir / "topic_info.csv",
+        "document_topics": args.output_dir / "document_topics.csv.gz",
+    }
+    if candidate_diagnostics_path is not None:
+        manifest_outputs["hdbscan_stability_candidates"] = candidate_diagnostics_path
+        manifest_outputs["hdbscan_stability_selection"] = (
+            args.output_dir / "hdbscan_stability_selection.json"
+        )
+
     write_run_manifest(
         args.output_dir,
         script_name=Path(__file__).name,
         args=args,
         inputs=manifest_inputs,
-        outputs={
-            "topic_info": args.output_dir / "topic_info.csv",
-            "document_topics": args.output_dir / "document_topics.csv.gz",
-        },
+        outputs=manifest_outputs,
         extra={
             "documents_for_model": int(len(docs)),
             "input_rows_before_status_filter": int(input_rows),
@@ -357,6 +776,8 @@ def main() -> None:
             "clusterer": args.clusterer,
             "cluster_selection_method": args.cluster_selection_method,
             "hdbscan_min_samples": args.hdbscan_min_samples,
+            "selected_umap_neighbors": selected_umap_neighbors,
+            "stability_selected_specification": selected_spec,
             "silhouette_cosine_original_embeddings": silhouette,
             "bertopic_model_dir": str(args.output_dir / "topic_model"),
             "non_outlier_topics": non_outlier_topics,

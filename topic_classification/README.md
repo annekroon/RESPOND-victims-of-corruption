@@ -15,14 +15,15 @@ shared substantive topic. That completed run remains in Research Drive as a
 reproducible sensitivity analysis, but its six-group prevalence table must not
 be interpreted as a distribution of corruption types.
 
-The maintained pilot has a narrower purpose: produce a small and readable
+The maintained model has a narrower purpose: produce a small and readable
 description of recurring political-corruption coverage. GPT-5.1 first converts
 each sampled article into a short English abstraction that preserves the
 alleged practice, institutional setting, and response while removing names,
-countries, outlets, dates, and case-specific details. BERTopic then estimates
-a compact number of direct descriptive topics from those abstractions. The
-topic count is learned from the data rather than fixed for presentation. No
-higher-order grouping is imposed.
+countries, outlets, dates, and case-specific details. A stability-selection
+stage compares density-clustering specifications on repeated resamples and
+retains the most stable solution satisfying predeclared descriptive adequacy
+guardrails. The topic count is therefore an output rather than a presentation
+target. No higher-order grouping is imposed.
 
 ## Input And Sampling
 
@@ -50,10 +51,11 @@ descriptive model and keeps the auditable GPT abstraction stage tractable.
 |---|---|---|
 | 01 | `01_create_stratified_topic_sample.py` | Verified country-year sample |
 | 02 | `02_create_descriptive_abstractions.py` | Language-neutral English case abstractions |
-| 03 | `03_fit_descriptive_bertopic.py` | Data-driven direct BERTopic solution |
+| 03 | `03_fit_descriptive_bertopic.py` | Stability-selected direct BERTopic solution |
 | 04 | `04_label_descriptive_topics_with_llm.py` | Readable labels from neutral abstractions |
 | 05 | `05_build_topic_visualizations.py` | Direct-topic country and time diagnostics |
 | 06 | `06_build_descriptive_topic_review.py` | Table, diagnostics, and manual-review packet |
+| 08 | `08_publish_descriptive_topic_outputs.py` | Publish an approved table, figures, and diagnostics |
 
 Use the single maintained entry point rather than assembling these calls
 manually:
@@ -62,7 +64,7 @@ manually:
 scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
-## Run The Pilot
+## Run The Final Candidate
 
 After pulling the latest repository on `annecuda`:
 
@@ -79,8 +81,8 @@ export LLMPROXY_MODEL=gpt-5.1
 
 mkdir -p "$DATA_ROOT/topic_classification/logs"
 
-LOG="$DATA_ROOT/topic_classification/logs/compact_descriptive_topic_model.log"
-PIDFILE="$DATA_ROOT/topic_classification/logs/compact_descriptive_topic_model.pid"
+LOG="$DATA_ROOT/topic_classification/logs/stability_selected_topic_model.log"
+PIDFILE="$DATA_ROOT/topic_classification/logs/stability_selected_topic_model.pid"
 
 nohup bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh \
   > "$LOG" 2>&1 &
@@ -89,7 +91,9 @@ echo $! > "$PIDFILE"
 tail -f "$LOG"
 ```
 
-The abstraction stage checkpoints every ten articles. Rerunning the same
+The abstraction stage checkpoints every ten articles. The stability selector
+compares 90 HDBSCAN candidates and five 80-percent resamples per candidate.
+Rerunning the same
 command reuses the verified sample, resumes unfinished GPT abstractions, and
 reuses valid model and label stages. It does not touch classifier outputs,
 human annotations, or the archived multilingual sensitivity model.
@@ -125,10 +129,22 @@ test.
   the audit data but excluded from BERTopic.
 - Embeddings: `intfloat/multilingual-e5-large`, using the already verified and
   cached model; all clustering inputs are English.
-- BERTopic: HDBSCAN leaf clustering with minimum topic size 40 and
-  `min_samples = 10`, followed by BERTopic's automatic topic reduction. The
-  topic count is not fixed. Topic representations use class-based TF-IDF;
-  seed 42.
+- BERTopic selection grid: UMAP neighborhood sizes 15, 30, and 50; HDBSCAN
+  minimum cluster sizes 30, 40, 60, 80, and 120; `min_samples` values 2, 5,
+  and 10; and both leaf and excess-of-mass extraction.
+- Stability: each candidate is compared with five fits on 80% resamples using
+  the adjusted Rand index among mutually assigned articles.
+- Adequacy guardrails: 4--12 topics, at most 45% outliers, no topic exceeding
+  40% of assigned articles, and country--topic NMI no higher than .25 in the
+  balanced sample. Across refits, at least 35% of articles must receive a
+  non-outlier assignment in both solutions. These bounds define an
+  interpretable appendix solution but do not request an exact topic count.
+- Selection: among adequate candidates, maximize mean resample adjusted Rand
+  index, followed by the mutually assigned share, weighted cluster persistence,
+  and relative validity; use baseline coverage and the more compact solution
+  only as final tie-breakers.
+- Topic representations: class-based TF-IDF, seed 42. If no candidate meets
+  every guardrail, the workflow stops and no manuscript solution is produced.
 - Reporting: direct BERTopic topics only; no forced higher-order taxonomy.
 - Shares: inverse country-year weighted and calculated among non-outliers.
 
@@ -141,13 +157,21 @@ test.
     political_corruption_descriptive_country_year_sample_50_run_manifest.json
     political_corruption_descriptive_country_year_sample_50_english_abstracts.csv.gz
     political_corruption_descriptive_country_year_sample_50_english_abstracts_run_manifest.json
-    bertopic_political_corruption_descriptive_hdbscan_leaf_auto_min40_ms10_sample_50/
+    bertopic_political_corruption_descriptive_hdbscan_stability_v1_sample_50/
+      hdbscan_stability_candidates.csv
+      hdbscan_stability_selection.json
       topic_info.csv
       document_topics.csv.gz
       topic_model/
       topic_labels_llm.csv
       topic_labels_llm_audit.jsonl
       visualizations/
+        figure_topic_prevalence.pdf
+        figure_topic_country_heatmap.pdf
+        figure_topic_trends.pdf
+        figure_topic_model_selection.pdf
+        *.png
+        *.html
       descriptive_outputs/
         descriptive_topic_summary.csv
         descriptive_topic_country_shares.csv
@@ -182,39 +206,31 @@ Before promotion, inspect:
    a leakage diagnostic, not an inferential test.
 6. Outlier and `boundary_or_unclear` shares.
 
-No single threshold proves validity. Promotion requires substantive manual
-coherence plus clearly lower country dependence than the archived direct-text
-specification.
-
-If automatic reduction merges substantively distinct clusters, compare the
-unreduced density solution without regenerating the sample or abstractions:
-
-```bash
-PER_COUNTRY_YEAR=5 CLUSTERER=hdbscan TARGET_TOPICS=none \
-  MIN_TOPIC_SIZE=10 HDBSCAN_MIN_SAMPLES=3 \
-  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
-```
-
-The unreduced run receives its own output directory. Prefer it only when its
-additional topics are internally coherent rather than minor lexical variants.
-
-Clustering parameters are encoded in the default output-directory name. This
-prevents a run with different HDBSCAN settings from silently reusing an older
-model. To compare a broader, fully density-selected solution that does not
-apply BERTopic's post-hoc topic reduction, reuse the completed sample and
-abstractions with:
-
-```bash
-PER_COUNTRY_YEAR=50 CLUSTERER=hdbscan \
-  CLUSTER_SELECTION_METHOD=eom TARGET_TOPICS=none \
-  MIN_TOPIC_SIZE=40 HDBSCAN_MIN_SAMPLES=5 \
-  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
-```
+No numerical criterion proves substantive validity. The grid prevents the
+workflow from selecting the fragmented 17-topic leaf result or the degenerate
+two-topic excess-of-mass result solely because one diagnostic looks favorable.
+Promotion still requires manual coherence review of the retained examples.
 
 `max_sample_country_share` is an unweighted leakage diagnostic for the balanced
 sample. The country percentages printed under `top_countries` are inverse
 country-year weighted estimates of corpus composition; they answer a different
 question and therefore need not be equal.
+
+## Publish An Approved Build
+
+First run a dry validation of every table, figure, and provenance link:
+
+```bash
+TOPIC_DIR="$DATA_ROOT/topic_classification/bertopic_political_corruption_descriptive_hdbscan_stability_v1_sample_50"
+
+python3 topic_classification/scripts/08_publish_descriptive_topic_outputs.py \
+  --bertopic-dir "$TOPIC_DIR"
+```
+
+After the manual-review packet has been approved, add `--upload`. This publishes
+the LaTeX table under `output/tables/topic_models`, the PDF and PNG figures
+under `output/figures/topic_models`, and diagnostics and manifests under
+`output/topic_models` on Research Drive.
 
 ## Interpretation Rules
 

@@ -131,11 +131,15 @@ personality-driven clustering. Its maintained entry point is:
 topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
 ```
 
-This creates a data-driven compact descriptive solution with direct labels,
-diagnostics, visualizations, a compact table, and a manual-review packet. It
-does not impose the earlier six higher-order groups and does not publish files
-until the solution passes substantive review. The completed earlier model is
-retained in Research Drive as a reproducible sensitivity analysis.
+This compares HDBSCAN specifications on repeated resamples and selects a compact
+descriptive solution without requesting an exact topic count. It produces
+direct labels, model-selection diagnostics, static and interactive
+visualizations, a compact table, and a manual-review packet. It does not impose
+the earlier six higher-order groups and does not publish files until the
+solution passes substantive review. Approved outputs are published with
+`topic_classification/scripts/08_publish_descriptive_topic_outputs.py`. The
+completed earlier models remain in Research Drive as reproducible sensitivity
+analyses.
 
 ## Data And Archive Locations
 

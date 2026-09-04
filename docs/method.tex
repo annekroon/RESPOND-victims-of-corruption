@@ -152,17 +152,31 @@ countries, outlets, dates, exact amounts, and other case-specific identifiers;
 articles without a clear substantive political-corruption focus were marked as
 boundary or unclear and excluded from clustering while remaining in the audit
 data. BERTopic was fitted to the remaining abstractions using
-\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings,
-HDBSCAN leaf clustering, and automatic topic reduction. The number of topics
-was therefore determined by the structure of the abstraction embeddings rather
-than fixed for presentation. Class-based TF-IDF supplied each cluster's topic
-representation. GPT-5.1 proposed readable labels from representative
-abstractions. No
+\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings and
+HDBSCAN. Rather than fixing the number of topics, the clustering specification
+was selected from a documented grid that varied the UMAP neighborhood size,
+minimum cluster size, density requirement, and HDBSCAN extraction method. Each
+candidate was refitted on five 80\% resamples. Candidates were eligible only
+when they yielded between four and twelve topics, assigned at least 55\% of
+usable abstractions, contained no topic exceeding 40\% of assigned cases, and
+did not exceed a country--topic normalized mutual information of .25 in the
+balanced sample. At least 35\% of abstractions also had to receive non-outlier
+assignments in both the complete-data and resampled solutions, averaged across
+refits. Among eligible candidates, selection prioritized mean resample
+agreement measured by the adjusted Rand index, followed by this shared
+assignment rate, HDBSCAN cluster persistence, and relative validity. Thus the
+exact topic count was an outcome of stability-based density selection within
+predeclared descriptive adequacy constraints, not a presentation target. If no
+candidate met these constraints, the workflow stopped without producing a
+manuscript solution.
+
+Class-based TF-IDF supplied each selected cluster's topic representation, and
+GPT-5.1 proposed readable labels from representative abstractions. No
 higher-order taxonomy was imposed. Prompts, selected examples, raw responses,
-model metadata, diagnostic country distributions, and checksummed run
-manifests were retained. The topics are exploratory descriptions rather than
-validated measures and informed, but did not determine, the substantive coding
-categories.
+the complete candidate grid, model metadata, diagnostic country distributions,
+and checksummed run manifests were retained. The topics are exploratory
+descriptions rather than validated measures and informed, but did not
+determine, the substantive coding categories.
 
 \subsection{Article-Level Codebook Development}
 \label{sec:method-codebook-development}

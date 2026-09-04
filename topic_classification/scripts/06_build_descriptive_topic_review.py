@@ -277,6 +277,7 @@ def main() -> None:
         )
     )
     model_extra = model_manifest.get("extra") or {}
+    selected_spec = model_extra.get("stability_selected_specification") or {}
     source_rows = int(model_extra.get("input_rows_before_status_filter", len(documents)))
     usable_rows = int(model_extra.get("documents_for_model", len(documents)))
     outlier_rows = int(documents["topic"].eq(-1).sum())
@@ -300,6 +301,7 @@ def main() -> None:
             "silhouette_cosine_original_embeddings"
         ),
         "clusterer": model_extra.get("clusterer"),
+        "stability_selected_specification": selected_spec or None,
         "interpretation_warning": (
             "Topic-country NMI and country-dominated-topic counts diagnose residual "
             "country structure using the balanced sample rather than population "
@@ -338,6 +340,20 @@ def main() -> None:
             "DescriptiveTopicOutlierN": f"{outlier_rows:,}",
             "DescriptiveTopicOutlierShare": f"{100 * outlier_rows / len(documents):.1f}",
             "DescriptiveTopicN": f"{summary['topic'].nunique():,}",
+            "DescriptiveTopicMeanResampleARI": (
+                f"{float(selected_spec['mean_resample_ari']):.3f}"
+                if selected_spec.get("mean_resample_ari") is not None
+                else "n/a"
+            ),
+            "DescriptiveTopicSelectedMinimumSize": (
+                str(selected_spec.get("min_topic_size", "n/a"))
+            ),
+            "DescriptiveTopicSelectedMinimumSamples": (
+                str(selected_spec.get("min_samples", "n/a"))
+            ),
+            "DescriptiveTopicSelectedUMAPNeighbors": (
+                str(selected_spec.get("umap_n_neighbors", "n/a"))
+            ),
         },
     )
     latest_path.write_text(
@@ -359,6 +375,8 @@ def main() -> None:
                 f"Topic-country NMI: {topic_country_nmi:.3f}",
                 "Embedding-space silhouette: "
                 f"{diagnostics['silhouette_cosine_original_embeddings']}",
+                "Selected stability specification: "
+                + (json.dumps(selected_spec, sort_keys=True) if selected_spec else "n/a"),
                 "",
                 f"Review first: {review_path}",
                 f"Direct topic table: {table_path}",

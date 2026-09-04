@@ -131,21 +131,30 @@ def select_diverse_examples(
     if topic_docs.empty:
         return []
 
-    sort_cols = [col for col in ["country", "year"] if col in topic_docs.columns]
-    if sort_cols:
-        topic_docs = topic_docs.sort_values(sort_cols).copy()
-
-    examples = []
     if "country" in topic_docs.columns:
-        per_country = topic_docs.groupby("country", group_keys=False).head(2)
-        examples.append(per_country)
-
-    remaining = topic_docs.drop(index=examples[0].index, errors="ignore") if examples else topic_docs
-    remaining_n = max(0, n - sum(len(frame) for frame in examples))
-    if remaining_n:
-        examples.append(remaining.sample(n=min(remaining_n, len(remaining)), random_state=random_state))
-
-    selected = topic_docs.head(0) if not examples else __import__("pandas").concat(examples).head(n)
+        groups = []
+        for offset, (_, group) in enumerate(
+            topic_docs.groupby("country", sort=True, dropna=False)
+        ):
+            groups.append(
+                group.sample(frac=1, random_state=random_state + offset).reset_index(
+                    drop=True
+                )
+            )
+        selected_rows = []
+        for row_number in range(max(len(group) for group in groups)):
+            for group in groups:
+                if row_number < len(group):
+                    selected_rows.append(group.iloc[[row_number]])
+                    if len(selected_rows) == n:
+                        break
+            if len(selected_rows) == n:
+                break
+        selected = __import__("pandas").concat(selected_rows, ignore_index=True)
+    else:
+        selected = topic_docs.sample(
+            n=min(n, len(topic_docs)), random_state=random_state
+        )
     return [
         format_example(row, text_column, max_chars)
         for _, row in selected.iterrows()

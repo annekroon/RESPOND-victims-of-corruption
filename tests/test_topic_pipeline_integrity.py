@@ -147,8 +147,8 @@ class TopicWorkflowStructureTests(unittest.TestCase):
             / "topic_classification/scripts/07_run_compact_descriptive_topic_model.sh"
         ).read_text(encoding="utf-8")
         self.assertIn('PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"', runner)
-        self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-auto}"', runner)
-        self.assertIn('CLUSTERER="${CLUSTERER:-hdbscan}"', runner)
+        self.assertIn('TARGET_TOPICS="${TARGET_TOPICS:-none}"', runner)
+        self.assertIn('CLUSTERER="${CLUSTERER:-hdbscan-stability}"', runner)
         self.assertIn(
             'CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"', runner
         )
@@ -166,6 +166,63 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         self.assertIn("06_build_descriptive_topic_review.py", runner)
         self.assertNotIn("04_group_topics_with_llm.py", runner)
         self.assertNotIn("--upload", runner)
+
+    def test_stability_selector_uses_adequacy_guardrails(self):
+        script_path = (
+            ROOT / "topic_classification/scripts/03_fit_descriptive_bertopic.py"
+        )
+        spec = spec_from_file_location("descriptive_topic_fit_guardrails", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        kwargs = {
+            "minimum_topics": 4,
+            "maximum_topics": 12,
+            "maximum_outlier_share": 0.45,
+            "maximum_largest_topic_share": 0.40,
+            "maximum_country_nmi": 0.25,
+            "minimum_resample_common_share": 0.35,
+        }
+        self.assertTrue(
+            module.candidate_meets_guardrails(
+                topic_count=7,
+                outlier_share=0.30,
+                largest_topic_share=0.25,
+                country_nmi=0.10,
+                mean_resample_common_share=0.70,
+                **kwargs,
+            )
+        )
+        self.assertFalse(
+            module.candidate_meets_guardrails(
+                topic_count=2,
+                outlier_share=0.05,
+                largest_topic_share=0.98,
+                country_nmi=0.01,
+                mean_resample_common_share=0.70,
+                **kwargs,
+            )
+        )
+        self.assertFalse(
+            module.candidate_meets_guardrails(
+                topic_count=10,
+                outlier_share=0.60,
+                largest_topic_share=0.20,
+                country_nmi=0.10,
+                mean_resample_common_share=0.70,
+                **kwargs,
+            )
+        )
+        self.assertFalse(
+            module.candidate_meets_guardrails(
+                topic_count=7,
+                outlier_share=0.30,
+                largest_topic_share=0.25,
+                country_nmi=0.10,
+                mean_resample_common_share=0.20,
+                **kwargs,
+            )
+        )
 
     def test_appendix_uses_direct_descriptive_topic_table(self):
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
@@ -241,6 +298,34 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn("n_init=20", script)
         self.assertIn("min_samples=args.hdbscan_min_samples", script)
         self.assertIn("save_embedding_model=args.embedding_model", script)
+        self.assertIn('choices=["kmeans", "hdbscan", "hdbscan-stability"]', script)
+        self.assertIn("mean_resample_ari", script)
+
+    def test_appendix_visualizations_have_static_outputs(self):
+        script = (
+            ROOT / "topic_classification/scripts/05_build_topic_visualizations.py"
+        ).read_text(encoding="utf-8")
+        for stem in [
+            "figure_topic_prevalence",
+            "figure_topic_country_heatmap",
+            "figure_topic_trends",
+            "figure_topic_model_selection",
+        ]:
+            self.assertIn(stem, script)
+        appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("figure_topic_model_selection.pdf", appendix)
+        self.assertIn("figure_topic_country_heatmap.pdf", appendix)
+
+    def test_descriptive_publisher_targets_canonical_output_tree(self):
+        script = (
+            ROOT
+            / "topic_classification/scripts/08_publish_descriptive_topic_outputs.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"tables", "topic_models"', script)
+        self.assertIn('"figures", "topic_models"', script)
+        self.assertIn("validate_topic_label_outputs", script)
 
     def test_topic_reduction_can_be_disabled(self):
         script_path = (
@@ -267,6 +352,35 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn("Do not reconstruct removed countries", prompt)
         self.assertIn("Labels must remain country-neutral", prompt)
         self.assertNotIn("acceptable for a label to mention a country", prompt.lower())
+
+    def test_topic_label_examples_round_robin_across_countries(self):
+        script_path = (
+            ROOT
+            / "topic_classification/scripts/04_label_descriptive_topics_with_llm.py"
+        )
+        spec = spec_from_file_location("descriptive_topic_labels_diversity", script_path)
+        module = module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+        documents = pd.DataFrame(
+            [
+                {"country": country, "article_text": f"{country}-{row}"}
+                for country in ["Bulgaria", "France", "Hungary", "Italy", "Serbia"]
+                for row in range(3)
+            ]
+        )
+        examples = module.select_diverse_examples(
+            documents,
+            text_column="article_text",
+            n=5,
+            max_chars=100,
+            random_state=42,
+        )
+        self.assertEqual(len(examples), 5)
+        self.assertEqual(
+            {example.split("-", maxsplit=1)[0] for example in examples},
+            {"Bulgaria", "France", "Hungary", "Italy", "Serbia"},
+        )
 
 
 if __name__ == "__main__":

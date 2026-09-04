@@ -39,6 +39,8 @@ but excluded from clustering. BERTopic assigned
 \DescriptiveTopicInlierN{} of the \DescriptiveTopicUsableN{} usable
 abstractions to \DescriptiveTopicN{} direct topics and treated
 \DescriptiveTopicOutlierN{} (\DescriptiveTopicOutlierShare\%) as outliers.
+The selected density specification achieved a mean resample adjusted Rand
+index of \DescriptiveTopicMeanResampleARI{} across the five stability checks.
 
 Table~\ref{tab:pc-descriptive-topics} reports the weighted distribution of the
 direct descriptive topics. These are exploratory summaries of recurring
@@ -46,7 +48,47 @@ coverage, not validated corruption-type measures or inferential outcomes.
 
 \input{output/tables/topic_models/table_topic_descriptive_summary}
 
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.88\textwidth]{output/figures/topic_models/figure_topic_prevalence.pdf}
+\caption{Weighted prevalence of the selected descriptive topics. Shares use
+inverse country-year sampling weights and are calculated among abstractions
+assigned to a topic. The topics summarize recurring forms of coverage rather
+than validated corruption types.}
+\label{fig:pc-topic-prevalence}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_country_heatmap.pdf}
+\caption{Composition of political-corruption coverage across the twelve largest
+selected descriptive topics, or all topics when fewer than twelve were
+retained. Cells report weighted within-country shares among all assigned
+abstractions; darker and lighter colors indicate differences in prevalence
+rather than measurement quality.}
+\label{fig:pc-topic-country-heatmap}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_trends.pdf}
+\caption{Annual prevalence of up to eight of the largest descriptive topics.
+Each panel reports the inverse country-year weighted share of modelled articles
+assigned to that topic.}
+\label{fig:pc-topic-trends}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.82\textwidth]{output/figures/topic_models/figure_topic_model_selection.pdf}
+\caption{Diagnostics for stability-based topic-model specification selection.
+Each point is one HDBSCAN candidate; color indicates the resulting number of
+topics. The selected specification satisfied all predeclared adequacy
+guardrails and maximized resample agreement before secondary tie-breakers.}
+\label{fig:pc-topic-selection}
+\end{figure}
+
 The sampled articles, abstractions, prompts, representative examples, raw model
-responses, interactive visualizations, country-dependence diagnostics, and
-checksummed run manifests are retained in the Research Drive topic-model
-archive.
+responses, candidate-model diagnostics, interactive visualizations,
+country-dependence diagnostics, and checksummed run manifests are retained in
+the Research Drive topic-model archive.
