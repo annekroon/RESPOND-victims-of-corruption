@@ -370,8 +370,9 @@ class TopicTableBuilderTests(unittest.TestCase):
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )
-        self.assertIn("figure_topic_model_selection.pdf", appendix)
+        self.assertIn("figure_topic_trends.pdf", appendix)
         self.assertIn("figure_topic_country_heatmap.pdf", appendix)
+        self.assertNotIn("figure_topic_model_selection.pdf", appendix)
 
     def test_descriptive_publisher_targets_canonical_output_tree(self):
         script = (

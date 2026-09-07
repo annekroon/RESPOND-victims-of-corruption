@@ -108,16 +108,16 @@ measurement quality.}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.82\textwidth]{output/figures/topic_models/figure_topic_model_selection.pdf}
-\caption{Diagnostics for stability-based topic-model specification selection.
-Each point is one HDBSCAN candidate. Blue points satisfied all adequacy
-criteria, light-gray points did not, and the orange diamond marks the selected
-specification. The vertical line shows the maximum permitted outlier share.
-Selection maximized resample agreement before secondary tie-breakers.}
-\label{fig:pc-topic-selection}
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_trends.pdf}
+\caption{Annual weighted prevalence of the five selected descriptive topics.
+Each panel reports a topic's share among abstractions assigned to a topic in
+that publication year. Inverse country--year sampling weights are applied.
+Because outliers are excluded, changes describe the composition of assigned
+coverage rather than the prevalence of each topic in the complete corpus.}
+\label{fig:pc-topic-trends}
 \end{figure}
 
-The prevalence and temporal figures, sampled articles, abstractions, prompts,
-representative examples, raw model responses, complete candidate grid,
-country-dependence diagnostics, and checksummed run manifests are retained in
-the Research Drive topic-model archive.
+The prevalence and model-selection figures, sampled articles, abstractions,
+prompts, representative examples, raw model responses, complete candidate
+grid, country-dependence diagnostics, and checksummed run manifests are
+retained in the Research Drive topic-model archive.

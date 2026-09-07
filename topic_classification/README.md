@@ -217,12 +217,11 @@ two-topic excess-of-mass result solely because one diagnostic looks favorable.
 Promotion still requires manual coherence review of the retained examples.
 
 The manuscript appendix uses the descriptive topic table, country-composition
-heatmap, and model-selection diagnostic. The prevalence and temporal figures
-remain in the published Research Drive archive because the table already
-reports prevalence and the paper does not analyze topic trends. Static figures
-are written as vector PDFs with embedded TrueType fonts and as 600-dpi PNGs;
-the color choices are designed to remain distinguishable under common forms of
-color-vision deficiency.
+heatmap, and annual topic-composition figure. The prevalence and technical
+model-selection figures remain in the published Research Drive archive. Static
+figures are written as vector PDFs with embedded TrueType fonts and as 600-dpi
+PNGs; the color choices are designed to remain distinguishable under common
+forms of color-vision deficiency.
 
 For an exact sensitivity refit of a candidate listed in
 `hdbscan_stability_candidates.csv`, pass its UMAP neighborhood size as well as

@@ -388,15 +388,35 @@ def main() -> None:
     periods = sorted(trend_data["period"].dropna().astype(str).unique())
     ncols = 2
     nrows = int(np.ceil(len(trend_labels) / ncols))
-    fig, axes = plt.subplots(
-        nrows,
-        ncols,
-        figsize=(PUBLICATION_WIDTH_IN, max(3.6, 1.85 * nrows)),
-        sharex=True,
-        sharey=True,
-        constrained_layout=True,
-    )
-    axes = np.atleast_1d(axes).reshape(-1)
+    if len(trend_labels) == 5:
+        fig = plt.figure(
+            figsize=(PUBLICATION_WIDTH_IN, 5.65), constrained_layout=True
+        )
+        grid = fig.add_gridspec(3, 2)
+        axes = []
+        for index in range(4):
+            row, column = divmod(index, 2)
+            axes.append(
+                fig.add_subplot(
+                    grid[row, column],
+                    sharex=axes[0] if axes else None,
+                    sharey=axes[0] if axes else None,
+                )
+            )
+        axes.append(
+            fig.add_subplot(grid[2, :], sharex=axes[0], sharey=axes[0])
+        )
+        axes = np.asarray(axes, dtype=object)
+    else:
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(PUBLICATION_WIDTH_IN, max(3.6, 1.85 * nrows)),
+            sharex=True,
+            sharey=True,
+            constrained_layout=True,
+        )
+        axes = np.atleast_1d(axes).reshape(-1)
     for ax, label in zip(axes, trend_labels):
         values = (
             trend_data[trend_data[analysis_label].eq(label)]
@@ -423,11 +443,11 @@ def main() -> None:
         for spine in ["top", "right"]:
             ax.spines[spine].set_visible(False)
         ax.tick_params(axis="both", labelsize=7.5)
+        ax.label_outer()
     for ax in axes[len(trend_labels) :]:
         ax.set_visible(False)
-    for ax in axes[-ncols:]:
-        ax.tick_params(axis="x", rotation=0)
     fig.supylabel("Weighted share among assigned abstractions", fontsize=8.5)
+    fig.supxlabel("Publication year", fontsize=8.5)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_trends")
     )
