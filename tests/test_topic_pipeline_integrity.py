@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from topic_classification.provenance import (
+    apply_publication_label_overrides,
     load_verified_classifier_run,
     sha256_file,
     validate_verified_topic_sample,
@@ -141,6 +142,48 @@ class TopicClassifierProvenanceTests(unittest.TestCase):
 
 
 class TopicWorkflowStructureTests(unittest.TestCase):
+    def test_final_reviewed_topic_map_is_complete(self):
+        path = (
+            ROOT
+            / "topic_classification/manual_labels/final_stability_v1_topic_labels.csv"
+        )
+        overrides = pd.read_csv(path)
+        self.assertEqual(overrides["Topic"].tolist(), [0, 1, 2, 3, 4])
+        self.assertEqual(
+            overrides["publication_topic_label"].tolist(),
+            [
+                "Procurement and public-revenue corruption",
+                "Prosecution of senior public officials",
+                "Electoral corruption and incumbent abuse",
+                "Anti-corruption reform and rule-of-law oversight",
+                "Campaign and party finance",
+            ],
+        )
+
+    def test_reviewed_publication_labels_require_exact_topic_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "labels.csv"
+            pd.DataFrame(
+                [
+                    {
+                        "Topic": 0,
+                        "llm_topic_short_label_expected": "Raw label",
+                        "publication_topic_label": "Reviewed label",
+                        "publication_label_rationale": "Neutral wording.",
+                    }
+                ]
+            ).to_csv(path, index=False)
+            labels = pd.DataFrame(
+                [{"Topic": 0, "llm_topic_short_label": "Raw label"}]
+            )
+            reviewed = apply_publication_label_overrides(labels, path)
+            self.assertEqual(
+                reviewed.loc[0, "publication_topic_label"], "Reviewed label"
+            )
+            labels.loc[0, "llm_topic_short_label"] = "Different topic"
+            with self.assertRaisesRegex(ValueError, "expects"):
+                apply_publication_label_overrides(labels, path)
+
     def test_compact_descriptive_runner_has_no_forced_grouping(self):
         runner = (
             ROOT
@@ -265,7 +308,7 @@ class TopicTableBuilderTests(unittest.TestCase):
         summary = pd.DataFrame(
             [
                 {
-                    "llm_topic_short_label": "Public contracting",
+                    "publication_topic_label": "Public contracting",
                     "weighted_share": 0.6,
                     "top_countries": "France (40.0%); Italy (30.0%)",
                     "llm_topic_summary": "Cases concerning manipulation of public contracts.",

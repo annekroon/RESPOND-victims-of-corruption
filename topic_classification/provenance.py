@@ -34,6 +34,75 @@ def assert_file_hash(path: Path, expected: str | None, label: str) -> None:
         )
 
 
+def apply_publication_label_overrides(labels, overrides_path: Path | None):
+    """Apply a complete, audited publication-label map without changing topics."""
+    import pandas as pd
+
+    result = labels.copy()
+    source_column = (
+        "llm_topic_short_label"
+        if "llm_topic_short_label" in result.columns
+        else "llm_topic_label"
+    )
+    result["publication_topic_label"] = result[source_column]
+    if overrides_path is None:
+        return result
+    if not overrides_path.exists():
+        raise FileNotFoundError(overrides_path)
+
+    overrides = pd.read_csv(overrides_path)
+    required = {
+        "Topic",
+        "llm_topic_short_label_expected",
+        "publication_topic_label",
+        "publication_label_rationale",
+    }
+    missing = required - set(overrides.columns)
+    if missing:
+        raise ValueError(
+            f"Publication-label file is missing columns: {sorted(missing)}"
+        )
+    if overrides["Topic"].duplicated().any():
+        raise ValueError("Publication-label file contains duplicate topic IDs.")
+    if (
+        overrides["publication_topic_label"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("")
+        .any()
+    ):
+        raise ValueError("Publication-label file contains a blank label.")
+
+    result_topics = set(result.loc[result["Topic"].ne(-1), "Topic"].astype(int))
+    override_topics = set(overrides["Topic"].astype(int))
+    if result_topics != override_topics:
+        raise ValueError(
+            "Publication-label topics do not exactly match the fitted topics: "
+            f"model={sorted(result_topics)}, overrides={sorted(override_topics)}."
+        )
+
+    overrides = overrides.set_index("Topic")
+    for topic in sorted(result_topics):
+        mask = result["Topic"].astype(int).eq(topic)
+        actual = str(result.loc[mask, source_column].iloc[0]).strip()
+        expected = str(
+            overrides.loc[topic, "llm_topic_short_label_expected"]
+        ).strip()
+        if actual != expected:
+            raise ValueError(
+                f"Topic {topic} has LLM label {actual!r}, but the reviewed map "
+                f"expects {expected!r}. Review the new model before publishing."
+            )
+        result.loc[mask, "publication_topic_label"] = str(
+            overrides.loc[topic, "publication_topic_label"]
+        ).strip()
+        result.loc[mask, "publication_label_rationale"] = str(
+            overrides.loc[topic, "publication_label_rationale"]
+        ).strip()
+    return result
+
+
 @dataclass(frozen=True)
 class ClassifierRun:
     output_dir: Path

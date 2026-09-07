@@ -17,13 +17,22 @@ HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"
 UMAP_NEIGHBORS="${UMAP_NEIGHBORS:-15}"
 CLUSTERER="${CLUSTERER:-hdbscan-stability}"
 CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"
+FINAL_LABEL_OVERRIDES="$PROJECT_ROOT/topic_classification/manual_labels/final_stability_v1_topic_labels.csv"
 
 if [[ "$CLUSTERER" == "hdbscan-stability" ]]; then
   CLUSTER_SPEC="hdbscan_stability_v1"
+  LABEL_OVERRIDES="${LABEL_OVERRIDES:-$FINAL_LABEL_OVERRIDES}"
 elif [[ "$CLUSTERER" == "hdbscan" ]]; then
   CLUSTER_SPEC="${CLUSTERER}_${CLUSTER_SELECTION_METHOD}_${TARGET_TOPICS}_u${UMAP_NEIGHBORS}_min${MIN_TOPIC_SIZE}_ms${HDBSCAN_MIN_SAMPLES}"
+  LABEL_OVERRIDES="${LABEL_OVERRIDES:-}"
 else
   CLUSTER_SPEC="${CLUSTERER}_${TARGET_TOPICS}"
+  LABEL_OVERRIDES="${LABEL_OVERRIDES:-}"
+fi
+
+LABEL_OVERRIDE_ARGS=()
+if [[ -n "$LABEL_OVERRIDES" ]]; then
+  LABEL_OVERRIDE_ARGS=(--label-overrides "$LABEL_OVERRIDES")
 fi
 
 SAMPLE_PATH="${SAMPLE_PATH:-$TOPIC_ROOT/political_corruption_descriptive_country_year_sample_${PER_COUNTRY_YEAR}.csv.gz}"
@@ -47,6 +56,7 @@ echo "HDBSCAN minimum samples: $HDBSCAN_MIN_SAMPLES"
 echo "UMAP neighbors for a single fit: $UMAP_NEIGHBORS"
 echo "Clusterer: $CLUSTERER"
 echo "Cluster selection method: $CLUSTER_SELECTION_METHOD"
+echo "Reviewed publication labels: ${LABEL_OVERRIDES:-none}"
 echo
 
 if [[ ! -f "$SAMPLE_PATH" ]]; then
@@ -139,6 +149,7 @@ echo
 echo "5/6 Building direct-topic visualizations..."
 python3 topic_classification/scripts/05_build_topic_visualizations.py \
   --bertopic-dir "$BERTOPIC_DIR" \
+  "${LABEL_OVERRIDE_ARGS[@]}" \
   --analysis-level fine-grained \
   --top-n 12
 
@@ -146,6 +157,7 @@ echo
 echo "6/6 Building the direct topic table, diagnostics, and manual-review packet..."
 python3 topic_classification/scripts/06_build_descriptive_topic_review.py \
   --bertopic-dir "$BERTOPIC_DIR" \
+  "${LABEL_OVERRIDE_ARGS[@]}" \
   --examples-per-topic 10
 
 echo

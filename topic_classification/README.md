@@ -57,6 +57,11 @@ descriptive model and keeps the auditable GPT abstraction stage tractable.
 | 06 | `06_build_descriptive_topic_review.py` | Table, diagnostics, and manual-review packet |
 | 08 | `08_publish_descriptive_topic_outputs.py` | Publish an approved table, figures, and diagnostics |
 
+The final stability-selected build applies the reviewed publication wording in
+`manual_labels/final_stability_v1_topic_labels.csv`. The file records both the
+expected GPT-5.1 label and its neutral publication label. A mismatch stops the
+build rather than applying a reviewed label to a different topic.
+
 Use the single maintained entry point rather than assembling these calls
 manually:
 

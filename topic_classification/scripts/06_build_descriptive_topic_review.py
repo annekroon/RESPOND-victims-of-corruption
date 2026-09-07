@@ -18,7 +18,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from topic_classification.provenance import validate_topic_label_outputs
+from topic_classification.provenance import (
+    apply_publication_label_overrides,
+    validate_topic_label_outputs,
+)
 from topic_classification.scripts._impl.reproducibility import (
     command_output,
     write_run_manifest,
@@ -30,6 +33,7 @@ def parse_args() -> argparse.Namespace:
         description="Build auditable direct-topic summaries for descriptive BERTopic."
     )
     parser.add_argument("--bertopic-dir", type=Path, required=True)
+    parser.add_argument("--label-overrides", type=Path, default=None)
     parser.add_argument("--examples-per-topic", type=int, default=5)
     parser.add_argument("--country-dominance-threshold", type=float, default=0.80)
     return parser.parse_args()
@@ -81,7 +85,7 @@ def direct_topic_latex(summary) -> str:
     ]
     for _, row in summary.iterrows():
         lines.append(
-            f"{latex_escape(row['llm_topic_short_label'])} & "
+            f"{latex_escape(row['publication_topic_label'])} & "
             f"{100 * float(row['weighted_share']):.1f}\\% & "
             f"{latex_escape(row['top_countries'])} & "
             f"{latex_escape(compact(row['llm_topic_summary']))} \\\\"
@@ -124,6 +128,7 @@ def main() -> None:
     documents = pd.read_csv(documents_path)
     labels = pd.read_csv(labels_path)
     labels = labels[labels["Topic"].ne(-1)].copy()
+    labels = apply_publication_label_overrides(labels, args.label_overrides)
     model_manifest = json.loads(model_manifest_path.read_text(encoding="utf-8"))
     if "analysis_weight" not in documents.columns:
         documents["analysis_weight"] = 1.0
@@ -138,6 +143,7 @@ def main() -> None:
                 "Topic",
                 "llm_topic_label",
                 "llm_topic_short_label",
+                "publication_topic_label",
                 "llm_topic_summary",
                 "llm_inclusion_rule",
                 "llm_exclusion_rule",
@@ -149,7 +155,7 @@ def main() -> None:
         how="left",
         validate="many_to_one",
     )
-    if inliers["llm_topic_short_label"].fillna("").astype(str).str.strip().eq("").any():
+    if inliers["publication_topic_label"].fillna("").astype(str).str.strip().eq("").any():
         raise ValueError("At least one inlier document lacks a descriptive topic label.")
 
     totals = (
@@ -232,13 +238,13 @@ def main() -> None:
         "weighted_articles"
     ].transform("sum")
     year = year.merge(
-        labels[["Topic", "llm_topic_short_label"]],
+        labels[["Topic", "publication_topic_label"]],
         left_on="topic",
         right_on="Topic",
         how="left",
     ).drop(columns="Topic")
     country = country.merge(
-        labels[["Topic", "llm_topic_short_label"]],
+        labels[["Topic", "publication_topic_label"]],
         left_on="topic",
         right_on="Topic",
         how="left",
@@ -259,7 +265,7 @@ def main() -> None:
                     {
                         "topic": topic,
                         "topic_label": label_lookup.loc[
-                            topic, "llm_topic_short_label"
+                            topic, "publication_topic_label"
                         ],
                         "example_number": number,
                         "example": clean(example),
@@ -386,16 +392,20 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    manifest_inputs = {
+        "topic_label_manifest": provenance["manifest_path"],
+        "document_topics": documents_path,
+        "topic_labels": labels_path,
+        "topic_label_audit": audit_path,
+    }
+    if args.label_overrides is not None:
+        manifest_inputs["label_overrides"] = args.label_overrides
+
     manifest_path = write_run_manifest(
         root,
         script_name=Path(__file__).name,
         args=args,
-        inputs={
-            "topic_label_manifest": provenance["manifest_path"],
-            "document_topics": documents_path,
-            "topic_labels": labels_path,
-            "topic_label_audit": audit_path,
-        },
+        inputs=manifest_inputs,
         outputs={
             "topic_summary": summary_path,
             "country_shares": country_path,

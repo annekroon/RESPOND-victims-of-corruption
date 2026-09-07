@@ -12,7 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from topic_classification.provenance import validate_topic_label_outputs
+from topic_classification.provenance import (
+    apply_publication_label_overrides,
+    validate_topic_label_outputs,
+)
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
@@ -20,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create Plotly topic visualizations.")
     parser.add_argument("--bertopic-dir", type=Path, required=True)
     parser.add_argument("--labels", type=Path, default=None)
+    parser.add_argument("--label-overrides", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument(
         "--top-n",
@@ -47,14 +51,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_analysis_labels(topic_info, labels_path):
+def load_analysis_labels(topic_info, labels_path, overrides_path=None):
     if labels_path is None or not labels_path.exists():
         raise FileNotFoundError(labels_path)
 
     import pandas as pd
 
     labels = pd.read_csv(labels_path)
-    label_col = "llm_topic_short_label" if "llm_topic_short_label" in labels.columns else "llm_topic_label"
+    labels = apply_publication_label_overrides(labels, overrides_path)
+    label_col = "publication_topic_label"
     labels["analysis_label"] = labels[label_col].fillna("").astype(str)
     labels = topic_info[["Topic", "Name"]].merge(
         labels[["Topic", "analysis_label"]], on="Topic", how="left"
@@ -112,7 +117,7 @@ def main() -> None:
     docs = pd.read_csv(document_topics_path)
     topic_info = pd.read_csv(topic_info_path)
     labels_path = args.labels or (args.bertopic_dir / "topic_labels_llm.csv")
-    labels = load_analysis_labels(topic_info, labels_path)
+    labels = load_analysis_labels(topic_info, labels_path, args.label_overrides)
 
     docs = docs.merge(labels, left_on="topic", right_on="Topic", how="left")
     analysis_label = "analysis_label"
@@ -376,16 +381,20 @@ def main() -> None:
         )
         plt.close(fig)
 
+    manifest_inputs = {
+        "document_topics": document_topics_path,
+        "topic_info": topic_info_path,
+        "topic_labels": labels_path,
+        "topic_label_manifest": provenance["manifest_path"],
+    }
+    if args.label_overrides is not None:
+        manifest_inputs["label_overrides"] = args.label_overrides
+
     write_run_manifest(
         output_dir,
         script_name=Path(__file__).name,
         args=args,
-        inputs={
-            "document_topics": document_topics_path,
-            "topic_info": topic_info_path,
-            "topic_labels": labels_path,
-            "topic_label_manifest": provenance["manifest_path"],
-        },
+        inputs=manifest_inputs,
         outputs={
             "topic_weighted_totals": topic_totals_path,
             "country_topic_heatmap": country_heatmap_path,

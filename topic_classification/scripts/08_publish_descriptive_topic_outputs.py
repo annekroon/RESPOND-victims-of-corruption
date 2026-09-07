@@ -17,12 +17,19 @@ from rd_utils import webdav_mkdirs, webdav_upload_bytes
 from topic_classification.provenance import (
     assert_file_hash,
     read_json,
+    sha256_file,
     validate_topic_label_outputs,
 )
 
 
 DEFAULT_OUTPUT_ROOT = posixpath.join(
     RD_BASE_DIR, "victims-of-corruption-paper", "output"
+)
+FINAL_LABEL_OVERRIDES = (
+    PROJECT_ROOT
+    / "topic_classification"
+    / "manual_labels"
+    / "final_stability_v1_topic_labels.csv"
 )
 
 
@@ -87,6 +94,19 @@ def main() -> None:
     root = args.bertopic_dir.resolve()
     labels = validate_topic_label_outputs(root)
     label_manifest_hash = labels["manifest_sha256"]
+    expected_override_hash = sha256_file(FINAL_LABEL_OVERRIDES)
+
+    for manifest_path in [
+        root / "descriptive_topic_output_manifest.json",
+        root / "visualizations" / "visualizations_run_manifest.json",
+    ]:
+        manifest = read_json(manifest_path)
+        override_record = (manifest.get("inputs") or {}).get("label_overrides") or {}
+        if override_record.get("sha256") != expected_override_hash:
+            raise ValueError(
+                f"{manifest_path.name} does not use the reviewed final topic labels. "
+                "Rerun steps 05 and 06 with the canonical label-overrides file."
+            )
 
     descriptive = validate_manifest_outputs(
         root / "descriptive_topic_output_manifest.json",
@@ -140,6 +160,7 @@ def main() -> None:
         local = descriptive[key]
         publication_plan.append((local, posixpath.join(metadata_dir, local.name)))
     for local in [
+        FINAL_LABEL_OVERRIDES,
         root / "hdbscan_stability_candidates.csv",
         root / "hdbscan_stability_selection.json",
         root / "run_manifest.json",
