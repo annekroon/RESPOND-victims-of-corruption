@@ -100,8 +100,9 @@ one-to-one onto the article-level individualized/systemic framing variable.
 \includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_country_heatmap.pdf}
 \caption{Composition of political-corruption coverage across the five selected
 descriptive topics. Cells report weighted within-country shares among assigned
-abstractions. The figure is a diagnostic of cross-national composition rather
-than a comparison of measurement quality.}
+abstractions, with cell values expressed as percentages. The figure is a
+diagnostic of cross-national composition rather than a comparison of
+measurement quality.}
 \label{fig:pc-topic-country-heatmap}
 \end{figure}
 
@@ -109,9 +110,10 @@ than a comparison of measurement quality.}
 \centering
 \includegraphics[width=0.82\textwidth]{output/figures/topic_models/figure_topic_model_selection.pdf}
 \caption{Diagnostics for stability-based topic-model specification selection.
-Each point is one HDBSCAN candidate; color indicates the resulting number of
-topics. The selected specification satisfied all predeclared adequacy
-guardrails and maximized resample agreement before secondary tie-breakers.}
+Each point is one HDBSCAN candidate. Blue points satisfied all adequacy
+criteria, light-gray points did not, and the orange diamond marks the selected
+specification. The vertical line shows the maximum permitted outlier share.
+Selection maximized resample agreement before secondary tie-breakers.}
 \label{fig:pc-topic-selection}
 \end{figure}
 

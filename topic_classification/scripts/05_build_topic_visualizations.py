@@ -19,6 +19,18 @@ from topic_classification.provenance import (
 from topic_classification.scripts._impl.reproducibility import write_run_manifest
 
 
+PUBLICATION_WIDTH_IN = 7.2
+OKABE_ITO = [
+    "#0072B2",
+    "#D55E00",
+    "#009E73",
+    "#CC79A7",
+    "#E69F00",
+    "#56B4E9",
+    "#000000",
+]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create Plotly topic visualizations.")
     parser.add_argument("--bertopic-dir", type=Path, required=True)
@@ -83,11 +95,47 @@ def wrapped(value: object, width: int = 24) -> str:
     return "\n".join(textwrap.wrap(str(value), width=width))
 
 
+def configure_publication_style(plt) -> None:
+    """Set a restrained, vector-safe style for manuscript figures."""
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+            "font.size": 8.5,
+            "axes.labelsize": 9,
+            "axes.titlesize": 9.5,
+            "axes.linewidth": 0.65,
+            "xtick.labelsize": 8,
+            "ytick.labelsize": 8,
+            "legend.fontsize": 8,
+            "legend.title_fontsize": 8,
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "savefig.facecolor": "white",
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "axes.unicode_minus": False,
+        }
+    )
+
+
 def save_static_figure(fig, output_dir: Path, stem: str) -> dict[str, Path]:
     png = output_dir / f"{stem}.png"
     pdf = output_dir / f"{stem}.pdf"
-    fig.savefig(png, dpi=300, bbox_inches="tight", facecolor="white")
-    fig.savefig(pdf, bbox_inches="tight", facecolor="white")
+    fig.savefig(
+        png,
+        dpi=600,
+        bbox_inches="tight",
+        pad_inches=0.04,
+        facecolor="white",
+    )
+    fig.savefig(
+        pdf,
+        bbox_inches="tight",
+        pad_inches=0.04,
+        facecolor="white",
+        metadata={"Creator": "RESPOND reproducible topic workflow"},
+    )
     return {f"{stem}_png": png, f"{stem}_pdf": pdf}
 
 
@@ -101,6 +149,9 @@ def main() -> None:
     import numpy as np
     import pandas as pd
     import plotly.express as px
+    from matplotlib.ticker import PercentFormatter
+
+    configure_publication_style(plt)
 
     document_topics_path = args.bertopic_dir / "document_topics.csv.gz"
     topic_info_path = args.bertopic_dir / "topic_info.csv"
@@ -155,11 +206,15 @@ def main() -> None:
     fig_country = px.imshow(
         country_topic.pivot(index="country", columns=analysis_label, values="share").fillna(0),
         aspect="auto",
-        color_continuous_scale="Viridis",
+        color_continuous_scale="Cividis",
         labels={"color": "Within-country share"},
         title=f"{display_n} political-corruption {display_level} by country",
     )
-    fig_country.update_layout(height=650)
+    fig_country.update_layout(
+        height=650,
+        template="simple_white",
+        font={"family": "Arial, Helvetica, sans-serif", "size": 13},
+    )
     country_heatmap_path = output_dir / "country_topic_heatmap.html"
     fig_country.write_html(country_heatmap_path)
 
@@ -188,10 +243,16 @@ def main() -> None:
         x="period",
         y="share",
         color=analysis_label,
+        color_discrete_sequence=OKABE_ITO,
         title=f"Political-corruption {display_level} over time",
         labels={"period": args.time_unit.title(), "share": "Topic share", analysis_label: "Topic"},
     )
-    fig_time.update_layout(height=650, hovermode="x unified")
+    fig_time.update_layout(
+        height=650,
+        hovermode="x unified",
+        template="simple_white",
+        font={"family": "Arial, Helvetica, sans-serif", "size": 13},
+    )
     time_path = output_dir / "topic_shares_over_time.html"
     fig_time.write_html(time_path)
 
@@ -212,6 +273,7 @@ def main() -> None:
         x="period",
         y="share",
         color=analysis_label,
+        color_discrete_sequence=OKABE_ITO,
         facet_row="country",
         title=f"Political-corruption {display_level} by country over time",
         labels={
@@ -221,34 +283,44 @@ def main() -> None:
         },
         height=1400,
     )
+    fig_country_time.update_layout(
+        template="simple_white",
+        font={"family": "Arial, Helvetica, sans-serif", "size": 12},
+    )
     fig_country_time.update_yaxes(matches=None)
     country_time_path = output_dir / "country_topic_trends.html"
     fig_country_time.write_html(country_time_path)
 
     static_outputs: dict[str, Path] = {}
+    topic_colors = {
+        label: OKABE_ITO[index % len(OKABE_ITO)]
+        for index, label in enumerate(top_labels)
+    }
 
     prevalence = topic_totals.head(args.top_n).sort_values("share")
-    prevalence_labels = [wrapped(value, 30) for value in prevalence[analysis_label]]
+    prevalence_labels = [wrapped(value, 34) for value in prevalence[analysis_label]]
     fig, ax = plt.subplots(
-        figsize=(8.2, max(4.2, 0.52 * len(prevalence) + 1.4)),
+        figsize=(PUBLICATION_WIDTH_IN, max(2.7, 0.48 * len(prevalence) + 0.7)),
         constrained_layout=True,
     )
     bars = ax.barh(
         prevalence_labels,
         100 * prevalence["share"],
-        color="#4C78A8",
-        edgecolor="#1f1f1f",
-        linewidth=0.45,
+        color=[topic_colors[label] for label in prevalence[analysis_label]],
+        edgecolor="none",
+        height=0.68,
     )
-    ax.bar_label(bars, fmt="%.1f%%", padding=4, fontsize=8)
-    ax.set_xlabel("Weighted share of modelled articles (%)")
+    ax.bar_label(bars, fmt="%.1f%%", padding=4, fontsize=8.2)
+    upper = max(40.0, 1.18 * float(100 * prevalence["share"].max()))
+    ax.set_xlim(0, upper)
+    ax.xaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+    ax.set_xlabel("Weighted share among assigned abstractions")
     ax.set_ylabel("")
-    ax.set_title("Recurring themes in political-corruption coverage", loc="left")
     for spine in ["top", "right", "left"]:
         ax.spines[spine].set_visible(False)
-    ax.grid(axis="x", color="#d9d9d9", linewidth=0.6)
+    ax.grid(axis="x", color="#D9DDE2", linewidth=0.55)
+    ax.tick_params(axis="y", length=0)
     ax.set_axisbelow(True)
-    ax.margins(x=0.12)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_prevalence")
     )
@@ -260,22 +332,52 @@ def main() -> None:
     heatmap = heatmap.reindex(columns=top_labels)
     heatmap.index = heatmap.index.astype(str).str.replace("_", " ", regex=False)
     fig, ax = plt.subplots(
-        figsize=(max(8.5, 0.9 * len(top_labels) + 3.0), 5.8),
+        figsize=(PUBLICATION_WIDTH_IN, 4.25),
         constrained_layout=True,
     )
-    image = ax.imshow(100 * heatmap.to_numpy(), aspect="auto", cmap="cividis")
+    heatmap_values = 100 * heatmap.to_numpy()
+    heatmap_max = max(30.0, 5 * np.ceil(float(heatmap_values.max()) / 5))
+    image = ax.imshow(
+        heatmap_values,
+        aspect="auto",
+        cmap="cividis",
+        vmin=0,
+        vmax=heatmap_max,
+    )
     ax.set_xticks(np.arange(len(heatmap.columns)))
     ax.set_xticklabels(
-        [wrapped(value, 18) for value in heatmap.columns],
-        rotation=35,
-        ha="right",
-        fontsize=8,
+        [wrapped(value, 17) for value in heatmap.columns],
+        rotation=0,
+        ha="center",
+        fontsize=7.7,
     )
     ax.set_yticks(np.arange(len(heatmap.index)))
-    ax.set_yticklabels(heatmap.index, fontsize=9)
-    ax.set_title("Topic composition within each country", loc="left")
-    colorbar = fig.colorbar(image, ax=ax, shrink=0.82, pad=0.02)
-    colorbar.set_label("Share of country coverage (%)")
+    ax.set_yticklabels(heatmap.index, fontsize=8.3)
+    ax.set_ylabel("Publication country")
+    ax.tick_params(axis="both", length=0)
+    ax.set_xticks(np.arange(-0.5, len(heatmap.columns), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(heatmap.index), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=1.1)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    for row_index in range(heatmap_values.shape[0]):
+        for column_index in range(heatmap_values.shape[1]):
+            value = float(heatmap_values[row_index, column_index])
+            color = "white" if value >= 0.53 * heatmap_max else "#1C232B"
+            ax.text(
+                column_index,
+                row_index,
+                f"{value:.0f}",
+                ha="center",
+                va="center",
+                color=color,
+                fontsize=7.4,
+            )
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    colorbar = fig.colorbar(image, ax=ax, shrink=0.78, pad=0.018)
+    colorbar.set_label("Within-country share (%)")
+    colorbar.outline.set_linewidth(0.5)
+    colorbar.ax.tick_params(length=2.5, width=0.5)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_country_heatmap")
     )
@@ -289,8 +391,9 @@ def main() -> None:
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(9.0, max(4.5, 2.25 * nrows)),
+        figsize=(PUBLICATION_WIDTH_IN, max(3.6, 1.85 * nrows)),
         sharex=True,
+        sharey=True,
         constrained_layout=True,
     )
     axes = np.atleast_1d(axes).reshape(-1)
@@ -302,23 +405,29 @@ def main() -> None:
             .fillna(0)
         )
         x_positions = np.arange(len(periods))
-        ax.plot(x_positions, 100 * values, color="#4C78A8", linewidth=1.8)
-        ax.fill_between(
-            x_positions, 0, 100 * values, color="#4C78A8", alpha=0.14
+        color = topic_colors[label]
+        ax.plot(
+            x_positions,
+            100 * values,
+            color=color,
+            linewidth=1.65,
+            marker="o",
+            markersize=2.8,
+            markeredgewidth=0,
         )
         ax.set_xticks(x_positions)
         ax.set_xticklabels(periods)
-        ax.set_title(wrapped(label, 42), loc="left", fontsize=9)
-        ax.set_ylabel("Share (%)", fontsize=8)
-        ax.grid(axis="y", color="#e1e1e1", linewidth=0.55)
+        ax.set_title(wrapped(label, 38), loc="left", fontsize=8.5, pad=4)
+        ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+        ax.grid(axis="y", color="#D9DDE2", linewidth=0.5)
         for spine in ["top", "right"]:
             ax.spines[spine].set_visible(False)
-        ax.tick_params(axis="both", labelsize=8)
+        ax.tick_params(axis="both", labelsize=7.5)
     for ax in axes[len(trend_labels) :]:
         ax.set_visible(False)
     for ax in axes[-ncols:]:
-        ax.tick_params(axis="x", rotation=45)
-    fig.suptitle("Topic prevalence over time", x=0.0, ha="left", fontsize=13)
+        ax.tick_params(axis="x", rotation=0)
+    fig.supylabel("Weighted share among assigned abstractions", fontsize=8.5)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_trends")
     )
@@ -331,51 +440,75 @@ def main() -> None:
         selection = json.loads(selection_path.read_text(encoding="utf-8"))[
             "selected"
         ]
-        fig, ax = plt.subplots(figsize=(7.4, 5.0), constrained_layout=True)
+        fig, ax = plt.subplots(
+            figsize=(PUBLICATION_WIDTH_IN, 4.15), constrained_layout=True
+        )
         adequate = candidates["adequate"].astype(str).str.lower().eq("true")
-        scatter = ax.scatter(
-            100 * candidates["outlier_share"],
-            candidates["mean_resample_ari"],
-            c=candidates["topics"],
-            cmap="cividis",
-            s=24,
+        ax.scatter(
+            100 * candidates.loc[~adequate, "outlier_share"],
+            candidates.loc[~adequate, "mean_resample_ari"],
+            color="#C5CBD1",
+            s=20,
             marker="o",
-            alpha=0.28,
+            alpha=0.62,
             edgecolors="none",
+            label="Did not meet all criteria",
         )
         ax.scatter(
             100 * candidates.loc[adequate, "outlier_share"],
             candidates.loc[adequate, "mean_resample_ari"],
-            c=candidates.loc[adequate, "topics"],
-            cmap="cividis",
-            vmin=candidates["topics"].min(),
-            vmax=candidates["topics"].max(),
-            s=48,
+            color="#0072B2",
+            s=38,
             marker="o",
-            alpha=0.85,
-            edgecolors="#222222",
-            linewidths=0.4,
+            alpha=0.82,
+            edgecolors="white",
+            linewidths=0.45,
+            label="Met all criteria",
         )
+        selected_x = 100 * float(selection["outlier_share"])
+        selected_y = float(selection["mean_resample_ari"])
         ax.scatter(
-            100 * float(selection["outlier_share"]),
-            float(selection["mean_resample_ari"]),
-            marker="*",
-            s=210,
-            color="#D1495B",
+            selected_x,
+            selected_y,
+            marker="D",
+            s=74,
+            color="#D55E00",
             edgecolor="#111111",
-            linewidth=0.8,
+            linewidth=0.65,
             label="Selected specification",
             zorder=4,
         )
+        ax.annotate(
+            f"Selected: {int(selection['topics'])} topics\n"
+            f"ARI {selected_y:.3f}; {selected_x:.1f}% outliers",
+            xy=(selected_x, selected_y),
+            xytext=(10, -10),
+            textcoords="offset points",
+            ha="left",
+            va="top",
+            fontsize=7.8,
+            color="#31363B",
+            arrowprops={"arrowstyle": "-", "color": "#737A82", "lw": 0.6},
+        )
+        ax.axvline(45, color="#737A82", linewidth=0.75, linestyle=(0, (3, 2)))
+        ax.text(
+            45,
+            0.015,
+            "45% outlier criterion",
+            transform=ax.get_xaxis_transform(),
+            rotation=90,
+            va="bottom",
+            ha="right",
+            fontsize=7.2,
+            color="#626970",
+        )
         ax.set_xlabel("Outlier share (%)")
-        ax.set_ylabel("Mean resample agreement (adjusted Rand index)")
-        ax.set_title("Stability-based BERTopic specification selection", loc="left")
-        ax.grid(color="#e1e1e1", linewidth=0.55)
+        ax.set_ylabel("Mean resample stability (adjusted Rand index)")
+        ax.grid(color="#D9DDE2", linewidth=0.5)
+        ax.set_axisbelow(True)
         for spine in ["top", "right"]:
             ax.spines[spine].set_visible(False)
-        ax.legend(frameon=False, loc="best")
-        colorbar = fig.colorbar(scatter, ax=ax, pad=0.02)
-        colorbar.set_label("Number of topics")
+        ax.legend(frameon=False, loc="lower left", ncols=1, handletextpad=0.5)
         static_outputs.update(
             save_static_figure(fig, output_dir, "figure_topic_model_selection")
         )

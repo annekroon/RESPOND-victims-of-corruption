@@ -363,6 +363,10 @@ class TopicTableBuilderTests(unittest.TestCase):
             "figure_topic_model_selection",
         ]:
             self.assertIn(stem, script)
+        self.assertIn('"pdf.fonttype": 42', script)
+        self.assertIn("dpi=600", script)
+        self.assertIn("Met all criteria", script)
+        self.assertIn("Within-country share (%)", script)
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )
