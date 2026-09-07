@@ -297,7 +297,13 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         )
         self.assertNotIn("table_topic_higher_order_summary", appendix)
         self.assertNotIn("table_all_topics_llm_higher_order_topics", appendix)
-        self.assertIn("Purpose and Procedure", appendix)
+        self.assertIn("Recurring Patterns of Coverage", appendix)
+        self.assertIn("Cross-National and Temporal Variation", appendix)
+        self.assertIn("Technical Procedure and Scope", appendix)
+        self.assertLess(
+            appendix.index("Recurring Patterns of Coverage"),
+            appendix.index("Technical Procedure and Scope"),
+        )
         self.assertNotIn("Exploratory Topic Modeling", method)
         self.assertNotIn("BERTopic", method)
 

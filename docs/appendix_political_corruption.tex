@@ -26,17 +26,79 @@ a descriptive complement to the relative-attention measure used in the main
 analysis.
 
 \clearpage
-\section{Exploratory Topic Model}
+\section{Exploratory Substantive Profile of Political-Corruption Coverage}
 \label{app:exploratory-topic-model}
 
 \input{output/tables/topic_models/descriptive_topic_manuscript_values}
 
-\subsection{Purpose and Procedure}
+\subsection{Recurring Patterns of Coverage}
 
-This exploratory analysis describes recurring themes in the
-political-corruption corpus. It was not used to code the article-level outcome
-variables, assess their validity, or estimate inferential models. The resulting
-topics should therefore be read as patterns of coverage rather than as an
+To characterize what the political-corruption corpus substantively covers, we
+used an exploratory topic model to identify recurring patterns in a
+country--year-stratified sample. The analysis produced five interpretable
+themes among the articles assigned to a topic. These themes describe patterns
+of news coverage; they are neither mutually exclusive theoretical types of
+corruption nor substitutes for the article-level variables used in the main
+analysis.
+
+Table~\ref{tab:pc-descriptive-topics} reports the weighted distribution of the
+five themes. Procurement and public-revenue corruption forms the largest theme,
+followed by prosecution of senior public officials. The remaining coverage
+concerns electoral corruption and incumbent abuse, anti-corruption reform and
+rule-of-law oversight, and campaign and party finance. Together, the themes
+show that the corpus captures both alleged corrupt practices and the political,
+judicial, and institutional responses to them. They consequently do not map
+one-to-one onto the article-level distinction between individualized and
+systemic framing.
+
+\input{output/tables/topic_models/table_topic_descriptive_summary}
+
+\subsection{Cross-National and Temporal Variation}
+
+Figure~\ref{fig:pc-topic-country-heatmap} shows how the composition of assigned
+coverage varies across publication countries. Procurement and public-revenue
+corruption is especially prominent in Ukraine, Italy, and Serbia, whereas
+prosecutions of senior public officials account for comparatively large shares
+in Sweden, France, and the Netherlands. United Kingdom coverage places
+relatively greater emphasis on electoral corruption and incumbent abuse, while
+Bulgarian coverage devotes a comparatively large share to anti-corruption
+reform and rule-of-law oversight. Campaign and party finance appears across
+countries but is not the largest theme in any country. These contrasts describe
+the sampled corpus and should not be interpreted as estimates of the underlying
+incidence of corruption.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_country_heatmap.pdf}
+\caption{Substantive composition of political-corruption coverage by
+publication country. Cells report weighted within-country percentages among
+sampled abstractions assigned to one of the five topics. Rows may not sum to
+exactly 100 because of rounding.}
+\label{fig:pc-topic-country-heatmap}
+\end{figure}
+
+Figure~\ref{fig:pc-country-topic-trends} extends this description over time.
+The country panels make it possible to distinguish persistent differences in
+coverage composition from shorter-lived shifts associated with particular
+political events or cases. The series are descriptive: they summarize the
+composition of sampled, assigned articles and are not estimates of changes in
+the prevalence of corruption itself.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_country_topic_trends.pdf}
+\caption{Annual composition of political-corruption coverage by publication
+country and descriptive topic. Lines report weighted percentages among sampled
+abstractions assigned to a topic in each country--year. All panels use the same
+vertical scale. Boundary cases and topic-model outliers are excluded.}
+\label{fig:pc-country-topic-trends}
+\end{figure}
+
+\subsection{Technical Procedure and Scope}
+
+This exploratory analysis was not used to code the article-level outcomes,
+assess their validity, or estimate inferential models. The resulting topics
+should therefore be read as a compact empirical description rather than as an
 exhaustive or validated taxonomy of corruption types.
 
 The analysis began with a country--year-stratified sample of
@@ -74,8 +136,6 @@ topic labels were subsequently reviewed and standardized for neutral academic
 wording without changing any topic assignments. Prompts, examples, raw model
 responses, candidate diagnostics, and checksummed manifests were retained.
 
-\subsection{Descriptive Results}
-
 The selected specification produced \DescriptiveTopicN{} topics and assigned
 \DescriptiveTopicInlierN{} of the \DescriptiveTopicUsableN{} usable
 abstractions. HDBSCAN treated \DescriptiveTopicOutlierN{}
@@ -84,40 +144,6 @@ mean resample adjusted Rand index of \DescriptiveTopicMeanResampleARI{} and a
 minimum resample value of \DescriptiveTopicMinResampleARI{}. Country--topic
 normalized mutual information was \DescriptiveTopicCountryNMI{}, and no topic
 was dominated by a single publication country.
-
-Table~\ref{tab:pc-descriptive-topics} reports the weighted distribution of the
-direct descriptive topics among assigned abstractions. The largest theme was
-procurement and public-revenue corruption, followed by prosecution of senior
-public officials, electoral corruption and incumbent abuse, anti-corruption
-reform and rule-of-law oversight, and campaign and party finance. These themes
-mix alleged practices with institutional responses and consequently do not map
-one-to-one onto the article-level individualized/systemic framing variable.
-
-\input{output/tables/topic_models/table_topic_descriptive_summary}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_country_heatmap.pdf}
-\caption{Composition of political-corruption coverage across the five selected
-descriptive topics. Cells report weighted within-country shares among assigned
-abstractions, with cell values expressed as percentages. The figure is a
-diagnostic of cross-national composition rather than a comparison of
-measurement quality.}
-\label{fig:pc-topic-country-heatmap}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{output/figures/topic_models/figure_country_topic_trends.pdf}
-\caption{Annual composition of the five selected descriptive topics by
-publication country. Each panel reports weighted topic shares among
-abstractions assigned to a topic in that country--year. The common vertical
-scale permits comparison across countries. Because boundary cases and outliers
-are excluded, the lines describe the composition of assigned coverage rather
-than topic prevalence in the complete corpus; small year-to-year differences
-should not be overinterpreted.}
-\label{fig:pc-country-topic-trends}
-\end{figure}
 
 The pooled annual-composition, prevalence, and model-selection figures, sampled
 articles, abstractions, prompts, representative examples, raw model responses,
