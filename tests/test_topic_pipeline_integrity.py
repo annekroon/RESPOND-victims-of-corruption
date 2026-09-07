@@ -367,6 +367,7 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn("dpi=600", script)
         self.assertIn("Met all criteria", script)
         self.assertIn("Within-country share (%)", script)
+        self.assertIn("luminance < 0.48", script)
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )

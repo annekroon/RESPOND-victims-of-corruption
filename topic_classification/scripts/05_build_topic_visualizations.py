@@ -362,7 +362,9 @@ def main() -> None:
     for row_index in range(heatmap_values.shape[0]):
         for column_index in range(heatmap_values.shape[1]):
             value = float(heatmap_values[row_index, column_index])
-            color = "white" if value >= 0.53 * heatmap_max else "#1C232B"
+            red, green, blue, _ = image.cmap(image.norm(value))
+            luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+            color = "white" if luminance < 0.48 else "#1C232B"
             ax.text(
                 column_index,
                 row_index,
