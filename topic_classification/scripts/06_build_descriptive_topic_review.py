@@ -351,6 +351,12 @@ def main() -> None:
                 if selected_spec.get("mean_resample_ari") is not None
                 else "n/a"
             ),
+            "DescriptiveTopicMinResampleARI": (
+                f"{float(selected_spec['min_resample_ari']):.3f}"
+                if selected_spec.get("min_resample_ari") is not None
+                else "n/a"
+            ),
+            "DescriptiveTopicCountryNMI": f"{topic_country_nmi:.3f}",
             "DescriptiveTopicSelectedMinimumSize": (
                 str(selected_spec.get("min_topic_size", "n/a"))
             ),

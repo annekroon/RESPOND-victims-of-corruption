@@ -126,68 +126,13 @@ reported in Table~\ref{tab:pc-corpus-construction-country-summary}.
 
 \input{output/tables/attention/table_attention_corpus_construction_country_summary}
 
-\subsection{Exploratory Topic Modeling}
-\label{sec:method-bertopic}
-
-BERTopic was used as a separate inductive step to inspect recurring substantive
-patterns in the final political-corruption corpus. The topic model was not used
-to assign the article-level variables, to estimate their validity, or as an
-inferential predictor. Its purpose was exploratory: representative articles,
-keywords, country distributions, and temporal patterns were examined to
-sensitize the later codebook to recurring forms of corruption coverage.
-
-To reduce domination by large countries and years, the descriptive sample was
-stratified by country and publication year, with up to 50
-political-corruption articles drawn per non-empty stratum and inverse sampling
-weights retained. Direct clustering of multilingual articles was first tested
-as a sensitivity specification, but manual inspection showed that its clusters
-were strongly structured by publication language, country, and recurring
-events. It was therefore archived rather than interpreted as a distribution of
-corruption types.
-
-For the maintained descriptive specification, GPT-5.1 converted each sampled
-article into a short English abstraction of the alleged corrupt practice,
-institutional setting, and central response. The prompt removed names,
-countries, outlets, dates, exact amounts, and other case-specific identifiers;
-articles without a clear substantive political-corruption focus were marked as
-boundary or unclear and excluded from clustering while remaining in the audit
-data. BERTopic was fitted to the remaining abstractions using
-\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large} embeddings and
-HDBSCAN. Rather than fixing the number of topics, the clustering specification
-was selected from a documented grid that varied the UMAP neighborhood size,
-minimum cluster size, density requirement, and HDBSCAN extraction method. Each
-candidate was refitted on five 80\% resamples. Candidates were eligible only
-when they yielded between four and twelve topics, assigned at least 55\% of
-usable abstractions, contained no topic exceeding 40\% of assigned cases, and
-did not exceed a country--topic normalized mutual information of .25 in the
-balanced sample. At least 35\% of abstractions also had to receive non-outlier
-assignments in both the complete-data and resampled solutions, averaged across
-refits. Among eligible candidates, selection prioritized mean resample
-agreement measured by the adjusted Rand index, followed by this shared
-assignment rate, HDBSCAN cluster persistence, and relative validity. Thus the
-exact topic count was an outcome of stability-based density selection within
-predeclared descriptive adequacy constraints, not a presentation target. If no
-candidate met these constraints, the workflow stopped without producing a
-manuscript solution.
-
-Class-based TF-IDF supplied each selected cluster's topic representation, and
-GPT-5.1 proposed readable labels from representative abstractions. These labels
-were manually reviewed and their wording was standardized for neutral academic
-reporting without changing topic membership. No
-higher-order taxonomy was imposed. Prompts, selected examples, raw responses,
-the complete candidate grid, model metadata, diagnostic country distributions,
-and checksummed run manifests were retained. The topics are exploratory
-descriptions rather than validated measures and informed, but did not
-determine, the substantive coding categories.
-
 \subsection{Article-Level Codebook Development}
 \label{sec:method-codebook-development}
 
 The unit of analysis for the substantive variables is the news article. The
 codebook combined the theoretical distinctions developed above, close reading
-of political-corruption articles, patterns encountered in the exploratory topic
-model, and iterative review of disagreements between researcher and model
-coding.
+of political-corruption articles, and iterative review of disagreements between
+researcher and model coding.
 
 A country-balanced development sample was drawn from articles already
 classified as political corruption. It contained 108 articles, with 12 from

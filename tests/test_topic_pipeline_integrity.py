@@ -274,6 +274,7 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )
+        method = (ROOT / "docs/method.tex").read_text(encoding="utf-8")
         self.assertIn(
             "output/tables/topic_models/table_topic_descriptive_summary",
             appendix,
@@ -284,6 +285,9 @@ class TopicWorkflowStructureTests(unittest.TestCase):
         )
         self.assertNotIn("table_topic_higher_order_summary", appendix)
         self.assertNotIn("table_all_topics_llm_higher_order_topics", appendix)
+        self.assertIn("Purpose and Procedure", appendix)
+        self.assertNotIn("Exploratory Topic Modeling", method)
+        self.assertNotIn("BERTopic", method)
 
     def test_readme_has_no_stale_fixed_topic_solution(self):
         readme = (ROOT / "topic_classification/README.md").read_text(

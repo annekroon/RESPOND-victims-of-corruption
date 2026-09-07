@@ -31,51 +31,78 @@ analysis.
 
 \input{output/tables/topic_models/descriptive_topic_manuscript_values}
 
-The selected descriptive topic model began with a country-year-stratified sample of
-\DescriptiveTopicSourceSampleN{} articles. GPT-5.1 produced language-neutral
-English abstractions of their political-corruption content;
-\DescriptiveTopicBoundaryN{} boundary or unclear cases were retained for audit
-but excluded from clustering. BERTopic assigned
+\subsection{Purpose and Procedure}
+
+This exploratory analysis describes recurring themes in the
+political-corruption corpus. It was not used to code the article-level outcome
+variables, assess their validity, or estimate inferential models. The resulting
+topics should therefore be read as patterns of coverage rather than as an
+exhaustive or validated taxonomy of corruption types.
+
+The analysis began with a country--year-stratified sample of
+\DescriptiveTopicSourceSampleN{} articles, drawing at most 50 articles from each
+non-empty stratum and retaining inverse sampling-probability weights. A
+preliminary sensitivity analysis clustered the original multilingual articles,
+but manual inspection showed substantial clustering by publication language,
+country, and recurring cases. That specification was archived rather than used
+for substantive interpretation.
+
+For the retained specification, GPT-5.1 transformed every sampled article into
+a short, standardized English description of the alleged corrupt practice,
+institutional setting, and central response. The prompt removed names,
+countries, outlets, dates, exact amounts, and other case identifiers. It marked
+\DescriptiveTopicBoundaryN{} articles without a sufficiently clear
+political-corruption focus as boundary or unclear; these records remain in the
+audit data but were not clustered. These standardized article-level
+descriptions are referred to below as abstractions.
+
+BERTopic embedded the \DescriptiveTopicUsableN{} usable abstractions with
+\texttt{intfloat/}\allowbreak\texttt{multilingual-e5-large}, reduced their
+dimensionality with UMAP, formed density-based clusters with HDBSCAN, and
+represented the resulting topics with class-based TF--IDF. The number of topics
+was not fixed in advance. A documented grid varied UMAP neighborhood size,
+minimum cluster size, density requirement, and HDBSCAN extraction method. Each
+candidate was refitted on five 80\% resamples. Eligibility required four to
+twelve topics, at least 55\% assignment of usable abstractions, no topic larger
+than 40\% of assigned cases, country--topic normalized mutual information no
+higher than .25, and at least 35\% mean overlap in non-outlier assignments.
+Selection then prioritized mean resample adjusted Rand agreement, followed by
+assignment overlap, cluster persistence, and relative validity.
+
+GPT-5.1 proposed labels and descriptions from representative abstractions. The
+topic labels were subsequently reviewed and standardized for neutral academic
+wording without changing any topic assignments. Prompts, examples, raw model
+responses, candidate diagnostics, and checksummed manifests were retained.
+
+\subsection{Descriptive Results}
+
+The selected specification produced \DescriptiveTopicN{} topics and assigned
 \DescriptiveTopicInlierN{} of the \DescriptiveTopicUsableN{} usable
-abstractions to \DescriptiveTopicN{} direct topics and treated
-\DescriptiveTopicOutlierN{} (\DescriptiveTopicOutlierShare\%) as outliers.
-The selected density specification achieved a mean resample adjusted Rand
-index of \DescriptiveTopicMeanResampleARI{} across the five stability checks.
+abstractions. HDBSCAN treated \DescriptiveTopicOutlierN{}
+(\DescriptiveTopicOutlierShare\%) as outliers. The selected solution achieved a
+mean resample adjusted Rand index of \DescriptiveTopicMeanResampleARI{} and a
+minimum resample value of \DescriptiveTopicMinResampleARI{}. Country--topic
+normalized mutual information was \DescriptiveTopicCountryNMI{}, and no topic
+was dominated by a single publication country.
 
 Table~\ref{tab:pc-descriptive-topics} reports the weighted distribution of the
-direct descriptive topics. These are exploratory summaries of recurring
-coverage, not validated corruption-type measures or inferential outcomes.
+direct descriptive topics among assigned abstractions. The largest theme was
+procurement and public-revenue corruption, followed by prosecution of senior
+public officials, electoral corruption and incumbent abuse, anti-corruption
+reform and rule-of-law oversight, and campaign and party finance. These themes
+mix alleged practices with institutional responses and consequently do not map
+one-to-one onto the article-level individualized/systemic framing variable.
 
 \input{output/tables/topic_models/table_topic_descriptive_summary}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.88\textwidth]{output/figures/topic_models/figure_topic_prevalence.pdf}
-\caption{Weighted prevalence of the selected descriptive topics. Shares use
-inverse country-year sampling weights and are calculated among abstractions
-assigned to a topic. The topics summarize recurring forms of coverage rather
-than validated corruption types.}
-\label{fig:pc-topic-prevalence}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
 \includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_country_heatmap.pdf}
-\caption{Composition of political-corruption coverage across the twelve largest
-selected descriptive topics, or all topics when fewer than twelve were
-retained. Cells report weighted within-country shares among all assigned
-abstractions; darker and lighter colors indicate differences in prevalence
-rather than measurement quality.}
+\caption{Composition of political-corruption coverage across the five selected
+descriptive topics. Cells report weighted within-country shares among assigned
+abstractions. The figure is a diagnostic of cross-national composition rather
+than a comparison of measurement quality.}
 \label{fig:pc-topic-country-heatmap}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_trends.pdf}
-\caption{Annual prevalence of up to eight of the largest descriptive topics.
-Each panel reports the inverse country-year weighted share of modelled articles
-assigned to that topic.}
-\label{fig:pc-topic-trends}
 \end{figure}
 
 \begin{figure}[htbp]
@@ -88,7 +115,7 @@ guardrails and maximized resample agreement before secondary tie-breakers.}
 \label{fig:pc-topic-selection}
 \end{figure}
 
-The sampled articles, abstractions, prompts, representative examples, raw model
-responses, candidate-model diagnostics, interactive visualizations,
+The prevalence and temporal figures, sampled articles, abstractions, prompts,
+representative examples, raw model responses, complete candidate grid,
 country-dependence diagnostics, and checksummed run manifests are retained in
 the Research Drive topic-model archive.

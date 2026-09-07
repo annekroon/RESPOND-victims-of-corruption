@@ -216,6 +216,11 @@ workflow from selecting the fragmented 17-topic leaf result or the degenerate
 two-topic excess-of-mass result solely because one diagnostic looks favorable.
 Promotion still requires manual coherence review of the retained examples.
 
+The manuscript appendix uses the descriptive topic table, country-composition
+heatmap, and model-selection diagnostic. The prevalence and temporal figures
+remain in the published Research Drive archive because the table already
+reports prevalence and the paper does not analyze topic trends.
+
 For an exact sensitivity refit of a candidate listed in
 `hdbscan_stability_candidates.csv`, pass its UMAP neighborhood size as well as
 its HDBSCAN settings. For example, the `u50`, minimum-size 80, `min_samples=5`
