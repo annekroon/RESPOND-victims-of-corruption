@@ -414,71 +414,71 @@ def main() -> None:
     )
     plt.close(fig)
 
+    legend_handles = [
+        Line2D(
+            [0],
+            [0],
+            color=topic_colors[label],
+            linewidth=1.7,
+            linestyle=topic_linestyles[label],
+            marker=topic_markers[label],
+            markersize=3,
+            label=figure_label_lookup.get(label, label),
+        )
+        for label in top_labels
+    ]
+
     trend_labels = top_labels[: min(8, len(top_labels))]
     trend_data = time_topic[time_topic[analysis_label].isin(trend_labels)].copy()
     periods = sorted(trend_data["period"].dropna().astype(str).unique())
-    ncols = 2
-    nrows = int(np.ceil(len(trend_labels) / ncols))
-    if len(trend_labels) == 5:
-        fig = plt.figure(
-            figsize=(PUBLICATION_WIDTH_IN, 5.65), constrained_layout=True
-        )
-        grid = fig.add_gridspec(3, 2)
-        axes = []
-        for index in range(4):
-            row, column = divmod(index, 2)
-            axes.append(
-                fig.add_subplot(
-                    grid[row, column],
-                    sharex=axes[0] if axes else None,
-                    sharey=axes[0] if axes else None,
-                )
-            )
-        axes.append(
-            fig.add_subplot(grid[2, :], sharex=axes[0], sharey=axes[0])
-        )
-        axes = np.asarray(axes, dtype=object)
-    else:
-        fig, axes = plt.subplots(
-            nrows,
-            ncols,
-            figsize=(PUBLICATION_WIDTH_IN, max(3.6, 1.85 * nrows)),
-            sharex=True,
-            sharey=True,
-            constrained_layout=True,
-        )
-        axes = np.atleast_1d(axes).reshape(-1)
-    for ax, label in zip(axes, trend_labels):
+    x_positions = np.arange(len(periods))
+    fig, ax = plt.subplots(
+        figsize=(PUBLICATION_WIDTH_IN, 3.7), constrained_layout=False
+    )
+    for label in trend_labels:
         values = (
             trend_data[trend_data[analysis_label].eq(label)]
             .set_index("period")["share"]
             .reindex(periods)
             .fillna(0)
         )
-        x_positions = np.arange(len(periods))
-        color = topic_colors[label]
         ax.plot(
             x_positions,
             100 * values,
-            color=color,
-            linewidth=1.65,
-            marker="o",
-            markersize=2.8,
+            color=topic_colors[label],
+            linewidth=1.55,
+            linestyle=topic_linestyles[label],
+            marker=topic_markers[label],
+            markersize=3.2,
             markeredgewidth=0,
         )
-        ax.set_xticks(x_positions)
-        ax.set_xticklabels(periods)
-        ax.set_title(wrapped(label, 38), loc="left", fontsize=8.5, pad=4)
-        ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
-        ax.grid(axis="y", color="#D9DDE2", linewidth=0.5)
-        for spine in ["top", "right"]:
-            ax.spines[spine].set_visible(False)
-        ax.tick_params(axis="both", labelsize=7.5)
-        ax.label_outer()
-    for ax in axes[len(trend_labels) :]:
-        ax.set_visible(False)
-    fig.supylabel("Weighted share among assigned abstractions", fontsize=8.5)
-    fig.supxlabel("Publication year", fontsize=8.5)
+    trend_y_max = min(
+        100.0,
+        max(30.0, 10 * np.ceil(float(100 * trend_data["share"].max()) / 10)),
+    )
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(periods)
+    ax.set_ylim(0, trend_y_max)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+    ax.set_xlabel("Publication year")
+    ax.set_ylabel("Weighted topic share")
+    ax.grid(axis="y", color="#D9DDE2", linewidth=0.5)
+    ax.set_axisbelow(True)
+    ax.margins(x=0.02)
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="both", labelsize=7.8)
+    fig.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.54, 0.985),
+        ncols=3,
+        frameon=False,
+        columnspacing=1.2,
+        handlelength=2.0,
+        labelspacing=0.55,
+    )
+    fig.subplots_adjust(left=0.095, right=0.995, top=0.76, bottom=0.16)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_trends")
     )
@@ -544,19 +544,6 @@ def main() -> None:
         ax.label_outer()
     for ax in axes[len(countries) :]:
         ax.set_visible(False)
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            color=topic_colors[label],
-            linewidth=1.7,
-            linestyle=topic_linestyles[label],
-            marker=topic_markers[label],
-            markersize=3,
-            label=figure_label_lookup.get(label, label),
-        )
-        for label in top_labels
-    ]
     fig.supylabel("Weighted topic share", x=0.012, fontsize=8.5)
     fig.legend(
         handles=legend_handles,

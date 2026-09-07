@@ -77,22 +77,21 @@ exactly 100 because of rounding.}
 \label{fig:pc-topic-country-heatmap}
 \end{figure}
 
-Figure~\ref{fig:pc-country-topic-trends} extends this description over time.
-The country panels make it possible to distinguish persistent differences in
-coverage composition from shorter-lived shifts associated with particular
-political events or cases. The series are descriptive: they summarize the
-composition of sampled, assigned articles and are not estimates of changes in
-the prevalence of corruption itself.
+Figure~\ref{fig:pc-topic-trends} extends this description over time. Pooling the
+nine publication countries produces more stable annual estimates than separate
+country--year series and provides a compact view of changes in the corpus's
+thematic composition. The series remain descriptive: they summarize sampled,
+assigned articles and are not estimates of changes in the prevalence of
+corruption itself.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth]{output/figures/topic_models/figure_country_topic_trends.pdf}
-\caption{Annual composition of political-corruption coverage by publication
-country and descriptive topic. Lines report weighted percentages among sampled
-abstractions assigned to a topic in each country--year. All panels use the same
-vertical scale. Panel annotations report the range of unweighted assigned
-articles per year. Boundary cases and topic-model outliers are excluded.}
-\label{fig:pc-country-topic-trends}
+\includegraphics[width=\textwidth]{output/figures/topic_models/figure_topic_trends.pdf}
+\caption{Annual composition of political-corruption coverage across the nine
+publication countries. Lines report inverse-probability-weighted percentages
+among sampled abstractions assigned to one of the five topics. Boundary cases
+and topic-model outliers are excluded.}
+\label{fig:pc-topic-trends}
 \end{figure}
 
 \subsection{Technical Procedure and Scope}
@@ -146,7 +145,8 @@ minimum resample value of \DescriptiveTopicMinResampleARI{}. Country--topic
 normalized mutual information was \DescriptiveTopicCountryNMI{}, and no topic
 was dominated by a single publication country.
 
-The pooled annual-composition, prevalence, and model-selection figures, sampled
-articles, abstractions, prompts, representative examples, raw model responses,
-complete candidate grid, country-dependence diagnostics, and checksummed run
-manifests are retained in the Research Drive topic-model archive.
+The country-panel annual-composition, prevalence, and model-selection figures,
+sampled articles, abstractions, prompts, representative examples, raw model
+responses, complete candidate grid, country-dependence diagnostics, and
+checksummed run manifests are retained in the Research Drive topic-model
+archive.
