@@ -211,6 +211,21 @@ workflow from selecting the fragmented 17-topic leaf result or the degenerate
 two-topic excess-of-mass result solely because one diagnostic looks favorable.
 Promotion still requires manual coherence review of the retained examples.
 
+For an exact sensitivity refit of a candidate listed in
+`hdbscan_stability_candidates.csv`, pass its UMAP neighborhood size as well as
+its HDBSCAN settings. For example, the `u50`, minimum-size 80, `min_samples=5`
+candidate is reproduced with:
+
+```bash
+PER_COUNTRY_YEAR=50 CLUSTERER=hdbscan UMAP_NEIGHBORS=50 \
+  CLUSTER_SELECTION_METHOD=leaf TARGET_TOPICS=none \
+  MIN_TOPIC_SIZE=80 HDBSCAN_MIN_SAMPLES=5 \
+  bash topic_classification/scripts/07_run_compact_descriptive_topic_model.sh
+```
+
+The UMAP setting is encoded in the sensitivity output-directory name, so it
+cannot silently reuse a fit made with a different neighborhood size.
+
 `max_sample_country_share` is an unweighted leakage diagnostic for the balanced
 sample. The country percentages printed under `top_countries` are inverse
 country-year weighted estimates of corpus composition; they answer a different

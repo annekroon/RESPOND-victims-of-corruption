@@ -153,12 +153,15 @@ class TopicWorkflowStructureTests(unittest.TestCase):
             'CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"', runner
         )
         self.assertIn('HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"', runner)
+        self.assertIn('UMAP_NEIGHBORS="${UMAP_NEIGHBORS:-15}"', runner)
         self.assertIn('--per-country-year "$PER_COUNTRY_YEAR"', runner)
         self.assertIn("02_create_descriptive_abstractions.py", runner)
         self.assertIn('--nr-topics "$TARGET_TOPICS"', runner)
         self.assertIn(
             '--cluster-selection-method "$CLUSTER_SELECTION_METHOD"', runner
         )
+        self.assertIn('--umap-neighbors "$UMAP_NEIGHBORS"', runner)
+        self.assertIn('_u${UMAP_NEIGHBORS}_', runner)
         self.assertIn("CLUSTER_SPEC", runner)
         self.assertIn("04_label_descriptive_topics_with_llm.py", runner)
         self.assertNotIn("--input-kind", runner)
@@ -297,6 +300,7 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn('default="hdbscan"', script)
         self.assertIn("n_init=20", script)
         self.assertIn("min_samples=args.hdbscan_min_samples", script)
+        self.assertIn("selected_umap_neighbors = args.umap_neighbors", script)
         self.assertIn("save_embedding_model=args.embedding_model", script)
         self.assertIn('choices=["kmeans", "hdbscan", "hdbscan-stability"]', script)
         self.assertIn("mean_resample_ari", script)

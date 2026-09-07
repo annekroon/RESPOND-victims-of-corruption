@@ -43,6 +43,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--embedding-model", default=DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
+        "--umap-neighbors",
+        type=int,
+        default=15,
+        help=(
+            "UMAP neighborhood size for a single kmeans or hdbscan fit. "
+            "The hdbscan-stability selector instead uses "
+            "--search-umap-neighbors."
+        ),
+    )
+    parser.add_argument(
         "--min-topic-size",
         type=int,
         default=25,
@@ -333,7 +343,7 @@ def main() -> None:
             n_init=20,
         )
         bertopic_nr_topics = None
-        selected_umap_neighbors = 15
+        selected_umap_neighbors = args.umap_neighbors
     elif args.clusterer == "hdbscan":
         cluster_model = HDBSCAN(
             min_cluster_size=args.min_topic_size,
@@ -343,7 +353,7 @@ def main() -> None:
             prediction_data=True,
         )
         bertopic_nr_topics = requested_topics
-        selected_umap_neighbors = 15
+        selected_umap_neighbors = args.umap_neighbors
     else:
         if requested_topics is not None:
             raise ValueError(
@@ -647,6 +657,12 @@ def main() -> None:
             gen_min_span_tree=True,
         )
         bertopic_nr_topics = None
+
+    if not 2 <= selected_umap_neighbors < len(docs):
+        raise ValueError(
+            "The selected UMAP neighborhood size must be at least 2 and smaller "
+            "than the number of modeled documents."
+        )
 
     umap_model = UMAP(
         n_neighbors=selected_umap_neighbors,

@@ -14,13 +14,14 @@ PER_COUNTRY_YEAR="${PER_COUNTRY_YEAR:-50}"
 TARGET_TOPICS="${TARGET_TOPICS:-none}"
 MIN_TOPIC_SIZE="${MIN_TOPIC_SIZE:-40}"
 HDBSCAN_MIN_SAMPLES="${HDBSCAN_MIN_SAMPLES:-10}"
+UMAP_NEIGHBORS="${UMAP_NEIGHBORS:-15}"
 CLUSTERER="${CLUSTERER:-hdbscan-stability}"
 CLUSTER_SELECTION_METHOD="${CLUSTER_SELECTION_METHOD:-leaf}"
 
 if [[ "$CLUSTERER" == "hdbscan-stability" ]]; then
   CLUSTER_SPEC="hdbscan_stability_v1"
 elif [[ "$CLUSTERER" == "hdbscan" ]]; then
-  CLUSTER_SPEC="${CLUSTERER}_${CLUSTER_SELECTION_METHOD}_${TARGET_TOPICS}_min${MIN_TOPIC_SIZE}_ms${HDBSCAN_MIN_SAMPLES}"
+  CLUSTER_SPEC="${CLUSTERER}_${CLUSTER_SELECTION_METHOD}_${TARGET_TOPICS}_u${UMAP_NEIGHBORS}_min${MIN_TOPIC_SIZE}_ms${HDBSCAN_MIN_SAMPLES}"
 else
   CLUSTER_SPEC="${CLUSTERER}_${TARGET_TOPICS}"
 fi
@@ -43,6 +44,7 @@ echo "Maximum per country-year: $PER_COUNTRY_YEAR"
 echo "Target topics: $TARGET_TOPICS"
 echo "Minimum topic size: $MIN_TOPIC_SIZE"
 echo "HDBSCAN minimum samples: $HDBSCAN_MIN_SAMPLES"
+echo "UMAP neighbors for a single fit: $UMAP_NEIGHBORS"
 echo "Clusterer: $CLUSTERER"
 echo "Cluster selection method: $CLUSTER_SELECTION_METHOD"
 echo
@@ -106,6 +108,7 @@ else
     --include-status usable \
     --clusterer "$CLUSTERER" \
     --cluster-selection-method "$CLUSTER_SELECTION_METHOD" \
+    --umap-neighbors "$UMAP_NEIGHBORS" \
     --min-topic-size "$MIN_TOPIC_SIZE" \
     --hdbscan-min-samples "$HDBSCAN_MIN_SAMPLES" \
     --nr-topics "$TARGET_TOPICS" \
