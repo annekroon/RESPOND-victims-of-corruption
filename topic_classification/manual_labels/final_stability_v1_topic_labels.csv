@@ -1,6 +1,6 @@
-Topic,llm_topic_short_label_expected,publication_topic_label,publication_label_rationale
-0,Procurement & revenue corruption,Procurement and public-revenue corruption,Uses neutral academic wording while preserving the LLM-identified cluster meaning.
-1,Top officials on trial,Prosecution of senior public officials,Describes proceedings without colloquial wording.
-2,Opposition vs corrupt incumbents,Electoral corruption and incumbent abuse,Removes adversarial phrasing and describes the shared substantive pattern.
-3,Rule-of-law & reforms,Anti-corruption reform and rule-of-law oversight,Clarifies the institutional focus of the cluster.
-4,Campaign & party financing,Campaign and party finance,Standardizes wording for the manuscript and figures.
+Topic,llm_topic_short_label_expected,publication_topic_label,figure_topic_label,publication_label_rationale
+0,Procurement & revenue corruption,Procurement and public-revenue corruption,Procurement/revenue,Uses neutral academic wording while preserving the LLM-identified cluster meaning.
+1,Top officials on trial,Prosecution of senior public officials,Senior officials prosecuted,Describes proceedings without colloquial wording.
+2,Opposition vs corrupt incumbents,Electoral corruption and incumbent abuse,Electoral/incumbent abuse,Removes adversarial phrasing and describes the shared substantive pattern.
+3,Rule-of-law & reforms,Anti-corruption reform and rule-of-law oversight,Reform/oversight,Clarifies the institutional focus of the cluster.
+4,Campaign & party financing,Campaign and party finance,Campaign/party finance,Standardizes wording for the manuscript and figures.

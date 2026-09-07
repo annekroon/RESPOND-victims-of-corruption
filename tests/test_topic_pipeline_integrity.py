@@ -159,6 +159,16 @@ class TopicWorkflowStructureTests(unittest.TestCase):
                 "Campaign and party finance",
             ],
         )
+        self.assertEqual(
+            overrides["figure_topic_label"].tolist(),
+            [
+                "Procurement/revenue",
+                "Senior officials prosecuted",
+                "Electoral/incumbent abuse",
+                "Reform/oversight",
+                "Campaign/party finance",
+            ],
+        )
 
     def test_reviewed_publication_labels_require_exact_topic_identity(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -169,6 +179,7 @@ class TopicWorkflowStructureTests(unittest.TestCase):
                         "Topic": 0,
                         "llm_topic_short_label_expected": "Raw label",
                         "publication_topic_label": "Reviewed label",
+                        "figure_topic_label": "Figure label",
                         "publication_label_rationale": "Neutral wording.",
                     }
                 ]
@@ -180,6 +191,7 @@ class TopicWorkflowStructureTests(unittest.TestCase):
             self.assertEqual(
                 reviewed.loc[0, "publication_topic_label"], "Reviewed label"
             )
+            self.assertEqual(reviewed.loc[0, "figure_topic_label"], "Figure label")
             labels.loc[0, "llm_topic_short_label"] = "Different topic"
             with self.assertRaisesRegex(ValueError, "expects"):
                 apply_publication_label_overrides(labels, path)
@@ -360,6 +372,7 @@ class TopicTableBuilderTests(unittest.TestCase):
             "figure_topic_prevalence",
             "figure_topic_country_heatmap",
             "figure_topic_trends",
+            "figure_country_topic_trends",
             "figure_topic_model_selection",
         ]:
             self.assertIn(stem, script)
@@ -371,7 +384,7 @@ class TopicTableBuilderTests(unittest.TestCase):
         appendix = (ROOT / "docs/appendix_political_corruption.tex").read_text(
             encoding="utf-8"
         )
-        self.assertIn("figure_topic_trends.pdf", appendix)
+        self.assertIn("figure_country_topic_trends.pdf", appendix)
         self.assertIn("figure_topic_country_heatmap.pdf", appendix)
         self.assertNotIn("figure_topic_model_selection.pdf", appendix)
 

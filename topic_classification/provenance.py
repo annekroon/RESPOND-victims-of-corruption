@@ -45,6 +45,7 @@ def apply_publication_label_overrides(labels, overrides_path: Path | None):
         else "llm_topic_label"
     )
     result["publication_topic_label"] = result[source_column]
+    result["figure_topic_label"] = result[source_column]
     if overrides_path is None:
         return result
     if not overrides_path.exists():
@@ -55,6 +56,7 @@ def apply_publication_label_overrides(labels, overrides_path: Path | None):
         "Topic",
         "llm_topic_short_label_expected",
         "publication_topic_label",
+        "figure_topic_label",
         "publication_label_rationale",
     }
     missing = required - set(overrides.columns)
@@ -73,6 +75,15 @@ def apply_publication_label_overrides(labels, overrides_path: Path | None):
         .any()
     ):
         raise ValueError("Publication-label file contains a blank label.")
+    if (
+        overrides["figure_topic_label"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("")
+        .any()
+    ):
+        raise ValueError("Publication-label file contains a blank figure label.")
 
     result_topics = set(result.loc[result["Topic"].ne(-1), "Topic"].astype(int))
     override_topics = set(overrides["Topic"].astype(int))
@@ -96,6 +107,9 @@ def apply_publication_label_overrides(labels, overrides_path: Path | None):
             )
         result.loc[mask, "publication_topic_label"] = str(
             overrides.loc[topic, "publication_topic_label"]
+        ).strip()
+        result.loc[mask, "figure_topic_label"] = str(
+            overrides.loc[topic, "figure_topic_label"]
         ).strip()
         result.loc[mask, "publication_label_rationale"] = str(
             overrides.loc[topic, "publication_label_rationale"]

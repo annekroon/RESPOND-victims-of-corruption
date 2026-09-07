@@ -74,14 +74,20 @@ def load_analysis_labels(topic_info, labels_path, overrides_path=None):
     label_col = "publication_topic_label"
     labels["analysis_label"] = labels[label_col].fillna("").astype(str)
     labels = topic_info[["Topic", "Name"]].merge(
-        labels[["Topic", "analysis_label"]], on="Topic", how="left"
+        labels[["Topic", "analysis_label", "figure_topic_label"]],
+        on="Topic",
+        how="left",
     )
     labels = labels[labels["Topic"].ne(-1)].copy()
     labels.loc[
         labels["analysis_label"].fillna("").str.strip().eq(""), "analysis_label"
     ] = labels["Name"]
+    labels.loc[
+        labels["figure_topic_label"].fillna("").str.strip().eq(""),
+        "figure_topic_label",
+    ] = labels["analysis_label"]
 
-    return labels[["Topic", "analysis_label"]]
+    return labels[["Topic", "analysis_label", "figure_topic_label"]]
 
 
 def weighted_group_share(data, group_cols, weight_col):
@@ -149,6 +155,7 @@ def main() -> None:
     import numpy as np
     import pandas as pd
     import plotly.express as px
+    from matplotlib.lines import Line2D
     from matplotlib.ticker import PercentFormatter
 
     configure_publication_style(plt)
@@ -173,6 +180,9 @@ def main() -> None:
     docs = docs.merge(labels, left_on="topic", right_on="Topic", how="left")
     analysis_label = "analysis_label"
     docs[analysis_label] = docs[analysis_label].fillna(docs["topic"].astype(str))
+    figure_label_lookup = labels.set_index("analysis_label")[
+        "figure_topic_label"
+    ].to_dict()
     if not args.include_outlier:
         docs = docs[docs["topic"].ne(-1)].copy()
 
@@ -452,6 +462,81 @@ def main() -> None:
     fig.supxlabel("Publication year", fontsize=8.5)
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_topic_trends")
+    )
+    plt.close(fig)
+
+    countries = sorted(country_time["country"].dropna().astype(str).unique())
+    country_ncols = 3
+    country_nrows = int(np.ceil(len(countries) / country_ncols))
+    fig, axes = plt.subplots(
+        country_nrows,
+        country_ncols,
+        figsize=(PUBLICATION_WIDTH_IN, max(5.4, 1.75 * country_nrows + 1.0)),
+        sharex=True,
+        sharey=True,
+        constrained_layout=True,
+    )
+    axes = np.atleast_1d(axes).reshape(-1)
+    country_y_max = min(
+        100.0,
+        max(40.0, 10 * np.ceil(float(100 * country_time["share"].max()) / 10)),
+    )
+    x_positions = np.arange(len(periods))
+    for ax, country in zip(axes, countries):
+        country_rows = country_time[country_time["country"].eq(country)]
+        for label in top_labels:
+            values = (
+                country_rows[country_rows[analysis_label].eq(label)]
+                .set_index("period")["share"]
+                .reindex(periods)
+                .fillna(0)
+            )
+            ax.plot(
+                x_positions,
+                100 * values,
+                color=topic_colors[label],
+                linewidth=1.25,
+                marker="o",
+                markersize=2.2,
+                markeredgewidth=0,
+            )
+        ax.set_title(country.replace("_", " "), loc="left", fontsize=8.5, pad=3)
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(periods)
+        ax.set_ylim(0, country_y_max)
+        ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+        ax.grid(axis="y", color="#D9DDE2", linewidth=0.45)
+        ax.set_axisbelow(True)
+        for spine in ["top", "right"]:
+            ax.spines[spine].set_visible(False)
+        ax.tick_params(axis="both", labelsize=7.1)
+        ax.label_outer()
+    for ax in axes[len(countries) :]:
+        ax.set_visible(False)
+    legend_handles = [
+        Line2D(
+            [0],
+            [0],
+            color=topic_colors[label],
+            linewidth=1.7,
+            marker="o",
+            markersize=3,
+            label=figure_label_lookup.get(label, label),
+        )
+        for label in top_labels
+    ]
+    fig.supylabel("Weighted share within country-year", fontsize=8.5)
+    fig.supxlabel("Publication year", fontsize=8.5)
+    fig.legend(
+        handles=legend_handles,
+        loc="outside lower center",
+        ncols=3,
+        frameon=False,
+        columnspacing=1.2,
+        handlelength=2.0,
+    )
+    static_outputs.update(
+        save_static_figure(fig, output_dir, "figure_country_topic_trends")
     )
     plt.close(fig)
 

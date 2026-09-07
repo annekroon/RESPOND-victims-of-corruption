@@ -129,10 +129,12 @@ def main() -> None:
     required_figures = {
         "figure_topic_prevalence_pdf",
         "figure_topic_country_heatmap_pdf",
+        "figure_country_topic_trends_pdf",
         "figure_topic_trends_pdf",
         "figure_topic_model_selection_pdf",
         "figure_topic_prevalence_png",
         "figure_topic_country_heatmap_png",
+        "figure_country_topic_trends_png",
         "figure_topic_trends_png",
         "figure_topic_model_selection_png",
     }
