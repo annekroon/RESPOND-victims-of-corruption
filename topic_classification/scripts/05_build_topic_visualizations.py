@@ -29,6 +29,8 @@ OKABE_ITO = [
     "#56B4E9",
     "#000000",
 ]
+TOPIC_LINESTYLES = ["-", "--", "-.", ":", (0, (5, 1.5))]
+TOPIC_MARKERS = ["o", "s", "D", "^", "v"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -278,6 +280,15 @@ def main() -> None:
     country_time = country_time[
         country_time[analysis_label].isin(top_labels)
     ].copy()
+    country_period_n = (
+        docs.groupby(["country", "period"], dropna=False)
+        .size()
+        .rename("assigned_articles")
+        .reset_index()
+        .sort_values(["country", "period"])
+    )
+    country_period_n_path = output_dir / "country_topic_trend_denominators.csv"
+    country_period_n.to_csv(country_period_n_path, index=False)
     fig_country_time = px.line(
         country_time.sort_values("period"),
         x="period",
@@ -304,6 +315,14 @@ def main() -> None:
     static_outputs: dict[str, Path] = {}
     topic_colors = {
         label: OKABE_ITO[index % len(OKABE_ITO)]
+        for index, label in enumerate(top_labels)
+    }
+    topic_linestyles = {
+        label: TOPIC_LINESTYLES[index % len(TOPIC_LINESTYLES)]
+        for index, label in enumerate(top_labels)
+    }
+    topic_markers = {
+        label: TOPIC_MARKERS[index % len(TOPIC_MARKERS)]
         for index, label in enumerate(top_labels)
     }
 
@@ -471,16 +490,12 @@ def main() -> None:
     fig, axes = plt.subplots(
         country_nrows,
         country_ncols,
-        figsize=(PUBLICATION_WIDTH_IN, max(5.4, 1.75 * country_nrows + 1.0)),
+        figsize=(PUBLICATION_WIDTH_IN, max(6.2, 1.85 * country_nrows + 1.3)),
         sharex=True,
         sharey=True,
-        constrained_layout=True,
+        constrained_layout=False,
     )
     axes = np.atleast_1d(axes).reshape(-1)
-    country_y_max = min(
-        100.0,
-        max(40.0, 10 * np.ceil(float(100 * country_time["share"].max()) / 10)),
-    )
     x_positions = np.arange(len(periods))
     for ax, country in zip(axes, countries):
         country_rows = country_time[country_time["country"].eq(country)]
@@ -496,14 +511,30 @@ def main() -> None:
                 100 * values,
                 color=topic_colors[label],
                 linewidth=1.25,
-                marker="o",
-                markersize=2.2,
+                linestyle=topic_linestyles[label],
+                marker=topic_markers[label],
+                markersize=2.4,
                 markeredgewidth=0,
             )
         ax.set_title(country.replace("_", " "), loc="left", fontsize=8.5, pad=3)
+        yearly_n = country_period_n[
+            country_period_n["country"].eq(country)
+        ]["assigned_articles"]
+        if not yearly_n.empty:
+            ax.text(
+                1.0,
+                1.025,
+                f"n/year: {int(yearly_n.min())}-{int(yearly_n.max())}",
+                transform=ax.transAxes,
+                ha="right",
+                va="bottom",
+                fontsize=6.4,
+                color="#626970",
+            )
         ax.set_xticks(x_positions)
         ax.set_xticklabels(periods)
-        ax.set_ylim(0, country_y_max)
+        ax.set_ylim(0, 100)
+        ax.set_yticks([0, 25, 50, 75, 100])
         ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
         ax.grid(axis="y", color="#D9DDE2", linewidth=0.45)
         ax.set_axisbelow(True)
@@ -519,21 +550,31 @@ def main() -> None:
             [0],
             color=topic_colors[label],
             linewidth=1.7,
-            marker="o",
+            linestyle=topic_linestyles[label],
+            marker=topic_markers[label],
             markersize=3,
             label=figure_label_lookup.get(label, label),
         )
         for label in top_labels
     ]
-    fig.supylabel("Weighted share within country-year", fontsize=8.5)
-    fig.supxlabel("Publication year", fontsize=8.5)
+    fig.supylabel("Weighted topic share", x=0.012, fontsize=8.5)
     fig.legend(
         handles=legend_handles,
-        loc="outside lower center",
+        loc="upper center",
+        bbox_to_anchor=(0.54, 0.992),
         ncols=3,
         frameon=False,
         columnspacing=1.2,
         handlelength=2.0,
+        labelspacing=0.55,
+    )
+    fig.subplots_adjust(
+        left=0.085,
+        right=0.995,
+        top=0.875,
+        bottom=0.07,
+        wspace=0.13,
+        hspace=0.34,
     )
     static_outputs.update(
         save_static_figure(fig, output_dir, "figure_country_topic_trends")
@@ -640,6 +681,7 @@ def main() -> None:
             "country_topic_heatmap": country_heatmap_path,
             "topic_shares_over_time": time_path,
             "country_topic_trends": country_time_path,
+            "country_topic_trend_denominators": country_period_n_path,
             **static_outputs,
         },
         extra={
