@@ -1,591 +1,281 @@
 # Article-Level Content Classification
 
-This folder contains the zero-shot LLM workflow for coding article-level
-variables among articles already classified as primarily discussing political
-corruption. The expected corpus is the final political-corruption article set
-from `political_classifier/scripts/06_train_final_classifier.py`. Its current
-size is read from
-`political_corruption_pipeline/silver_classifier/classified_country_summary.csv`;
-do not copy an old corpus N into commands or documentation.
+This folder measures four substantive variables within the final corpus of
+articles classified as political corruption:
 
-The workflow is intentionally separate from the political-corruption classifier:
-that first classifier identifies the analysis corpus; these scripts measure
-substantive variables inside that corpus.
+- `victim_visibility`
+- `corruption_frame`
+- `case_location`
+- `accused_actor_visibility`
 
-## Variables
-
-| Script | Main output |
-|---|---|
-| `scripts/classify_victim_visibility.py` | `victim_visibility`, `victim_visible` |
-| `scripts/classify_corruption_frame.py` | `corruption_frame` |
-| `scripts/classify_abroad_case.py` | `case_location`, `abroad_case` |
-| `scripts/classify_accused_actor.py` | `accused_actor_visibility`, `accused_actor_visible` |
-| `scripts/classify_all_content_categories.py` | convenience wrapper that runs all four GPT coders on one sample file |
-| `scripts/create_validation_sample.py` | canonical stratified sampler for codebook development and held-out validation |
-| `scripts/translate_validation_sample.py` | GPT translation of validation-sample articles into English for human coding |
-| `tools/annotation_flask_app.py` | Browser-based Flask app for manual coding with original and translated text |
-| `scripts/merge_content_labels.py` | one complete merged LLM-coded article-level dataset |
-
-Each classifier sends article text to the UvA LLM proxy with deterministic
-settings where supported (`temperature=0`) and requires structured JSON output
-containing a category, evidence, a short explanation, and a confidence score.
-Prompts are stored in `scripts/content_prompts.py` with explicit prompt-version
-strings.
-
-The current codebook prompt versions are:
-
-| Variable | Prompt version |
-|---|---|
-| `victim_visibility` | `victim_visibility_zero_shot_v8` |
-| `corruption_frame` | `corruption_frame_zero_shot_v3` |
-| `case_location` / `abroad_case` | `abroad_case_zero_shot_v3` |
-| `accused_actor_visibility` | `accused_actor_zero_shot_v6` |
-
-These versions implement the stricter rule that the model must first isolate
-the corruption allegation/case, use only information stated in the article, and
-avoid coding victims or actors that are linked only to unrelated harms or
-unrelated misconduct. Earlier GPT outputs generated with older prompt versions
-should be treated as pilot outputs and regenerated before comparison with human
-coding.
-
-For `victim_visibility`, version 8 uses a victim-specific prompt rather than
-sending the other three variables' instructions to that classifier. GPT first
-extracts the harm cause and status, whether a deprived entity is explicit,
-whether coercive pressure was communicated, the victim entity, and the
-corruption-to-harm evidence. It then codes concrete and
-institutional/societal victim presence independently. The final label is
-derived mechanically as `no_victim`, `concrete_victim`,
-`institutional_societal_victim`, or `unclear`. Concrete victims take priority
-when both types are visible; the final classifier never emits a `both` label.
-Version 8 requires verbatim harm and corruption-to-harm quotations and prevents
-a positive label when either quotation is absent. The classifier runner also
-checks that both returned evidence strings occur verbatim in the supplied
-article text; a positive label with paraphrased or invented evidence is
-automatically downgraded to `no_victim` and the failed evidence checks are
-retained in the output.
-
-Version 8 also distinguishes harm caused by corruption from harm caused by the
-investigation, prosecution, scandal, resignation, or institutional response. A
-communicated coercive or extortionate demand counts as realized adverse
-treatment even when its threatened consequence does not occur. The model may
-not infer a public, party, or private funding source or deprived entity when the
-article does not identify one.
-
-The agreement evaluator now writes an additional `*_human_gpt_confusion.csv`
-table and expands `*_human_gpt_disagreements.csv` into an adjudication file. It
-retains translated/original article text, GPT evidence, reasoning, and
-confidence where available, classifies victim errors as a visibility-gate or
-victim-type disagreement, and adds blank adjudication fields for researcher
-review. Use `--variables victim_visibility` to evaluate a newly generated
-victim-only pilot without rerunning or copying the other three classifier
-outputs.
-
-For `accused_actor_visibility`, the finalized organization rule is deliberately
-narrow and uses a mandatory two-test method. Count only actors whom the article
-explicitly represents as committing, attempting, assisting, enabling, financing,
-directing, or concealing the corruption. An organization counts only when the
-text attributes corrupt participation to the organization itself, for example by
-stating that it paid bribes, manipulated a tender, financed a scheme,
-facilitated money laundering, concealed misconduct, or was investigated for
-corruption. The required organizational allegation may appear in the same
-sentence as the individual allegation; it must simply be independently
-expressed. An organization does not count merely because its employee, leader,
-owner, subsidiary, member, or associate is accused, or because it benefited from
-or was connected to corruption. Human annotations made before this rule was
-finalized, especially `both_individual_and_organizational` labels, should be
-reviewed before being treated as gold-standard validation labels.
-
-## Inputs
-
-By default the scripts read local classified country files:
+The political-corruption classifier defines the analysis population. The
+content scripts do not redraw that boundary. They verify and then use the final
+source-screened classifier output from:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
-  political_corruption_pipeline/silver_classifier/classified_country_files/
+  political_corruption_pipeline/silver_classifier/
 ```
 
-Only rows with `pred_political_corruption == 1` are classified unless
-`--keep-non-political` is passed. The scripts can also read archived classified
-files directly from Research Drive/WebDAV:
+The completed upstream run uses threshold `0.60`, the source policy
+`exclude_explicit_no_retain_all_other_decisions`, and contains `326,093`
+political-corruption articles across nine countries. Scripts read these values
+from manifests and fail if files, hashes, counts, or the threshold disagree.
 
-```bash
---source classified-webdav
-```
+## Current Status
 
-or a single CSV/CSV.GZ file:
+| Stage | Status |
+|---|---|
+| Final political-corruption corpus | Complete |
+| Codebook-development set, 108 articles (12 per country) | Complete; preserve as development data |
+| Prompts | Current versions live in `scripts/content_prompts.py` |
+| Separate held-out content validation | Not yet complete |
+| Full-corpus content coding | Run only after held-out validation |
 
-```bash
---source csv --input /path/to/articles.csv.gz
-```
+GPT-5.1 is the currently accessible, documented model. An access test for
+`gpt-5.6-terra` returned HTTP 403, so it has not been evaluated and must not be
+named as the production model. A future model change requires a successful
+access check and a like-for-like validation before production coding.
 
-## Pilot Runs
+## Maintained Files
 
-Always run small pilots before launching the full corpus. From the repository
-root on `annecuda`:
+| File | Purpose |
+|---|---|
+| `scripts/00_verify_final_corpus.py` | Validate upstream manifests, threshold, source policy, files, and counts |
+| `scripts/create_validation_sample.py` | Draw reproducible country-year samples and exclude development articles |
+| `scripts/translate_validation_sample.py` | Translate a sample for human coding and preserve provenance |
+| `tools/annotation_flask_app.py` | Human annotation interface with resumable coder-specific outputs |
+| `scripts/content_prompts.py` | Versioned codebook prompts and output schemas |
+| `scripts/classify_all_content_categories.py` | Run all four coders on one validation sample |
+| `scripts/evaluate_codebook_gpt_against_human.py` | Agreement, kappa, F1, confusion, and disagreement outputs |
+| `scripts/05_run_final_content_classification.sh` | Resume all four production coders in sequence and merge them |
+| `scripts/merge_content_labels.py` | Strict one-to-one production merge |
 
-### Model-selection checkpoint: GPT-5.1 versus GPT-5.6-terra
+The notebook is optional inspection material, not a production entry point.
 
-`gpt-5.6-terra` is a candidate for the final zero-shot content coding. Do not
-replace the production model merely because it is newer. Run both candidates
-with the same frozen prompts on the same already-human-coded development
-articles, compare agreement, Cohen's kappa, macro F1, and weighted F1, then
-record and freeze the selected model before final coding. These development
-articles must not later be presented as a held-out final validation sample.
+## 00 Verify The Final Corpus
 
-The following short trial uses Italy and the Netherlands (`N = 24`) and writes
-each model to a separate output directory:
-
-First make one access-check request so an unavailable model fails immediately:
-
-```bash
-cd ~/RESPOND-victims-of-corruption
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
-
-python3 content-classification/scripts/classify_victim_visibility.py \
-  --source csv \
-  --input "$CODEBOOK_DIR/Italy_content_codebook_validation_n12_english.csv" \
-  --output "$CODEBOOK_DIR/gpt56_terra_access_check.csv.gz" \
-  --model gpt-5.6-terra \
-  --limit 1 \
-  --save-every 1 \
-  --overwrite
-```
-
-Only after that succeeds, run the paired trial:
+Run this after any political-classifier rebuild and before sampling or content
+coding:
 
 ```bash
 cd ~/RESPOND-victims-of-corruption
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
 
-for MODEL_SPEC in "gpt-5.1:gpt51_current" "gpt-5.6-terra:gpt56_terra_current"; do
-  MODEL=${MODEL_SPEC%%:*}
-  SLUG=${MODEL_SPEC##*:}
-  for COUNTRY in Italy Netherlands; do
-    python3 content-classification/scripts/classify_all_content_categories.py \
-      --input "$CODEBOOK_DIR/${COUNTRY}_content_codebook_validation_n12_english.csv" \
-      --output-dir "$CODEBOOK_DIR/model_trial_${SLUG}/${COUNTRY}" \
-      --model "$MODEL" \
-      --save-every 2
-  done
-done
+python3 content-classification/scripts/00_verify_final_corpus.py
 ```
 
-Evaluate both runs:
+The command streams through all nine classified country files. Success should
+report threshold `0.60` and political-corruption N `326,093`. Use
+`--manifest-only` only for a quick status check; production work should use the
+full verification.
 
-```bash
-for SLUG in gpt51_current gpt56_terra_current; do
-  python3 content-classification/scripts/evaluate_codebook_gpt_against_human.py \
-    --codebook-dir "$CODEBOOK_DIR" \
-    --gpt-dir "$CODEBOOK_DIR/model_trial_${SLUG}" \
-    --countries Italy Netherlands \
-    --coder-id anne \
-    --output-prefix "italy_netherlands_${SLUG}"
-done
-```
+## 01 Preserve Development Data
 
-If the proxy rejects `gpt-5.6-terra`, stop there and retain the 401/error audit;
-do not let failed rows enter the comparison. If it succeeds, inspect both
-summary CSVs under each model folder's `evaluation/` directory. Prefer the
-model with stronger macro F1 and kappa across variables, while also checking
-the substantive disagreement files. Record the decision, exact model name,
-prompt versions, date, and run-manifest hashes in the method notes.
-
-For a translated codebook-development sample, run all four content coders with:
-
-```bash
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
-
-python3 content-classification/scripts/classify_all_content_categories.py \
-  --input "$CODEBOOK_DIR/Bulgaria_content_codebook_validation_n12_english.csv" \
-  --output-dir "$CODEBOOK_DIR/gpt51_test_labels" \
-  --model gpt-5.1 \
-  --save-every 2
-```
-
-This writes one GPT-labelled file per content variable and keeps JSONL audit
-logs with prompts and raw model responses in the same output folder.
-
-To rerun all translated country-level codebook samples with the frozen prompts
-using `gpt-5.1`, write the outputs to a new folder so old pilot labels remain
-auditable:
-
-```bash
-nohup bash -c '
-set -e
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
-LLM_OUT_DIR="$CODEBOOK_DIR/gpt51_test_labels_v4_codebook"
-mkdir -p "$LLM_OUT_DIR"
-shopt -s nullglob
-FILES=("$CODEBOOK_DIR"/*_content_codebook_validation_n12_english.csv)
-if [ ${#FILES[@]} -eq 0 ]; then
-  echo "No translated country sample files found in $CODEBOOK_DIR"
-  exit 1
-fi
-for FILE in "${FILES[@]}"; do
-  COUNTRY=$(basename "$FILE" _content_codebook_validation_n12_english.csv)
-  echo "Running GPT-5.1 content coding for $COUNTRY"
-  python3 content-classification/scripts/classify_all_content_categories.py \
-    --input "$FILE" \
-    --output-dir "$LLM_OUT_DIR/$COUNTRY" \
-    --model gpt-5.1 \
-    --save-every 2
-done
-echo "Done."
-' > content_gpt51_codebook_validation_v4_codebook.log 2>&1 &
-```
-
-Monitor with:
-
-```bash
-tail -f content_gpt51_codebook_validation_v4_codebook.log
-```
-
-Compare the regenerated LLM labels against the human-coded countries currently
-available:
-
-```bash
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline/content_codebook_validation
-
-python3 content-classification/scripts/evaluate_codebook_gpt_against_human.py \
-  --codebook-dir "$CODEBOOK_DIR" \
-  --gpt-dir "$CODEBOOK_DIR/gpt51_test_labels_v4_codebook" \
-  --countries Bulgaria France Hungary Serbia \
-  --coder-id anne \
-  --output-prefix first4_gpt51_v4_codebook
-```
-
-After more countries are human-coded, add them to `--countries` and rerun the
-same evaluation command.
-
-You can also run individual coders, for example:
-
-```bash
-python3 content-classification/scripts/classify_victim_visibility.py \
-  --limit 25 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/pilot
-```
-
-Repeat for the other concepts:
-
-```bash
-python3 content-classification/scripts/classify_corruption_frame.py \
-  --limit 25 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/pilot
-
-python3 content-classification/scripts/classify_abroad_case.py \
-  --limit 25 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/pilot
-
-python3 content-classification/scripts/classify_accused_actor.py \
-  --limit 25 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/pilot
-```
-
-Inspect outputs with:
+The 108 articles already read while developing the codebook are development
+data, not held-out validation. Keep the original samples, English translations,
+human annotations, GPT outputs, and disagreement analyses under:
 
 ```text
-content-classification/notebooks/01_inspect_content_classification.ipynb
+/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
+  political_corruption_pipeline/content_codebook_validation/
 ```
 
-Set `CONTENT_DIR` in the first notebook cell to the pilot or full output folder.
+Do not overwrite or relabel these as final validation. The final sampler
+requires at least 108 distinct exclusions and records their file hashes.
 
-## Codebook Development Sample
+The substantive definitions are frozen in `scripts/content_prompts.py`. The
+most important narrow rules are:
 
-Before final validation, use a small country-year stratified random sample to
-read cases, refine the codebook, check category boundaries, and test the manual
-annotation interface. This is a development sample, not a held-out validation
-set. Any article read while changing the codebook or prompts should be excluded
-from the final validation logic.
+- Victim harm must be explicitly connected to the corruption, not inferred
+  from the offense, investigation, scandal, or surrounding controversy.
+- Concrete victims take priority when concrete and institutional harm are both
+  explicit.
+- An organization is an accused actor only when the article independently
+  attributes corrupt participation to that organization.
+- `case_location` compares the main corruption case with the supplied
+  publication country.
 
-Create an `N=100` stratified random sample from the political-corruption corpus:
+## 02 Draw The Held-Out Validation Sample
+
+The canonical design is 500 articles stratified across country-year cells.
+Every article inspected during codebook development must be excluded. The
+following uses the nine coder files as the exclusion list:
 
 ```bash
-CODEBOOK_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/codebook_development
+cd ~/RESPOND-victims-of-corruption
+
+PIPE=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/political_corruption_pipeline
+DEV="$PIPE/content_codebook_validation"
+VAL=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation_final
+mkdir -p "$VAL"
+
+DEV_FILES=("$DEV"/*_content_codebook_validation_n12_english_anne.csv)
+printf 'Development files: %s\n' "${#DEV_FILES[@]}"
 
 python3 content-classification/scripts/create_validation_sample.py \
-  --total-sample 100 \
-  --stratify-confidence \
-  --sample-purpose codebook_development \
-  --output-name content_codebook_dev_sample_100.csv.gz \
-  --output-dir "$CODEBOOK_DIR"
+  --sample-purpose final_validation \
+  --total-sample 500 \
+  --random-state 20260908 \
+  --output-dir "$VAL" \
+  --output-name content_validation_final_n500.csv.gz \
+  --exclude-sample "${DEV_FILES[@]}"
 ```
 
-This writes:
+Stop if the shell does not report nine development files or if the sampler
+does not report at least 108 distinct exclusions. The outputs are:
 
 ```text
-content_codebook_dev_sample_100.csv.gz
-content_codebook_dev_sample_100_strata.csv
+content_validation_final_n500.csv.gz
+content_validation_final_n500_strata.csv
+content_validation_final_n500.csv.gz.sample_manifest.json
 ```
 
-The file includes `sample_purpose = codebook_development`, country-year and
-classifier-confidence stratum diagnostics, stable `content_sample_id` values,
-`validation_weight`, article text, and blank `human_*` columns.
-Use it for codebook development, category clarification, coder training, and
-interface testing only.
+The sample manifest records the random seed, exclusions, classifier threshold,
+source policy, upstream hashes, and output hashes. Existing samples are never
+overwritten unless `--overwrite` is explicitly supplied.
 
-Translate the same `N=100` development sample to English:
+## 03 Translate And Annotate
+
+Translate the held-out sample:
 
 ```bash
 nohup python3 -u content-classification/scripts/translate_validation_sample.py \
-  --input "$CODEBOOK_DIR/content_codebook_dev_sample_100.csv.gz" \
-  --output "$CODEBOOK_DIR/content_codebook_dev_sample_100_english.csv.gz" \
+  --input "$VAL/content_validation_final_n500.csv.gz" \
+  --output "$VAL/content_validation_final_n500_english.csv.gz" \
   --model gpt-5.1 \
   --max-chars 20000 \
-  > content_codebook_dev_translation.log 2>&1 &
+  --save-every 10 \
+  > "$VAL/translation.log" 2>&1 &
+
+tail -f "$VAL/translation.log"
 ```
 
-Monitor translation progress with:
+The completed translation receives its own sample manifest linked to the
+original draw. Partial or error-containing translations do not.
+
+Start the annotation app with coder-specific, resumable output:
 
 ```bash
-tail -f content_codebook_dev_translation.log
-```
-
-To test the annotation interface on this development sample:
-
-```bash
-CONTENT_ANNOTATION_INPUT="$CODEBOOK_DIR/content_codebook_dev_sample_100_english.csv.gz" \
-CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$CODEBOOK_DIR/content_codebook_dev_sample_100_{coder_id}.csv.gz" \
-CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
+CONTENT_ANNOTATION_INPUT="$VAL/content_validation_final_n500_english.csv.gz" \
+CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$VAL/content_validation_final_n500_english_{coder_id}.csv.gz" \
+CONTENT_ANNOTATION_PASSWORD="choose-a-strong-password" \
+CONTENT_ANNOTATION_SECRET_KEY="choose-another-long-random-secret" \
 CONTENT_ANNOTATION_HOST=127.0.0.1 \
 CONTENT_ANNOTATION_PORT=8502 \
 python3 content-classification/tools/annotation_flask_app.py
 ```
 
-## Validation Sample
-
-For validation, create a smaller country-year stratified random sample from the
-political-corruption corpus after the codebook and GPT prompts are frozen. Do
-not use the codebook-development sample as final validation evidence. A
-500-article sample gives roughly 6-7 articles per non-empty country-year stratum
-if the period has 72 strata (9 countries by 8 years):
-
-```bash
-python3 content-classification/scripts/create_validation_sample.py \
-  --total-sample 500 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
-```
-
-This writes:
-
-```text
-content_validation_sample_500.csv.gz
-content_validation_sample_500_strata.csv
-```
-
-The sample includes the article text, stratum totals, sample counts,
-`validation_weight`, and blank human-coding columns for all four concepts.
-For a balanced country validation design, use 100 articles per country:
-
-```bash
-python3 content-classification/scripts/create_validation_sample.py \
-  --per-country 100 \
-  --output-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
-```
-
-This writes:
-
-```text
-content_validation_sample_100_per_country.csv.gz
-content_validation_sample_100_per_country_strata.csv
-```
-
-Translate the 900 sampled articles to English for human coding:
-
-```bash
-VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
-
-nohup python3 -u content-classification/scripts/translate_validation_sample.py \
-  --input "$VALIDATION_DIR/content_validation_sample_100_per_country.csv.gz" \
-  --output "$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
-  > content_validation_translation.log 2>&1 &
-```
-
-The translation output preserves all original columns and adds
-`translated_text_en`, `translation_notes`, `translation_confidence`,
-`translation_model`, and `translation_error`. The script is resumable.
-
-### Manual Annotation Interface
-
-After translation, launch the Flask annotation app. It shows the English
-translation by default, lets coders switch to the original article or a
-side-by-side view, and keeps the codebook definitions visible while coding.
-Coders log in with their first name; the app stores both that first name and a
-unique `human_code_session_id` on every saved row. If
-`CONTENT_ANNOTATION_OUTPUT_TEMPLATE` is set, each coder automatically writes to
-a separate output file.
-
-For a local-only session on `annecuda`:
-
-```bash
-VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
-
-CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
-CONTENT_ANNOTATION_OUTPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_human_coded.csv.gz" \
-CONTENT_ANNOTATION_PASSWORD="choose-a-password" \
-CONTENT_ANNOTATION_HOST=127.0.0.1 \
-CONTENT_ANNOTATION_PORT=8502 \
-python3 content-classification/tools/annotation_flask_app.py
-```
-
-If working through an SSH tunnel:
+For an SSH tunnel:
 
 ```bash
 ssh -L 8502:127.0.0.1:8502 akroon@annecuda
 ```
 
-Then open:
+Open `http://localhost:8502`. Codes are saved after every article; restarting
+with the same coder ID resumes the existing file. The completion screen still
+allows coders to return to earlier items and revise saved codes.
 
-```text
-http://localhost:8502
-```
+## 04 Code And Evaluate The Held-Out Sample
 
-For external coders, run the app on a reachable host or behind a reverse proxy
-with `--host 0.0.0.0`, a strong `CONTENT_ANNOTATION_PASSWORD`, and a non-default
-`CONTENT_ANNOTATION_SECRET_KEY`. Use `CONTENT_ANNOTATION_OUTPUT_TEMPLATE` so all
-coders can use the same app URL while their annotations are saved separately:
+Run all four frozen GPT-5.1 prompts on the translated sample:
 
 ```bash
-CONTENT_ANNOTATION_INPUT="$VALIDATION_DIR/content_validation_sample_100_per_country_english.csv.gz" \
-CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$VALIDATION_DIR/content_validation_sample_100_per_country_{coder_id}.csv.gz" \
-CONTENT_ANNOTATION_PASSWORD="strong-password-here" \
-CONTENT_ANNOTATION_SECRET_KEY="another-long-random-secret" \
-CONTENT_ANNOTATION_HOST=0.0.0.0 \
-CONTENT_ANNOTATION_PORT=8502 \
-python3 content-classification/tools/annotation_flask_app.py
-```
+GPT_VAL="$VAL/gpt51_labels"
 
-Coders then open the server URL in their own browser, enter their first name and
-the shared password, and annotate independently. Use distinct first names or add
-an initial when two coders share a name, because the first name is also used to
-construct the coder-specific output filename. The app saves the human codes in
-`human_*` columns and is safe to restart: if a coder-specific output file
-already exists, that coder resumes from the reviewed file.
-
-After manual coding, the same sample can be sent through the GPT classifiers to
-compare GPT labels against human labels:
-
-```bash
-VALIDATION_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation
-SAMPLE="$VALIDATION_DIR/content_validation_sample_500.csv.gz"
-
-python3 content-classification/scripts/classify_victim_visibility.py \
-  --source csv \
-  --input "$SAMPLE" \
-  --output-dir "$VALIDATION_DIR/gpt_labels"
-
-python3 content-classification/scripts/classify_corruption_frame.py \
-  --source csv \
-  --input "$SAMPLE" \
-  --output-dir "$VALIDATION_DIR/gpt_labels"
-
-python3 content-classification/scripts/classify_abroad_case.py \
-  --source csv \
-  --input "$SAMPLE" \
-  --output-dir "$VALIDATION_DIR/gpt_labels"
-
-python3 content-classification/scripts/classify_accused_actor.py \
-  --source csv \
-  --input "$SAMPLE" \
-  --output-dir "$VALIDATION_DIR/gpt_labels"
-```
-
-This design keeps the expensive full-corpus GPT labelling separate from the
-validation exercise. If the final held-out validation shows weak agreement on a
-concept, revise the prompt version before running that concept on the complete
-current political-corruption corpus.
-
-## Full Runs
-
-The full corpus is large, so run each concept separately with `nohup`. Every run
-has a manifest containing the model, prompt version, settings, and input source.
-Resume is allowed only when that manifest matches. Rows are skipped only when
-both `article_id` and the stored input-text hash match; changed text is
-reprocessed. Use `--retry-errors` to reprocess failed rows, or `--overwrite` to
-start a deliberately fresh output.
-
-```bash
-# Replace only after the paired development-sample comparison is complete.
-CONTENT_MODEL=gpt-5.6-terra
-CONTENT_DIR=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/gpt56_terra_final
-
-nohup python3 -u content-classification/scripts/classify_victim_visibility.py \
-  --output-dir "$CONTENT_DIR" \
-  --model "$CONTENT_MODEL" \
+nohup python3 -u content-classification/scripts/classify_all_content_categories.py \
+  --input "$VAL/content_validation_final_n500_english.csv.gz" \
+  --output-dir "$GPT_VAL" \
+  --model gpt-5.1 \
   --max-chars 6000 \
-  > content_victim_visibility.log 2>&1 &
+  --save-every 10 \
+  > "$VAL/gpt51_validation.log" 2>&1 &
 
-nohup python3 -u content-classification/scripts/classify_corruption_frame.py \
-  --output-dir "$CONTENT_DIR" \
-  --model "$CONTENT_MODEL" \
-  --max-chars 6000 \
-  > content_corruption_frame.log 2>&1 &
-
-nohup python3 -u content-classification/scripts/classify_abroad_case.py \
-  --output-dir "$CONTENT_DIR" \
-  --model "$CONTENT_MODEL" \
-  --max-chars 6000 \
-  > content_abroad_case.log 2>&1 &
-
-nohup python3 -u content-classification/scripts/classify_accused_actor.py \
-  --output-dir "$CONTENT_DIR" \
-  --model "$CONTENT_MODEL" \
-  --max-chars 6000 \
-  > content_accused_actor.log 2>&1 &
+tail -f "$VAL/gpt51_validation.log"
 ```
 
-Monitor progress with:
+After human coding is complete, evaluate it. Replace `anne` only if the coder
+ID differs:
 
 ```bash
-tail -f content_victim_visibility.log
+python3 content-classification/scripts/evaluate_codebook_gpt_against_human.py \
+  --human-file "$VAL/content_validation_final_n500_english_anne.csv.gz" \
+  --gpt-dir "$GPT_VAL" \
+  --coder-id anne \
+  --require-final-validation \
+  --output-prefix final_n500_gpt51
 ```
 
-## Merge LLM-Coded Labels
+Outputs include overall and country-specific agreement, Cohen's kappa, macro
+F1, design-weighted agreement, confusion counts, and a disagreement packet.
+The design-weighted statistics use the saved country-year sampling weights.
 
-After all four concept files are present and error-free:
+This sample is a final test only while its cases do not change the prompts. If
+its disagreements are used to tune definitions or prompts, treat it as new
+development data, exclude it, and draw a fresh final validation sample.
+
+The evaluator retains backward compatibility with the old country-by-country
+development files through `--countries` and `--codebook-dir`.
+
+## 05 Run Full Production Coding
+
+Start this only after the model and all prompt versions have passed held-out
+validation and have been frozen. The maintained runner verifies the complete
+upstream corpus, resumes failed or interrupted rows, runs the four variables
+sequentially, and performs the strict merge:
 
 ```bash
-python3 content-classification/scripts/merge_content_labels.py \
-  --input-dir /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification \
-  --cpi output/cpi_country_year_scores.csv
+cd ~/RESPOND-victims-of-corruption
+
+DATA=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption
+CONTENT_OUTPUT_DIR="$DATA/content_classification/final_gpt51"
+LOG="$DATA/content_classification/final_gpt51_run.log"
+mkdir -p "$CONTENT_OUTPUT_DIR"
+
+nohup env \
+  CONTENT_MODEL=gpt-5.1 \
+  CONTENT_OUTPUT_DIR="$CONTENT_OUTPUT_DIR" \
+  bash content-classification/scripts/05_run_final_content_classification.sh \
+  > "$LOG" 2>&1 &
+
+echo $! > "$CONTENT_OUTPUT_DIR/run.pid"
+tail -f "$LOG"
 ```
 
-This writes:
+Each variable writes a CSV.GZ checkpoint, append-only JSONL audit, immutable run
+manifest, and completion marker. A completion marker is written only when all
+expected rows are present, labels are nonblank, no errors remain, and the input
+matches the final classifier run.
+
+The final merged measurement file is:
 
 ```text
 /home/akroon/data/1t_storage/RESPOND-victims-of-corruption/
-  content_classification/content_silver_labels_merged.csv.gz
+  content_classification/final_gpt51/
+  political_corruption_content_categories_final.csv.gz
 ```
 
-Derived variables include:
+Its adjacent manifest records the exact four inputs, content model, article-ID
+fingerprint, upstream classifier hash, threshold, and source-filter policy.
+The canonical merge rejects validation samples, country subsets, partial files,
+failed rows, duplicate IDs, invalid labels, different models, and outputs from
+different upstream corpus builds.
 
-| Variable | Definition |
-|---|---|
-| `victim_visible_binary` | 1 for concrete or institutional/societal victim; 0 for no victim |
-| `concrete_victim_visible` | 1 for concrete victim; 0 for no victim or institutional/societal victim |
-| `institutional_societal_victim_visible` | 1 for institutional/societal victim; 0 otherwise |
-| `abroad_case_binary` | 1 for abroad; 0 for domestic |
-| `accused_actor_visible_binary` | 1 when any accused actor is visible; 0 when none is visible |
-| `frame_individualized` | 1 for individualized frame; 0 for systemic or other/mixed |
-| `frame_systemic` | 1 for systemic frame; 0 for individualized or other/mixed |
-| `perceived_corruption_lag1` | `100 - CPI` from the previous country-year |
+CPI and other covariates are intentionally not added to this canonical
+measurement artifact. Add them in a separate analysis-data construction step.
+The merge retains diagnostic `--allow-partial`, `--allow-errors`, and `--cpi`
+options, but those outputs are not canonical production data.
 
-By default the merge is an inner, one-to-one merge and fails on duplicate IDs,
-invalid labels, failed requests, or missing variable outputs. `--allow-partial`
-and `--allow-errors` are diagnostic overrides and must not be used for final
-analysis. Rows coded `unclear` retain missing values in the derived binary variables so
-they can be excluded from the relevant regression models.
+## Reproducibility Contract
 
-## Reproducibility Notes
-
-- The prompts live in `scripts/content_prompts.py`; do not edit them mid-run
-  unless intentionally starting a new prompt version.
-- Each output row stores `classifier_name`, `prompt_version`, model, timestamp,
-  maximum characters, and an SHA-256 hash of the supplied text.
-- Each classifier writes an append-only audit JSONL next to the output file
-  containing the prompt, raw and parsed response, and any error for every
-  attempted article.
-- The default model is read from `LLMPROXY_MODEL` in `config.py`, currently
-  `gpt-5.1`.
-- Credentials must be supplied through environment variables or ignored
-  `config_local.py`: `LLMPROXY_API_KEY`, and if using WebDAV, Research Drive
-  credentials.
+- Never edit `scripts/content_prompts.py` while a run is in progress.
+- Start changed prompts, changed models, or changed maximum text lengths in a
+  new output directory.
+- Use `--retry-errors` to resume failed rows; use `--overwrite` only when
+  intentionally discarding an entire prior run.
+- Keep the JSONL audits. They retain prompts, raw responses, parsed responses,
+  timestamps, model names, and errors.
+- Keep all `.run.json`, `.sample_manifest.json`, `.complete.json`, and merged
+  manifest files with the generated data.
+- Do not present the 108 development articles as held-out validation.
+- Do not launch a newly available model on the full corpus before a successful
+  access check and frozen-sample comparison.

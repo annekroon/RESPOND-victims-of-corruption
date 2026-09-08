@@ -2,8 +2,8 @@
 
 Run on a remote server with:
 
-    CONTENT_ANNOTATION_INPUT=/path/to/content_validation_sample_100_per_country_english.csv.gz \
-    CONTENT_ANNOTATION_OUTPUT_TEMPLATE=/path/to/content_validation_sample_100_per_country_{coder_id}.csv.gz \
+    CONTENT_ANNOTATION_INPUT=/path/to/content_validation_final_n500_english.csv.gz \
+    CONTENT_ANNOTATION_OUTPUT_TEMPLATE=/path/to/content_validation_final_n500_english_{coder_id}.csv.gz \
     CONTENT_ANNOTATION_PASSWORD='choose-a-password' \
     CONTENT_ANNOTATION_HOST=0.0.0.0 \
     CONTENT_ANNOTATION_PORT=8502 \
@@ -15,27 +15,35 @@ coder writes to a distinct CSV while reading the same translated input file.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
 import uuid
 from functools import wraps
 from pathlib import Path
+from datetime import datetime, timezone
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPT_DIR = PROJECT_ROOT / "content-classification" / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 import pandas as pd
 from flask import Flask, redirect, render_template_string, request, session, url_for
 
+from content_classifier_common import validate_content_sample
+from political_classifier.reproducibility import file_record, git_commit
+
 
 DEFAULT_VALIDATION_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
-    "content_classification/validation"
+    "content_classification/validation_final"
 )
-DEFAULT_INPUT_PATH = DEFAULT_VALIDATION_DIR / "content_validation_sample_100_per_country_english.csv.gz"
-DEFAULT_OUTPUT_PATH = DEFAULT_VALIDATION_DIR / "content_validation_sample_100_per_country_human_coded.csv.gz"
+DEFAULT_INPUT_PATH = DEFAULT_VALIDATION_DIR / "content_validation_final_n500_english.csv.gz"
+DEFAULT_OUTPUT_PATH = DEFAULT_VALIDATION_DIR / "content_validation_final_n500_english_human_coded.csv.gz"
 
 INPUT_PATH = Path(os.environ.get("CONTENT_ANNOTATION_INPUT", DEFAULT_INPUT_PATH))
 OUTPUT_PATH = Path(os.environ.get("CONTENT_ANNOTATION_OUTPUT", DEFAULT_OUTPUT_PATH))
@@ -90,6 +98,8 @@ HUMAN_COLUMNS = [
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+_INPUT_PROVENANCE: dict | None = None
+_INPUT_PROVENANCE_CHECKED = False
 
 
 def read_csv(path: Path) -> pd.DataFrame:
@@ -101,6 +111,18 @@ def write_csv_atomic(data: pd.DataFrame, path: Path) -> None:
     tmp_path = path.with_name(path.name + ".tmp")
     data.to_csv(tmp_path, index=False, compression="gzip" if path.name.endswith(".gz") else None)
     tmp_path.replace(path)
+
+
+def annotation_manifest_path(path: Path) -> Path:
+    return path.with_name(path.name + ".annotation_manifest.json")
+
+
+def input_provenance() -> dict | None:
+    global _INPUT_PROVENANCE, _INPUT_PROVENANCE_CHECKED
+    if not _INPUT_PROVENANCE_CHECKED:
+        _INPUT_PROVENANCE = validate_content_sample(INPUT_PATH)
+        _INPUT_PROVENANCE_CHECKED = True
+    return _INPUT_PROVENANCE
 
 
 def ensure_columns(data: pd.DataFrame) -> pd.DataFrame:
@@ -148,14 +170,52 @@ def output_path_for_coder(coder_id: str) -> Path:
 
 def load_data(coder_id: str) -> pd.DataFrame:
     output_path = output_path_for_coder(coder_id)
-    path = output_path if output_path.exists() else INPUT_PATH
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return ensure_columns(read_csv(path))
+    if not INPUT_PATH.exists():
+        raise FileNotFoundError(INPUT_PATH)
+    provenance = input_provenance()
+    source = ensure_columns(read_csv(INPUT_PATH))
+    purposes = set(source.get("sample_purpose", pd.Series(dtype=str)).dropna().astype(str))
+    if purposes == {"final_validation"} and provenance is None:
+        raise ValueError(
+            "Final-validation annotation input has no verified sample manifest."
+        )
+    if not output_path.exists():
+        return source
+
+    saved = ensure_columns(read_csv(output_path))
+    source_ids = source["article_id"].astype(str)
+    saved_ids = saved["article_id"].astype(str)
+    if len(saved) != len(source) or saved_ids.tolist() != source_ids.tolist():
+        raise ValueError(
+            f"Existing coder output does not match the current annotation input: {output_path}"
+        )
+    return saved
 
 
 def save_data(data: pd.DataFrame, coder_id: str) -> None:
-    write_csv_atomic(data, output_path_for_coder(coder_id))
+    output_path = output_path_for_coder(coder_id)
+    write_csv_atomic(data, output_path)
+    provenance = input_provenance()
+    manifest = {
+        "schema_version": 1,
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit(PROJECT_ROOT),
+        "coder_id": safe_coder_id(coder_id),
+        "input": file_record(INPUT_PATH),
+        "input_sample_manifest": (
+            file_record(provenance["manifest_path"]) if provenance else None
+        ),
+        "output": file_record(output_path),
+        "rows": len(data),
+        "reviewed_rows": int(reviewed_mask(data).sum()),
+    }
+    manifest_path = annotation_manifest_path(output_path)
+    temporary = manifest_path.with_name(manifest_path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(manifest_path)
 
 
 def value(row: pd.Series, column: str, default: str = "") -> str:

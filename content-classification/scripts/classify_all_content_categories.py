@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--retry-errors", action="store_true")
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Start fresh outputs for all four variables.",
+    )
+    parser.add_argument(
         "--keep-non-political",
         action="store_true",
         help="Pass through non-political rows if present. Usually not needed for codebook samples.",
@@ -77,6 +82,8 @@ def main() -> None:
             command.extend(["--limit", str(args.limit)])
         if args.retry_errors:
             command.append("--retry-errors")
+        if args.overwrite:
+            command.append("--overwrite")
         if args.keep_non_political:
             command.append("--keep-non-political")
 

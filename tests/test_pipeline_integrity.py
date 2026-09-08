@@ -262,7 +262,12 @@ class ContentSamplingTests(unittest.TestCase):
         self.data = pd.DataFrame(rows)
         self.data["probability_band"] = self.data[
             "prob_political_corruption"
-        ].map(CONTENT_SAMPLER.probability_band)
+        ].map(lambda value: CONTENT_SAMPLER.probability_band(value, 0.60))
+
+    def test_confidence_bands_are_relative_to_selected_threshold(self):
+        self.assertEqual(CONTENT_SAMPLER.probability_band(0.60, 0.60), "near_threshold")
+        self.assertEqual(CONTENT_SAMPLER.probability_band(0.74, 0.60), "medium")
+        self.assertEqual(CONTENT_SAMPLER.probability_band(0.90, 0.60), "high")
 
     def test_small_confidence_stratified_sample_has_exact_size(self):
         columns = CONTENT_SAMPLER.sampling_columns(True)
@@ -273,6 +278,21 @@ class ContentSamplingTests(unittest.TestCase):
         columns = CONTENT_SAMPLER.sampling_columns(True)
         sample = CONTENT_SAMPLER.sample_per_country(self.data, 3, 42, columns)
         self.assertEqual(sample.groupby("country").size().to_dict(), {"A": 3, "B": 3})
+
+    def test_development_exclusions_prefer_corpus_uri_over_sample_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "development.csv"
+            pd.DataFrame(
+                [
+                    {
+                        "article_id": "Bulgaria_0001",
+                        "country": "Bulgaria",
+                        "uri": "12345",
+                    }
+                ]
+            ).to_csv(path, index=False)
+            keys, _ = CONTENT_SAMPLER.exclusion_keys([path])
+        self.assertEqual(keys, {"Bulgaria::12345"})
 
 
 class ClassifierDataTests(unittest.TestCase):

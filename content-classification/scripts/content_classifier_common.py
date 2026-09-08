@@ -23,7 +23,12 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from config import ALL_COUNTRIES, LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL, RD_BASE_DIR
 from content_prompts import ClassifierSpec
-from political_classifier.reproducibility import file_record, git_commit
+from political_classifier.final_corpus import (
+    ClassifierRun,
+    load_verified_classifier_run,
+    verify_classified_country_file,
+)
+from political_classifier.reproducibility import file_record, git_commit, sha256_file
 
 
 DEFAULT_PIPELINE_DIR = Path(
@@ -31,10 +36,12 @@ DEFAULT_PIPELINE_DIR = Path(
     "political_corruption_pipeline"
 )
 DEFAULT_CLASSIFIED_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier" / "classified_country_files"
-DEFAULT_OUTPUT_DIR = Path(
+DEFAULT_CLASSIFIER_OUTPUT_DIR = DEFAULT_PIPELINE_DIR / "silver_classifier"
+DEFAULT_CONTENT_ROOT = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
     "content_classification"
 )
+DEFAULT_OUTPUT_DIR = DEFAULT_CONTENT_ROOT / "final_gpt51"
 DEFAULT_RD_CLASSIFIED_DIR = posixpath.join(
     RD_BASE_DIR,
     "victims-of-corruption-paper",
@@ -101,6 +108,22 @@ METADATA_COLUMNS = [
     "translation_error",
 ]
 
+PRIMARY_LABEL_COLUMNS = {
+    "victim_visibility": "victim_visibility",
+    "corruption_frame": "corruption_frame",
+    "abroad_case": "case_location",
+    "accused_actor": "accused_actor_visibility",
+}
+
+
+class LLMResponseParseError(ValueError):
+    """Preserve the prompt and raw model response when JSON parsing fails."""
+
+    def __init__(self, message: str, *, prompt: str, raw_response: str):
+        super().__init__(message)
+        self.prompt = prompt
+        self.raw_response = raw_response
+
 
 def parse_common_args(description: str, default_output_name: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=description)
@@ -112,6 +135,15 @@ def parse_common_args(description: str, default_output_name: str) -> argparse.Na
     )
     parser.add_argument("--input", type=Path, default=None, help="Input CSV/CSV.GZ when --source csv.")
     parser.add_argument("--classified-dir", type=Path, default=DEFAULT_CLASSIFIED_DIR)
+    parser.add_argument(
+        "--classifier-output-dir",
+        type=Path,
+        default=DEFAULT_CLASSIFIER_OUTPUT_DIR,
+        help=(
+            "Directory containing classifier_run_manifest.json, "
+            "classified_country_summary.csv, and selected_threshold.txt."
+        ),
+    )
     parser.add_argument("--classified-rd-dir", default=DEFAULT_RD_CLASSIFIED_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output", type=Path, default=None)
@@ -119,7 +151,12 @@ def parse_common_args(description: str, default_output_name: str) -> argparse.Na
     parser.add_argument("--model", default=LLMPROXY_MODEL)
     parser.add_argument("--max-chars", type=int, default=6000)
     parser.add_argument("--input-chunksize", type=int, default=25_000)
-    parser.add_argument("--min-words", type=int, default=30)
+    parser.add_argument(
+        "--min-words",
+        type=int,
+        default=1,
+        help="Minimum non-empty article length. Final production runs use 1.",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Process only the first N unfinished rows.")
     parser.add_argument("--save-every", type=int, default=25)
     parser.add_argument("--sleep", type=float, default=0.1)
@@ -182,11 +219,11 @@ def extract_json(text: str) -> dict:
     text = re.sub(r"^```(?:json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
     try:
-        return json.loads(text)
+        return json.loads(text, strict=False)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if match:
-            return json.loads(match.group(0))
+            return json.loads(match.group(0), strict=False)
         raise
 
 
@@ -429,11 +466,182 @@ def deduplicate_output(data):
     return data.drop_duplicates(subset=["article_id"], keep="last").reset_index(drop=True)
 
 
-def output_manifest(args: argparse.Namespace, spec: ClassifierSpec) -> dict:
+def content_sample_manifest_path(sample_path: Path) -> Path:
+    return sample_path.with_name(sample_path.name + ".sample_manifest.json")
+
+
+def content_completion_path(output_path: Path) -> Path:
+    return output_path.with_name(output_path.name + ".complete.json")
+
+
+def validate_content_sample(sample_path: Path) -> dict | None:
+    """Validate a canonical content sample when its sidecar is present."""
+    manifest_path = content_sample_manifest_path(sample_path)
+    if not manifest_path.exists():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    sample_record = (manifest.get("outputs") or {}).get("sample") or {}
+    if sample_record.get("sha256") != sha256_file(sample_path):
+        raise ValueError(
+            f"Content sample differs from its manifest: {sample_path}. "
+            "Recreate the sample before continuing."
+        )
+    upstream = manifest.get("upstream_classifier") or {}
+    if not upstream.get("verified_final_classifier"):
+        raise ValueError(
+            "Content sample is not linked to the verified final classifier run."
+        )
+    if not manifest.get("political_only"):
+        raise ValueError("Content samples must contain political-corruption rows only.")
+    return {
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "manifest_sha256": sha256_file(manifest_path),
+        "upstream_classifier": upstream,
+    }
+
+
+def validate_completed_content_output(output_path: Path) -> dict:
+    """Verify a content label file, its immutable run settings, and completion."""
+    completion_path = content_completion_path(output_path)
+    if not completion_path.exists():
+        raise FileNotFoundError(
+            f"Missing completion marker for final content output: {completion_path}"
+        )
+    completion = json.loads(completion_path.read_text(encoding="utf-8"))
+    output_record = completion.get("output") or {}
+    if output_record.get("sha256") != sha256_file(output_path):
+        raise ValueError(f"Content output differs from its completion marker: {output_path}")
+    run_manifest_path = output_path.with_name(output_path.name + ".run.json")
+    run_record = completion.get("run_manifest") or {}
+    if run_record.get("sha256") != sha256_file(run_manifest_path):
+        raise ValueError(
+            f"Content run manifest differs from its completion marker: {run_manifest_path}"
+        )
+    audit_record = completion.get("audit") or {}
+    if not audit_record.get("path") or not audit_record.get("sha256"):
+        raise ValueError(f"Content completion marker has no audit record: {output_path}")
+    audit_path = Path(str(audit_record.get("path", "")))
+    if not audit_path.is_absolute():
+        audit_path = output_path.parent / audit_path.name
+    if audit_record.get("sha256") != sha256_file(audit_path):
+        raise ValueError(
+            f"Content audit log differs from its completion marker: {audit_path}"
+        )
+    run_manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+    for key in ["classifier_name", "prompt_version", "model", "source"]:
+        if completion.get(key) != run_manifest.get(key):
+            raise ValueError(
+                f"Content completion and run manifest disagree on {key}: {output_path}"
+            )
+    expected_production_scope = bool(
+        run_manifest.get("source") in {"classified", "classified-webdav"}
+        and not run_manifest.get("keep_non_political")
+        and set(run_manifest.get("countries") or []) == set(ALL_COUNTRIES)
+    )
+    if completion.get("production_full_corpus") != expected_production_scope:
+        raise ValueError(
+            f"Content completion marker has an inconsistent run scope: {output_path}"
+        )
+    upstream = completion.get("upstream_classifier") or {}
+    if not upstream.get("verified_final_classifier"):
+        raise ValueError(
+            f"Final content output is not linked to the verified classifier: {output_path}"
+        )
+    if upstream != (run_manifest.get("upstream_classifier") or {}):
+        raise ValueError(
+            f"Content completion and run manifest use different upstream runs: {output_path}"
+        )
+    import pandas as pd
+
+    article_ids = pd.read_csv(
+        output_path,
+        compression="gzip" if output_path.name.endswith(".gz") else "infer",
+        usecols=["article_id"],
+    )["article_id"].fillna("").astype(str)
+    if article_ids.str.strip().eq("").any():
+        raise ValueError(f"Content output contains blank article IDs: {output_path}")
+    if article_ids.duplicated().any():
+        raise ValueError(f"Content output contains duplicate article IDs: {output_path}")
+    if len(article_ids) != int(completion.get("rows", -1)):
+        raise ValueError(
+            f"Content output row count differs from its completion marker: {output_path}"
+        )
+    article_id_hash = hashlib.sha256(
+        "\n".join(sorted(article_ids)).encode("utf-8")
+    ).hexdigest()
+    if article_id_hash != completion.get("article_id_sha256"):
+        raise ValueError(
+            f"Content output article IDs differ from its completion marker: {output_path}"
+        )
+    return {
+        **completion,
+        "completion": completion,
+        "completion_path": completion_path,
+        "completion_sha256": sha256_file(completion_path),
+        "run_manifest": run_manifest,
+        "run_manifest_path": run_manifest_path,
+        "audit_path": audit_path,
+        "upstream_classifier": upstream,
+    }
+
+
+def verify_production_input(args: argparse.Namespace) -> ClassifierRun | None:
+    """Fail before LLM calls when classified inputs are not the final corpus."""
+    if args.source == "csv":
+        return None
+
+    require_local = args.source == "classified"
+    classifier_run = load_verified_classifier_run(
+        args.classifier_output_dir,
+        list(ALL_COUNTRIES),
+        classified_dir=args.classified_dir,
+        require_local_country_files=require_local,
+    )
+    for country in args.countries:
+        if args.source == "classified-webdav":
+            from rd_utils import webdav_download_to_path
+
+            cache_dir = args.output_dir / "_webdav_input_cache"
+            local_path = cache_dir / f"{country}_classified.csv.gz"
+            if not local_path.exists():
+                webdav_download_to_path(country_rd_path(args, country), local_path)
+        else:
+            local_path = country_path(args, country)
+        verify_classified_country_file(
+            local_path,
+            country=country,
+            classifier_run=classifier_run,
+            chunksize=args.input_chunksize,
+        )
+        print(
+            f"Verified {country} against final classifier threshold "
+            f"{classifier_run.threshold:.2f}",
+            flush=True,
+        )
+    print(
+        "Verified final source-filtered political-corruption corpus: "
+        f"{classifier_run.political_articles:,} articles across "
+        f"{len(classifier_run.summary):,} countries",
+        flush=True,
+    )
+    return classifier_run
+
+
+def output_manifest(
+    args: argparse.Namespace,
+    spec: ClassifierSpec,
+    classifier_run: ClassifierRun | None,
+) -> dict:
     input_record = None
     if args.source == "csv" and args.input is not None and args.input.exists():
         input_record = file_record(args.input)
-    classifier_manifest = args.classified_dir.parent / "classifier_run_manifest.json"
+    sample_provenance = (
+        validate_content_sample(args.input)
+        if args.source == "csv" and args.input is not None
+        else None
+    )
+    classifier_manifest = args.classifier_output_dir / "classifier_run_manifest.json"
     classifier_record = (
         file_record(classifier_manifest)
         if args.source == "classified" and classifier_manifest.exists()
@@ -451,8 +659,23 @@ def output_manifest(args: argparse.Namespace, spec: ClassifierSpec) -> dict:
         "source": args.source,
         "input": str(args.input) if args.input else None,
         "input_file": input_record,
+        "input_sample_manifest": (
+            file_record(sample_provenance["manifest_path"])
+            if sample_provenance
+            else None
+        ),
         "classified_dir": str(args.classified_dir),
+        "classifier_output_dir": str(args.classifier_output_dir),
         "classifier_run_manifest": classifier_record,
+        "upstream_classifier": (
+            classifier_run.provenance_record()
+            if classifier_run
+            else (
+                sample_provenance["upstream_classifier"]
+                if sample_provenance
+                else None
+            )
+        ),
         "classified_rd_dir": args.classified_rd_dir,
         "countries": list(args.countries),
         "keep_non_political": bool(args.keep_non_political),
@@ -481,7 +704,15 @@ def classify_article(client, spec: ClassifierSpec, row: dict, model: str, max_ch
         temperature=0,
     )
     raw = response.choices[0].message.content
-    result = spec.normalize_result(extract_json(raw))
+    try:
+        parsed = extract_json(raw)
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+        raise LLMResponseParseError(
+            f"Could not parse {spec.name} response as JSON: {exc}",
+            prompt=prompt,
+            raw_response=raw,
+        ) from exc
+    result = spec.normalize_result(parsed)
     if spec.name == "victim_visibility":
         result = enforce_victim_evidence(result, article_text)
     return result, prompt, raw
@@ -597,9 +828,11 @@ def run_classifier(spec: ClassifierSpec) -> None:
     output_path = args.output or (args.output_dir / spec.default_output_name)
     audit_path = output_path.with_name(output_path.stem + "_audit.jsonl")
     manifest_path = output_path.with_name(output_path.name + ".run.json")
+    completion_path = content_completion_path(output_path)
+    classifier_run = verify_production_input(args)
 
     if args.overwrite:
-        for path in [output_path, audit_path, manifest_path]:
+        for path in [output_path, audit_path, manifest_path, completion_path]:
             if path.exists():
                 path.unlink()
     if output_path.exists() and not manifest_path.exists():
@@ -609,7 +842,7 @@ def run_classifier(spec: ClassifierSpec) -> None:
         )
     validate_or_write_manifest(
         manifest_path,
-        output_manifest(args, spec),
+        output_manifest(args, spec, classifier_run),
         overwrite=args.overwrite,
     )
 
@@ -625,7 +858,9 @@ def run_classifier(spec: ClassifierSpec) -> None:
 
     new_rows: list[dict] = []
     processed_this_run = 0
+    eligible_article_ids: set[str] = set()
     for input_label, data in iter_input_frames(args):
+        eligible_article_ids.update(data["article_id"].dropna().astype(str))
         done_ids = done_ids_for_frame(existing, data, args.retry_errors)
         unfinished = data[~data["article_id"].astype(str).isin(done_ids)].copy()
         if args.random_sample is not None:
@@ -669,6 +904,9 @@ def run_classifier(spec: ClassifierSpec) -> None:
                     out["llm_error"] = ""
                     break
                 except Exception as exc:
+                    if isinstance(exc, LLMResponseParseError):
+                        prompt = exc.prompt
+                        raw_response = exc.raw_response
                     out["llm_error"] = repr(exc)
                     print(
                         f"Error on article_id={out.get('article_id', '')} "
@@ -719,4 +957,90 @@ def run_classifier(spec: ClassifierSpec) -> None:
             break
 
     write_checkpoint(existing, new_rows, output_path)
-    print("Done.", flush=True)
+    final = deduplicate_output(read_csv(output_path))
+    errors = (
+        final["llm_error"].fillna("").astype(str).str.strip().ne("")
+        if "llm_error" in final.columns
+        else pd.Series(False, index=final.index)
+    )
+    label_column = PRIMARY_LABEL_COLUMNS[spec.name]
+    invalid_labels = (
+        final[label_column].fillna("").astype(str).str.strip().eq("")
+        if label_column in final.columns
+        else pd.Series(True, index=final.index)
+    )
+    if errors.any() or invalid_labels.any():
+        completion_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"{spec.name} run is incomplete: {int(errors.sum()):,} error row(s) "
+            f"and {int(invalid_labels.sum()):,} blank-label row(s). Resume with "
+            "--retry-errors; final merging will reject this output."
+        )
+
+    if args.limit is not None or args.random_sample is not None:
+        completion_path.unlink(missing_ok=True)
+        print(
+            f"Partial diagnostic run finished: {len(final):,} saved row(s); "
+            "no completion marker written.",
+            flush=True,
+        )
+        return
+
+    expected_rows = len(eligible_article_ids)
+    if len(final) != expected_rows:
+        completion_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"{spec.name} output has {len(final):,} rows but the eligible input "
+            f"contains {expected_rows:,} unique article IDs."
+        )
+    if classifier_run is not None:
+        selected = classifier_run.summary[
+            classifier_run.summary["country"].astype(str).isin(args.countries)
+        ]
+        expected_classifier_rows = int(
+            selected[
+                "total_articles"
+                if args.keep_non_political
+                else "predicted_political_corruption"
+            ].sum()
+        )
+        if expected_rows != expected_classifier_rows:
+            completion_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Eligible content rows ({expected_rows:,}) do not equal the "
+                f"verified classifier total ({expected_classifier_rows:,}). "
+                "Use --min-words 1 and inspect blank article text before continuing."
+            )
+
+    article_id_hash = hashlib.sha256(
+        "\n".join(sorted(eligible_article_ids)).encode("utf-8")
+    ).hexdigest()
+    saved_run_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    completion = {
+        "schema_version": 1,
+        "completed_at_utc": datetime.now(timezone.utc).isoformat(),
+        "classifier_name": spec.name,
+        "prompt_version": spec.prompt_version,
+        "model": args.model,
+        "source": args.source,
+        "countries": list(args.countries),
+        "production_full_corpus": bool(
+            classifier_run is not None
+            and not args.keep_non_political
+            and set(args.countries) == set(ALL_COUNTRIES)
+        ),
+        "rows": len(final),
+        "article_id_sha256": article_id_hash,
+        "output": file_record(output_path),
+        "run_manifest": file_record(manifest_path),
+        "audit": file_record(audit_path),
+        "upstream_classifier": (
+            saved_run_manifest.get("upstream_classifier")
+        ),
+    }
+    completion_path.write_text(
+        json.dumps(completion, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Saved completion marker: {completion_path}", flush=True)
+    print(f"Done. Verified {len(final):,} complete rows.", flush=True)

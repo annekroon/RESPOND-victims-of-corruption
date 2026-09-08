@@ -134,12 +134,13 @@ codebook combined the theoretical distinctions developed above, close reading
 of political-corruption articles, and iterative review of disagreements between
 researcher and model coding.
 
-A country-balanced development sample was drawn from articles already
-classified as political corruption. It contained 108 articles, with 12 from
-each country. Within country, sampling was spread across publication years and
-three political-corruption probability bands so that development work included
-both high-confidence cases and cases closer to the \PCThreshold{} corpus-inclusion
-threshold. The articles were translated into English with GPT-5.1 for
+A country-balanced development sample was drawn from the then-current set of
+articles classified as political corruption. It contained 108 articles, with
+12 from each country. Within country, sampling was spread across publication
+years and classifier-score bands to expose the codebook to both clearer and
+more ambiguous cases. This sample was used only for concept and prompt
+development; it was not used to estimate population quantities. The articles
+were translated into English with GPT-5.1 for
 researcher coding; the annotation interface retained and displayed the original
 text alongside the translation so that ambiguous translations could be
 checked.
@@ -155,6 +156,9 @@ rather than overwritten.
 
 Because these 108 articles informed the codebook and prompts, they are
 development data and cannot provide an unbiased final performance estimate.
+All 108 are excluded by article identifier when the final validation sample is
+drawn, irrespective of whether an article remains above the final classifier
+threshold.
 After the prompt definitions are frozen, final measurement performance will be
 evaluated on a separate country-year-stratified human-coded sample from the
 \PCFinalN{}-article corpus. Human--model agreement, variable-specific confusion

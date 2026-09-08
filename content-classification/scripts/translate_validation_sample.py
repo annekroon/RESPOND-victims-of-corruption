@@ -1,7 +1,7 @@
 """Translate sampled political-corruption articles to English with GPT.
 
-This is intended for human validation samples, e.g. 900 articles with
-100 articles per country. The script is resumable and writes checkpoints.
+The script is resumable, validates canonical sample provenance, and writes
+checkpoints.
 """
 
 from __future__ import annotations
@@ -24,11 +24,13 @@ if str(SCRIPT_DIR) not in sys.path:
 from config import LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL
 from content_classifier_common import (
     append_audit_record,
+    content_sample_manifest_path,
     deduplicate_output,
     is_non_retryable_model_error,
     normalize_text,
     read_csv,
     sha256_text,
+    validate_content_sample,
     validate_or_write_manifest,
     write_csv_atomic,
 )
@@ -37,9 +39,18 @@ from political_classifier.reproducibility import file_record, git_commit
 
 DEFAULT_INPUT = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
-    "content_classification/validation/content_validation_sample_100_per_country.csv.gz"
+    "content_classification/validation_final/content_validation_final_n500.csv.gz"
 )
 TRANSLATION_PROMPT_VERSION = "faithful_translation_v1"
+
+
+class TranslationResponseParseError(ValueError):
+    """Preserve a malformed translation response for the audit trail."""
+
+    def __init__(self, message: str, *, prompt: str, raw_response: str):
+        super().__init__(message)
+        self.prompt = prompt
+        self.raw_response = raw_response
 
 
 def parse_args() -> argparse.Namespace:
@@ -120,11 +131,11 @@ def extract_json(text: str) -> dict:
     text = re.sub(r"^```(?:json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
     try:
-        return json.loads(text)
+        return json.loads(text, strict=False)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.DOTALL)
         if match:
-            return json.loads(match.group(0))
+            return json.loads(match.group(0), strict=False)
         raise
 
 
@@ -175,7 +186,14 @@ def translate_article(client, row: dict, model: str, text_column: str, max_chars
         temperature=0,
     )
     raw = response.choices[0].message.content
-    parsed = extract_json(raw)
+    try:
+        parsed = extract_json(raw)
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+        raise TranslationResponseParseError(
+            f"Could not parse translation response as JSON: {exc}",
+            prompt=prompt,
+            raw_response=raw,
+        ) from exc
     return (
         {
             "translated_text_en": parsed.get("translated_text", ""),
@@ -234,9 +252,16 @@ def main() -> None:
     output_path = args.output or output_path_from_input(args.input)
     audit_path = output_path.with_name(output_path.stem + "_translation_audit.jsonl")
     manifest_path = output_path.with_name(output_path.name + ".run.json")
+    translated_sample_manifest_path = content_sample_manifest_path(output_path)
+    source_sample = validate_content_sample(args.input)
 
     if args.overwrite:
-        for path in [output_path, audit_path, manifest_path]:
+        for path in [
+            output_path,
+            audit_path,
+            manifest_path,
+            translated_sample_manifest_path,
+        ]:
             if path.exists():
                 path.unlink()
     if output_path.exists() and not manifest_path.exists():
@@ -254,6 +279,14 @@ def main() -> None:
             "model": args.model,
             "input": str(args.input),
             "input_file": file_record(args.input),
+            "input_sample_manifest": (
+                file_record(source_sample["manifest_path"])
+                if source_sample
+                else None
+            ),
+            "upstream_classifier": (
+                source_sample["upstream_classifier"] if source_sample else None
+            ),
             "text_column": args.text_column,
             "max_chars": args.max_chars,
             "temperature": 0,
@@ -312,6 +345,9 @@ def main() -> None:
                 out["translation_error"] = ""
                 break
             except Exception as exc:
+                if isinstance(exc, TranslationResponseParseError):
+                    prompt = exc.prompt
+                    raw = exc.raw_response
                 out["translated_text_en"] = ""
                 out["translation_notes"] = ""
                 out["translation_confidence"] = ""
@@ -357,6 +393,57 @@ def main() -> None:
             time.sleep(args.sleep)
 
     write_checkpoint(existing, new_rows, output_path)
+    final = deduplicate_output(read_csv(output_path))
+    errors = final["translation_error"].fillna("").astype(str).str.strip().ne("")
+    missing_translation = (
+        final["translated_text_en"].fillna("").astype(str).str.strip().eq("")
+    )
+    if errors.any() or missing_translation.any():
+        translated_sample_manifest_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Translation is incomplete: {int(errors.sum()):,} error row(s) and "
+            f"{int(missing_translation.sum()):,} blank translation(s). Resume with "
+            "--retry-errors."
+        )
+    if args.limit is not None:
+        translated_sample_manifest_path.unlink(missing_ok=True)
+        print("Partial translation finished; no sample manifest written.", flush=True)
+        return
+    if len(final) != len(data):
+        translated_sample_manifest_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Translated output has {len(final):,} rows but input has {len(data):,}."
+        )
+    if source_sample:
+        translated_manifest = {
+            **source_sample["manifest"],
+            "schema_version": 1,
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "git_commit": git_commit(PROJECT_ROOT),
+            "translation": {
+                "model": args.model,
+                "prompt_version": TRANSLATION_PROMPT_VERSION,
+                "max_chars": args.max_chars,
+                "source_sample_manifest_sha256": source_sample[
+                    "manifest_sha256"
+                ],
+            },
+            "inputs": {
+                "source_sample": file_record(args.input),
+                "source_sample_manifest": file_record(
+                    source_sample["manifest_path"]
+                ),
+            },
+            "outputs": {"sample": file_record(output_path)},
+        }
+        translated_sample_manifest_path.write_text(
+            json.dumps(translated_manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"Saved translated sample manifest: {translated_sample_manifest_path}",
+            flush=True,
+        )
     print("Done.", flush=True)
 
 

@@ -14,11 +14,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from political_classifier.reproducibility import file_record, git_commit
+from content_classifier_common import validate_completed_content_output
 
 
 DEFAULT_OUTPUT_DIR = Path(
     "/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/"
-    "content_classification"
+    "content_classification/final_gpt51"
 )
 
 
@@ -28,7 +29,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--cpi", type=Path, default=Path("output/cpi_country_year_scores.csv"))
+    parser.add_argument(
+        "--cpi",
+        type=Path,
+        default=None,
+        help="Optional CPI file. Canonical content-label outputs omit covariates.",
+    )
     parser.add_argument("--skip-cpi", action="store_true")
     parser.add_argument(
         "--allow-partial",
@@ -172,6 +178,53 @@ def add_cpi_context(data, cpi_path: Path):
     return data
 
 
+def validate_production_completions(paths: dict[str, Path]) -> dict[str, dict]:
+    completions = {
+        name: validate_completed_content_output(path)
+        for name, path in paths.items()
+    }
+    article_hashes = {
+        completion.get("article_id_sha256")
+        for completion in completions.values()
+    }
+    models = {completion.get("model") for completion in completions.values()}
+    production_scopes = {
+        completion.get("production_full_corpus")
+        for completion in completions.values()
+    }
+    upstream_hashes = {
+        (completion.get("upstream_classifier") or {}).get(
+            "classifier_manifest_sha256"
+        )
+        for completion in completions.values()
+    }
+    if None in upstream_hashes or len(upstream_hashes) != 1:
+        raise ValueError(
+            "Content outputs are not tied to one verified final classifier run."
+        )
+    if None in article_hashes or len(article_hashes) != 1:
+        raise ValueError("Content outputs contain different article-ID sets.")
+    if None in models or len(models) != 1:
+        raise ValueError(
+            f"Content outputs use different LLMs: {sorted(str(x) for x in models)}"
+        )
+    if production_scopes != {True}:
+        raise ValueError(
+            "Canonical merge requires four complete all-country production runs. "
+            "Validation-sample and country-subset outputs must be merged only in "
+            "diagnostic mode or kept in their validation directory."
+        )
+    upstream = next(iter(completions.values()))["upstream_classifier"]
+    expected_rows = int(upstream["political_corruption_articles"])
+    completed_rows = {int(item.get("rows", -1)) for item in completions.values()}
+    if completed_rows != {expected_rows}:
+        raise ValueError(
+            "Content output row totals do not equal the verified final "
+            f"political-corruption N ({expected_rows:,})."
+        )
+    return completions
+
+
 def main() -> None:
     args = parse_args()
 
@@ -179,7 +232,19 @@ def main() -> None:
     frame_path = args.input_dir / "corruption_frame_labels.csv.gz"
     abroad_path = args.input_dir / "abroad_case_labels.csv.gz"
     accused_path = args.input_dir / "accused_actor_labels.csv.gz"
-    output_path = args.output or (args.input_dir / "content_silver_labels_merged.csv.gz")
+    output_path = args.output or (
+        args.input_dir / "political_corruption_content_categories_final.csv.gz"
+    )
+
+    paths = {
+        "victim": victim_path,
+        "frame": frame_path,
+        "abroad": abroad_path,
+        "accused": accused_path,
+    }
+    completions = {}
+    if not args.allow_partial and not args.allow_errors:
+        completions = validate_production_completions(paths)
 
     frames = {
         "victim": read_csv(victim_path),
@@ -187,6 +252,14 @@ def main() -> None:
         "abroad": read_csv(abroad_path),
         "accused": read_csv(accused_path),
     }
+    if completions:
+        for name, frame in frames.items():
+            expected_rows = int(completions[name].get("rows", -1))
+            if len(frame) != expected_rows:
+                raise ValueError(
+                    f"{name} output has {len(frame):,} rows but its completion "
+                    f"marker records {expected_rows:,}."
+                )
 
     allowed_labels = {
         "victim": ("victim_visibility", {"no_victim", "concrete_victim", "institutional_societal_victim", "unclear"}),
@@ -269,7 +342,7 @@ def main() -> None:
         data = data.merge(frame[keep_cols], on="article_id", how=how, suffixes=("", f"_{name}"))
 
     data = derive_variables(data)
-    if not args.skip_cpi:
+    if args.cpi is not None and not args.skip_cpi:
         data = add_cpi_context(data, args.cpi)
 
     write_csv(data, output_path)
@@ -277,10 +350,26 @@ def main() -> None:
         "schema_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_commit(PROJECT_ROOT),
-        "output": str(output_path),
+        "output": file_record(output_path),
         "rows": len(data),
         "allow_partial": args.allow_partial,
         "allow_errors": args.allow_errors,
+        "cpi_input": file_record(args.cpi) if args.cpi is not None else None,
+        "upstream_classifier": (
+            next(iter(completions.values())).get("upstream_classifier")
+            if completions
+            else None
+        ),
+        "content_model": (
+            next(iter(completions.values())).get("model")
+            if completions
+            else None
+        ),
+        "article_id_sha256": (
+            next(iter(completions.values())).get("article_id_sha256")
+            if completions
+            else None
+        ),
         "inputs": {
             name: {
                 "path": str(path),
@@ -292,13 +381,13 @@ def main() -> None:
                 "models": sorted(
                     frames[name].get("llm_model", []).dropna().astype(str).unique().tolist()
                 ) if "llm_model" in frames[name].columns else [],
+                "completion": (
+                    file_record(path.with_name(path.name + ".complete.json"))
+                    if name in completions
+                    else None
+                ),
             }
-            for name, path in {
-                "victim": victim_path,
-                "frame": frame_path,
-                "abroad": abroad_path,
-                "accused": accused_path,
-            }.items()
+            for name, path in paths.items()
         },
     }
     output_path.with_name(output_path.name + ".manifest.json").write_text(
