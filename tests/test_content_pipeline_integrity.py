@@ -40,6 +40,10 @@ EVALUATE = load_script(
     "content_evaluate_integrity_test",
     "content-classification/scripts/evaluate_codebook_gpt_against_human.py",
 )
+SAMPLER = load_script(
+    "content_sampler_integration_test",
+    "content-classification/scripts/create_validation_sample.py",
+)
 
 
 class ContentProvenanceTests(unittest.TestCase):
@@ -225,6 +229,12 @@ class ContentEvaluationTests(unittest.TestCase):
 
 
 class ContentWorkflowStructureTests(unittest.TestCase):
+    def test_validation_sampler_defines_streaming_arguments(self):
+        with patch.object(sys, "argv", ["create_validation_sample.py"]):
+            args = SAMPLER.parse_args()
+        self.assertEqual(args.input_chunksize, 25_000)
+        self.assertIsNone(args.random_sample)
+
     def test_final_runner_uses_accessible_model_and_strict_merge(self):
         runner = (
             ROOT

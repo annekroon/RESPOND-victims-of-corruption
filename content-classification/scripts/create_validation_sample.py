@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--classified-rd-dir", default=None)
     parser.add_argument("--countries", nargs="+", default=ALL_COUNTRIES)
     parser.add_argument(
+        "--input-chunksize",
+        type=int,
+        default=25_000,
+        help="Rows per chunk while verifying and reading classified country files.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=DEFAULT_CONTENT_ROOT / "validation_final",
@@ -126,6 +132,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Replace an existing sample, strata table, and sample manifest.",
     )
+    parser.set_defaults(random_sample=None)
     return parser.parse_args()
 
 
@@ -304,6 +311,8 @@ def add_human_validation_columns(sample, sample_purpose: str):
 
 def main() -> None:
     args = parse_args()
+    if args.input_chunksize < 1:
+        raise ValueError("--input-chunksize must be positive.")
     if args.classified_rd_dir is None:
         from content_classifier_common import DEFAULT_RD_CLASSIFIED_DIR
 
