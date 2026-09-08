@@ -333,7 +333,14 @@ class TopicTableBuilderTests(unittest.TestCase):
                     "publication_topic_label": "Public contracting",
                     "weighted_share": 0.6,
                     "top_countries": "France (40.0%); Italy (30.0%)",
-                    "llm_topic_summary": "Cases concerning manipulation of public contracts.",
+                    "llm_topic_summary": (
+                        "Cases concerning manipulation of public contracts, "
+                        "official decisions, and state revenue collection. "
+                        "The coverage also follows investigations, trials, "
+                        "institutional responses, and disputes over public "
+                        "accountability across several political settings. "
+                        "This final sentence must remain present in full."
+                    ),
                 }
             ]
         )
@@ -341,6 +348,8 @@ class TopicTableBuilderTests(unittest.TestCase):
         self.assertIn(r"\scriptsize", latex)
         self.assertIn(r"\begin{tabularx}", latex)
         self.assertNotIn(r"\resizebox", latex)
+        self.assertIn("This final sentence must remain present in full.", latex)
+        self.assertNotIn("...", latex)
 
     def test_abstraction_prompt_removes_case_identifiers(self):
         script_path = (

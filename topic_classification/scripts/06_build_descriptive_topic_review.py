@@ -62,13 +62,6 @@ def latex_escape(value: object) -> str:
     return "".join(replacements.get(char, char) for char in text)
 
 
-def compact(value: object, max_words: int = 42) -> str:
-    words = clean(value).split()
-    if len(words) <= max_words:
-        return " ".join(words)
-    return " ".join(words[:max_words]).rstrip(",;:") + "..."
-
-
 def direct_topic_latex(summary) -> str:
     lines = [
         r"\begin{table}[htbp]",
@@ -80,7 +73,7 @@ def direct_topic_latex(summary) -> str:
         r"\renewcommand{\arraystretch}{1.08}",
         r"\begin{tabularx}{\textwidth}{@{}p{0.18\textwidth}r p{0.22\textwidth} X@{}}",
         r"\toprule",
-        r"\textbf{Topic} & \textbf{Share} & \textbf{Largest weighted country contributions} & \textbf{Interpretation} \\",
+        r"\textbf{Topic} & \textbf{Corpus share} & \textbf{Largest country contributions to topic} & \textbf{Interpretation} \\",
         r"\midrule",
     ]
     for _, row in summary.iterrows():
@@ -88,14 +81,14 @@ def direct_topic_latex(summary) -> str:
             f"{latex_escape(row['publication_topic_label'])} & "
             f"{100 * float(row['weighted_share']):.1f}\\% & "
             f"{latex_escape(row['top_countries'])} & "
-            f"{latex_escape(compact(row['llm_topic_summary']))} \\\\"
+            f"{latex_escape(row['llm_topic_summary'])} \\\\"
         )
     lines.extend(
         [
             r"\bottomrule",
             r"\end{tabularx}",
             r"\par\smallskip",
-            r"\scriptsize \textit{Note.} Shares use inverse country-year sampling weights and exclude BERTopic outliers. Articles were represented by language-neutral English abstractions before clustering. Topics are exploratory descriptions, not validated corruption-type measures.",
+            r"\scriptsize \textit{Note.} Corpus shares use inverse country--year sampling weights and exclude BERTopic outliers. Country contributions report each listed country's percentage of the weighted articles assigned to that topic. Articles were represented by language-neutral English abstractions before clustering. Topics are exploratory descriptions, not validated corruption-type measures.",
             r"\end{table}",
             "",
         ]
