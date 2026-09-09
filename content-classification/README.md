@@ -44,7 +44,8 @@ access check and a like-for-like validation before production coding.
 | `scripts/00_verify_final_corpus.py` | Validate upstream manifests, threshold, source policy, files, and counts |
 | `scripts/create_validation_sample.py` | Draw reproducible country-year samples and exclude development articles |
 | `scripts/translate_validation_sample.py` | Translate a sample for human coding and preserve provenance |
-| `tools/annotation_flask_app.py` | Human annotation interface with resumable coder-specific outputs |
+| `tools/annotation_streamlit_app.py` | Recommended content-coding interface with country queues, progress, and review |
+| `tools/annotation_flask_app.py` | Compatibility interface for existing Flask-based coding sessions |
 | `scripts/content_prompts.py` | Versioned codebook prompts and output schemas |
 | `scripts/classify_all_content_categories.py` | Run all four coders on one validation sample |
 | `scripts/evaluate_codebook_gpt_against_human.py` | Agreement, kappa, F1, confusion, and disagreement outputs |
@@ -153,16 +154,17 @@ tail -f "$VAL/translation.log"
 The completed translation receives its own sample manifest linked to the
 original draw. Partial or error-containing translations do not.
 
-Start the annotation app with coder-specific, resumable output:
+Start the Streamlit annotation app with coder-specific, resumable output:
 
 ```bash
 CONTENT_ANNOTATION_INPUT="$VAL/content_validation_final_n500_english.csv.gz" \
 CONTENT_ANNOTATION_OUTPUT_TEMPLATE="$VAL/content_validation_final_n500_english_{coder_id}.csv.gz" \
+CONTENT_ANNOTATION_CODER_ID="anne" \
+CONTENT_ANNOTATION_CODER_FIRST_NAME="Anne" \
 CONTENT_ANNOTATION_PASSWORD="choose-a-strong-password" \
-CONTENT_ANNOTATION_SECRET_KEY="choose-another-long-random-secret" \
-CONTENT_ANNOTATION_HOST=127.0.0.1 \
-CONTENT_ANNOTATION_PORT=8502 \
-python3 content-classification/tools/annotation_flask_app.py
+streamlit run content-classification/tools/annotation_streamlit_app.py \
+  --server.address 127.0.0.1 \
+  --server.port 8502
 ```
 
 For an SSH tunnel:
@@ -171,9 +173,17 @@ For an SSH tunnel:
 ssh -L 8502:127.0.0.1:8502 akroon@annecuda
 ```
 
-Open `http://localhost:8502`. Codes are saved after every article; restarting
-with the same coder ID resumes the existing file. The completion screen still
-allows coders to return to earlier items and revise saved codes.
+Open `http://localhost:8502`. The sidebar selects a country and an uncoded,
+all, or completed queue. The main view presents the English translation,
+original text, four required coding questions, and one prominent Save and
+continue action. Codes are saved after every article; restarting with the same
+coder ID resumes the existing file. The completion screen still allows coders
+to return to earlier items and revise saved codes. A download button provides a
+manual backup at any point.
+
+The Flask app remains available for an existing session whose output was
+created with it. Both interfaces use the same CSV columns and annotation
+manifest contract; do not run both against the same coder file simultaneously.
 
 ## 04 Code And Evaluate The Held-Out Sample
 

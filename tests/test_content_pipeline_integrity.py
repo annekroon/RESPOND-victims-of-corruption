@@ -44,6 +44,10 @@ SAMPLER = load_script(
     "content_sampler_integration_test",
     "content-classification/scripts/create_validation_sample.py",
 )
+ANNOTATION_COMMON = load_script(
+    "content_annotation_common_test",
+    "content-classification/tools/content_annotation_common.py",
+)
 
 
 class ContentProvenanceTests(unittest.TestCase):
@@ -158,6 +162,60 @@ class ContentProvenanceTests(unittest.TestCase):
         self.assertEqual(context.exception.raw_response, '{"broken":')
         self.assertEqual(context.exception.prompt, "test prompt")
 
+    def test_streamlit_annotation_output_is_resumable_and_manifested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "pilot.csv"
+            output_path = root / "pilot_anne.csv"
+            pd.DataFrame(
+                [
+                    {
+                        "article_id": "A",
+                        "country": "France",
+                        "sample_purpose": "codebook_development",
+                        "article_text": "Article text",
+                    }
+                ]
+            ).to_csv(input_path, index=False)
+            data, provenance, resumed = ANNOTATION_COMMON.load_annotation_data(
+                input_path,
+                output_path,
+            )
+            self.assertFalse(resumed)
+            ANNOTATION_COMMON.record_annotation(
+                data,
+                0,
+                victim_visibility="no_victim",
+                corruption_frame="individualized",
+                case_location="domestic",
+                accused_actor_visibility="individual_actor",
+                notes="checked",
+                coder_id="anne",
+                coder_first_name="Anne",
+                code_session_id="session",
+            )
+            manifest_path = ANNOTATION_COMMON.save_annotation_data(
+                data,
+                input_path=input_path,
+                output_path=output_path,
+                coder_id="anne",
+                coder_first_name="Anne",
+                code_session_id="session",
+                provenance=provenance,
+            )
+            resumed_data, _, resumed = ANNOTATION_COMMON.load_annotation_data(
+                input_path,
+                output_path,
+            )
+            self.assertTrue(resumed)
+            self.assertEqual(
+                resumed_data.loc[0, "human_victim_visibility"],
+                "no_victim",
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["reviewed_rows"], 1)
+            self.assertEqual(manifest["coder_id"], "anne")
+
 
 class ContentMergeGuardTests(unittest.TestCase):
     def completion(self, *, production: bool = True, model: str = "gpt-5.1"):
@@ -229,6 +287,29 @@ class ContentEvaluationTests(unittest.TestCase):
 
 
 class ContentWorkflowStructureTests(unittest.TestCase):
+    def test_streamlit_content_app_has_core_workflow_controls(self):
+        app = (
+            ROOT / "content-classification/tools/annotation_streamlit_app.py"
+        ).read_text(encoding="utf-8")
+        for text in [
+            "Publication country",
+            "To code",
+            "English translation",
+            "Save and continue",
+            "Coding complete",
+            "Download backup",
+        ]:
+            self.assertIn(text, app)
+
+    def test_readme_prefers_content_streamlit_app(self):
+        readme = (ROOT / "content-classification/README.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "streamlit run content-classification/tools/annotation_streamlit_app.py",
+            readme,
+        )
+
     def test_validation_sampler_defines_streaming_arguments(self):
         with patch.object(sys, "argv", ["create_validation_sample.py"]):
             args = SAMPLER.parse_args()
