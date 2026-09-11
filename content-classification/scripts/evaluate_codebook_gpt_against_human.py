@@ -16,6 +16,7 @@ from content_classifier_common import (
     validate_completed_content_output,
     validate_content_sample,
 )
+from content_codebook import CODEBOOK_SHA256, CODEBOOK_VERSION
 from config import ALL_COUNTRIES
 from political_classifier.reproducibility import sha256_file
 
@@ -47,6 +48,8 @@ HUMAN_REVIEW_COLUMNS = [
     "translated_text",
     "article_text",
     "human_notes",
+    "human_codebook_version",
+    "human_codebook_sha256",
 ]
 
 GPT_CLASSIFIER_FILES = {
@@ -213,7 +216,21 @@ def merge_comparison(
                 ]
             )
         ]
-        gpt_keep = list(dict.fromkeys(gpt_keys + [gpt_column] + detail_columns))
+        provenance_columns = [
+            column
+            for column in [
+                "prompt_version",
+                "codebook_version",
+                "codebook_sha256",
+                "llm_model",
+            ]
+            if column in gpt.columns
+        ]
+        gpt_keep = list(
+            dict.fromkeys(
+                gpt_keys + [gpt_column] + detail_columns + provenance_columns
+            )
+        )
         gpt_keep = [column for column in gpt_keep if column in gpt.columns]
         rename_columns = {gpt_column: f"gpt_{gpt_column}"}
         rename_columns.update(
@@ -221,6 +238,12 @@ def merge_comparison(
                 column: f"gpt_{variable}_{column}"
                 for column in detail_columns
                 if column != gpt_column
+            }
+        )
+        rename_columns.update(
+            {
+                column: f"gpt_{variable}_{column}"
+                for column in provenance_columns
             }
         )
         gpt = gpt[gpt_keep].rename(columns=rename_columns)
@@ -290,6 +313,8 @@ def validate_final_human_sample(data, variables) -> None:
         "validation_weight",
         "classifier_manifest_sha256",
         "source_filter_policy",
+        "human_codebook_version",
+        "human_codebook_sha256",
     }
     missing = required - set(data.columns)
     if missing:
@@ -326,6 +351,14 @@ def validate_final_human_sample(data, variables) -> None:
                 f"Final validation has {int(missing_labels.sum()):,} uncoded "
                 f"{variable} row(s)."
             )
+    if set(data["human_codebook_version"].dropna().astype(str)) != {
+        CODEBOOK_VERSION
+    }:
+        raise ValueError("Final human labels do not use one current codebook version.")
+    if set(data["human_codebook_sha256"].dropna().astype(str)) != {
+        CODEBOOK_SHA256
+    }:
+        raise ValueError("Final human labels do not use the current codebook hash.")
 
 
 def validate_final_files(
@@ -383,6 +416,14 @@ def validate_final_files(
         raise ValueError("Held-out LLM outputs were not coded from the saved sample.")
     if {int(item.get("rows", -1)) for item in completions.values()} != {len(data)}:
         raise ValueError("Held-out LLM completion markers have incorrect row counts.")
+    if {item.get("codebook_version") for item in completions.values()} != {
+        CODEBOOK_VERSION
+    }:
+        raise ValueError("Held-out LLM outputs do not use the current codebook version.")
+    if {item.get("codebook_sha256") for item in completions.values()} != {
+        CODEBOOK_SHA256
+    }:
+        raise ValueError("Held-out LLM outputs do not use the current codebook hash.")
 
     expected_classifier_hashes = set(
         data["classifier_manifest_sha256"].dropna().astype(str)

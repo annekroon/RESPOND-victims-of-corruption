@@ -22,6 +22,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from config import ALL_COUNTRIES, LLMPROXY_API_KEY, LLMPROXY_BASE_URL, LLMPROXY_MODEL, RD_BASE_DIR
+from content_codebook import CODEBOOK_PATH, CODEBOOK_SHA256, CODEBOOK_VERSION
 from content_prompts import ClassifierSpec
 from political_classifier.final_corpus import (
     ClassifierRun,
@@ -652,6 +653,11 @@ def output_manifest(
         "git_commit": git_commit(PROJECT_ROOT),
         "classifier_name": spec.name,
         "prompt_version": spec.prompt_version,
+        "codebook": {
+            "version": CODEBOOK_VERSION,
+            "sha256": CODEBOOK_SHA256,
+            "file": file_record(CODEBOOK_PATH),
+        },
         "model": args.model,
         "temperature": 0,
         "max_chars": args.max_chars,
@@ -773,6 +779,8 @@ def base_output_row(row: dict, spec: ClassifierSpec, model: str, max_chars: int)
     out = {column: row.get(column, "") for column in METADATA_COLUMNS if column in row}
     out["classifier_name"] = spec.name
     out["prompt_version"] = spec.prompt_version
+    out["codebook_version"] = CODEBOOK_VERSION
+    out["codebook_sha256"] = CODEBOOK_SHA256
     out["llm_model"] = model
     out["max_chars"] = max_chars
     out["input_text_sha256"] = row.get("input_text_sha256", "")
@@ -925,6 +933,8 @@ def run_classifier(spec: ClassifierSpec) -> None:
                     "article_id": out.get("article_id", ""),
                     "classifier_name": spec.name,
                     "prompt_version": spec.prompt_version,
+                    "codebook_version": CODEBOOK_VERSION,
+                    "codebook_sha256": CODEBOOK_SHA256,
                     "model": args.model,
                     "max_chars": args.max_chars,
                     "input_text_sha256": out.get("input_text_sha256", ""),
@@ -1021,6 +1031,8 @@ def run_classifier(spec: ClassifierSpec) -> None:
         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
         "classifier_name": spec.name,
         "prompt_version": spec.prompt_version,
+        "codebook_version": CODEBOOK_VERSION,
+        "codebook_sha256": CODEBOOK_SHA256,
         "model": args.model,
         "source": args.source,
         "countries": list(args.countries),

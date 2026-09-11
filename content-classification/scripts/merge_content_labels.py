@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from political_classifier.reproducibility import file_record, git_commit
 from content_classifier_common import validate_completed_content_output
+from content_codebook import CODEBOOK_SHA256, CODEBOOK_VERSION
 
 
 DEFAULT_OUTPUT_DIR = Path(
@@ -188,6 +189,12 @@ def validate_production_completions(paths: dict[str, Path]) -> dict[str, dict]:
         for completion in completions.values()
     }
     models = {completion.get("model") for completion in completions.values()}
+    codebook_versions = {
+        completion.get("codebook_version") for completion in completions.values()
+    }
+    codebook_hashes = {
+        completion.get("codebook_sha256") for completion in completions.values()
+    }
     production_scopes = {
         completion.get("production_full_corpus")
         for completion in completions.values()
@@ -207,6 +214,14 @@ def validate_production_completions(paths: dict[str, Path]) -> dict[str, dict]:
     if None in models or len(models) != 1:
         raise ValueError(
             f"Content outputs use different LLMs: {sorted(str(x) for x in models)}"
+        )
+    if codebook_versions != {CODEBOOK_VERSION}:
+        raise ValueError(
+            "Content outputs do not use the current canonical codebook version."
+        )
+    if codebook_hashes != {CODEBOOK_SHA256}:
+        raise ValueError(
+            "Content outputs do not use the current canonical codebook hash."
         )
     if production_scopes != {True}:
         raise ValueError(
@@ -326,6 +341,7 @@ def main() -> None:
     data = base_metadata(frames, base_cols)
 
     how = "outer" if args.allow_partial else "inner"
+    shared_run_columns = {"codebook_version", "codebook_sha256"}
     for name, frame in frames.items():
         frame = frame.rename(
             columns={
@@ -336,12 +352,16 @@ def main() -> None:
         label_cols = [
             column
             for column in frame.columns
-            if column not in set(base_cols + ["classifier_name"])
+            if column
+            not in (set(base_cols + ["classifier_name"]) | shared_run_columns)
         ]
         keep_cols = ["article_id", *label_cols]
         data = data.merge(frame[keep_cols], on="article_id", how=how, suffixes=("", f"_{name}"))
 
     data = derive_variables(data)
+    if completions:
+        data["content_codebook_version"] = CODEBOOK_VERSION
+        data["content_codebook_sha256"] = CODEBOOK_SHA256
     if args.cpi is not None and not args.skip_cpi:
         data = add_cpi_context(data, args.cpi)
 
@@ -362,6 +382,14 @@ def main() -> None:
         ),
         "content_model": (
             next(iter(completions.values())).get("model")
+            if completions
+            else None
+        ),
+        "content_codebook": (
+            {
+                "version": CODEBOOK_VERSION,
+                "sha256": CODEBOOK_SHA256,
+            }
             if completions
             else None
         ),

@@ -16,6 +16,7 @@ for path in [PROJECT_ROOT, SCRIPT_DIR]:
 
 import pandas as pd
 
+from content_codebook import CODEBOOK_PATH, CODEBOOK_SHA256, CODEBOOK_VERSION
 from content_classifier_common import validate_content_sample
 from political_classifier.reproducibility import file_record, git_commit
 
@@ -31,6 +32,8 @@ HUMAN_COLUMNS = [
     "human_coder_id",
     "human_coder_first_name",
     "human_code_session_id",
+    "human_codebook_version",
+    "human_codebook_sha256",
     "human_coded_at",
 ]
 
@@ -190,6 +193,24 @@ def save_annotation_data(
     provenance: dict | None,
 ) -> Path:
     write_csv_atomic(data, output_path)
+    reviewed = reviewed_mask(data)
+    row_versions = sorted(
+        set(
+            data.loc[reviewed, "human_codebook_version"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        - {""}
+    )
+    unversioned_reviewed_rows = int(
+        data.loc[reviewed, "human_codebook_version"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("")
+        .sum()
+    )
     manifest = {
         "schema_version": 1,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -197,13 +218,20 @@ def save_annotation_data(
         "coder_id": safe_coder_id(coder_id),
         "coder_first_name": coder_first_name.strip(),
         "code_session_id": code_session_id,
+        "codebook": {
+            "version": CODEBOOK_VERSION,
+            "sha256": CODEBOOK_SHA256,
+            "file": file_record(CODEBOOK_PATH),
+            "row_versions": row_versions,
+            "unversioned_reviewed_rows": unversioned_reviewed_rows,
+        },
         "input": file_record(input_path),
         "input_sample_manifest": (
             file_record(provenance["manifest_path"]) if provenance else None
         ),
         "output": file_record(output_path),
         "rows": len(data),
-        "reviewed_rows": int(reviewed_mask(data).sum()),
+        "reviewed_rows": int(reviewed.sum()),
     }
     manifest_path = annotation_manifest_path(output_path)
     temporary = manifest_path.with_name(manifest_path.name + ".tmp")
@@ -242,5 +270,6 @@ def record_annotation(
     data.loc[row_index, "human_coder_id"] = safe_coder_id(coder_id)
     data.loc[row_index, "human_coder_first_name"] = coder_first_name.strip()
     data.loc[row_index, "human_code_session_id"] = code_session_id
+    data.loc[row_index, "human_codebook_version"] = CODEBOOK_VERSION
+    data.loc[row_index, "human_codebook_sha256"] = CODEBOOK_SHA256
     data.loc[row_index, "human_coded_at"] = datetime.now(timezone.utc).isoformat()
-

@@ -34,6 +34,12 @@ if str(SCRIPT_DIR) not in sys.path:
 import pandas as pd
 from flask import Flask, redirect, render_template_string, request, session, url_for
 
+from content_codebook import (
+    CODEBOOK_MARKDOWN,
+    CODEBOOK_PATH,
+    CODEBOOK_SHA256,
+    CODEBOOK_VERSION,
+)
 from content_classifier_common import validate_content_sample
 from political_classifier.reproducibility import file_record, git_commit
 
@@ -92,6 +98,8 @@ HUMAN_COLUMNS = [
     "human_coder_id",
     "human_coder_first_name",
     "human_code_session_id",
+    "human_codebook_version",
+    "human_codebook_sha256",
     "human_coded_at",
 ]
 
@@ -196,18 +204,43 @@ def save_data(data: pd.DataFrame, coder_id: str) -> None:
     output_path = output_path_for_coder(coder_id)
     write_csv_atomic(data, output_path)
     provenance = input_provenance()
+    reviewed = reviewed_mask(data)
+    row_versions = sorted(
+        set(
+            data.loc[reviewed, "human_codebook_version"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        - {""}
+    )
+    unversioned_reviewed_rows = int(
+        data.loc[reviewed, "human_codebook_version"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("")
+        .sum()
+    )
     manifest = {
         "schema_version": 1,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_commit(PROJECT_ROOT),
         "coder_id": safe_coder_id(coder_id),
+        "codebook": {
+            "version": CODEBOOK_VERSION,
+            "sha256": CODEBOOK_SHA256,
+            "file": file_record(CODEBOOK_PATH),
+            "row_versions": row_versions,
+            "unversioned_reviewed_rows": unversioned_reviewed_rows,
+        },
         "input": file_record(INPUT_PATH),
         "input_sample_manifest": (
             file_record(provenance["manifest_path"]) if provenance else None
         ),
         "output": file_record(output_path),
         "rows": len(data),
-        "reviewed_rows": int(reviewed_mask(data).sum()),
+        "reviewed_rows": int(reviewed.sum()),
     }
     manifest_path = annotation_manifest_path(output_path)
     temporary = manifest_path.with_name(manifest_path.name + ".tmp")
@@ -341,6 +374,9 @@ def index():
             coder_first_name=coder_first_name,
             code_session_id=code_session_id,
             output_path=output_path_for_coder(coder_id),
+            codebook_markdown=CODEBOOK_MARKDOWN,
+            codebook_version=CODEBOOK_VERSION,
+            codebook_sha256=CODEBOOK_SHA256,
             review_all_url=url_for("index", status="all", pos=0),
             review_done_url=url_for("index", status="reviewed", pos=0),
         )
@@ -364,6 +400,9 @@ def index():
         coder_first_name=coder_first_name,
         code_session_id=code_session_id,
         output_path=output_path_for_coder(coder_id),
+        codebook_markdown=CODEBOOK_MARKDOWN,
+        codebook_version=CODEBOOK_VERSION,
+        codebook_sha256=CODEBOOK_SHA256,
         prev_url=nav_url(max(pos - 1, 0)),
         next_url=nav_url(min(pos + 1, len(indices) - 1)),
         save_url=url_for("save", row_index=row_index, **current_filters()),
@@ -407,6 +446,8 @@ def save(row_index: int):
     data.loc[row_index, "human_coder_id"] = coder_id
     data.loc[row_index, "human_coder_first_name"] = coder_first_name
     data.loc[row_index, "human_code_session_id"] = code_session_id
+    data.loc[row_index, "human_codebook_version"] = CODEBOOK_VERSION
+    data.loc[row_index, "human_codebook_sha256"] = CODEBOOK_SHA256
     data.loc[row_index, "human_coded_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
     save_data(data, coder_id)
 
@@ -488,12 +529,7 @@ button:hover, .button:hover { background: var(--accent-dark); }
 .panel { border: 1px solid var(--border); border-radius: 10px; padding: 1rem; background: var(--panel); box-shadow: 0 1px 3px rgba(20, 35, 60, .04); }
 .codebook { position: sticky; top: 6.6rem; max-height: calc(100vh - 7.5rem); overflow: auto; }
 .codebook h2, .panel h2 { margin: 0 0 .6rem; font-size: 1.15rem; }
-.codebook h3 { margin: 1rem 0 .35rem; font-size: .98rem; }
-.codebook p, .codebook li { line-height: 1.35; }
-.codebook ul { padding-left: 1.1rem; margin: .35rem 0; }
-.definition { border-top: 1px solid var(--border); padding-top: .65rem; margin-top: .65rem; }
-.definition:first-of-type { border-top: 0; padding-top: 0; }
-.tag { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--accent-soft); color: #163d6f; border-radius: 5px; padding: .08rem .28rem; font-size: .82rem; }
+.canonical-codebook { margin: .8rem 0 0; white-space: pre-wrap; font-family: inherit; font-size: .88rem; line-height: 1.45; }
 .hint { background: var(--warn); border: 1px solid #ead79a; border-radius: 8px; padding: .75rem; margin-bottom: .9rem; line-height: 1.4; }
 .article-meta { display: flex; flex-wrap: wrap; gap: .45rem .9rem; margin-bottom: .75rem; }
 .identity-pill { background: var(--accent-soft); color: var(--accent-dark); border-radius: 999px; padding: .18rem .55rem; font-weight: 700; }
@@ -583,73 +619,9 @@ textarea { width: 100%; min-height: 96px; }
 {% else %}
   <div class="layout">
     <aside class="panel codebook">
-      <h2>Codebook</h2>
-      <div class="hint"><b>Code the corruption case represented in the article.</b> Use only information stated in the article. A reported allegation counts even when denied, disputed, unproven, politically motivated, dismissed, or followed by an acquittal. Use the English translation by default, and check the original when wording, names, or ambiguity matter.</div>
-      <div class="hint"><b>Important distinction:</b> Corruption frame measures what the article is mainly about. Accused actor visibility records every type of corruption participant explicitly visible, even if that participant is secondary. An article can therefore have an individualized frame and both individual and organizational accused actors.</div>
-
-      <div class="definition">
-        <h3>Victim visibility</h3>
-        <p><b>Question:</b> Who or what does the article explicitly represent as having suffered harm because of the corruption?</p>
-        <p>First isolate the corruption allegation or case. Code only harm that the article directly connects to that corruption. Do not code every person, organization, or public interest harmed elsewhere in the story, and do not infer victimhood merely from the offense type.</p>
-        <p class="meta"><b>Mandatory evidence test:</b> Before coding a victim, find textual evidence for all three elements: a person, group, organization, institution, or public interest; a realized loss, injury, deprivation, or adverse treatment; and a direct connection between that harm and the corruption. If any element is missing or must be inferred, code <span class="tag">no_victim</span>.</p>
-        <ul>
-          <li><span class="tag">no_victim</span> No person, group, organization, institution, or public interest is explicitly described as suffering corruption-related harm.</li>
-          <li><span class="tag">concrete_victim</span> A bounded person, group, community, company, association, or other non-public entity is explicitly described as suffering direct corruption-related harm, such as lost money, property, rights, services, employment, contracts, opportunities, coercive extortion, exclusion from a corruptly manipulated process, or physical/personal harm.</li>
-          <li><span class="tag">institutional_societal_victim</span> The article explicitly states that corruption harmed a public institution or asset, public finances, public services, democracy, electoral legitimacy, the rule of law, public trust, institutional credibility or independence, state capacity, society, the economy, development, or another broad public interest.</li>
-          <li><span class="tag">unclear</span> The article is too incomplete, ambiguous, or translation-problematic to decide.</li>
-        </ul>
-        <p class="meta"><b>Decision order:</b> Identify the corruption allegation. Identify verbatim evidence of the harm and its direct connection to corruption. If a concrete victim is visible, code <span class="tag">concrete_victim</span>. Otherwise, if institutional/societal harm is visible, code <span class="tag">institutional_societal_victim</span>. If neither is explicit, code <span class="tag">no_victim</span>.</p>
-        <p class="meta">The following do not automatically establish victimhood: bribery, fraud, embezzlement, money laundering, or tax evasion; public money, taxpayers, voters, patients, citizens, or institutions merely being mentioned; repayment of money to tax authorities; an investigation, prosecution, conviction, fine, or confiscation; a bribe offer or attempted bribe; political pressure that produces no described injury; corruption creating only a risk of future harm; intended chaos or influence when no harm is described as occurring; an institution being "hit", "affected", "shaken", criticized, or embarrassed without a specific institutional loss; harm caused by an unrelated event; or the general assumption that corruption harms taxpayers, democracy, society, or public trust.</p>
-        <p class="meta">A clearly reported allegation can establish victim visibility even when the accused denies it. Conviction or proof is not required. However, the alleged harm must still be explicit. General references to citizens, taxpayers, voters, or the public losing shared public resources count as institutional/societal harm unless an identifiable subgroup is explicitly deprived of a direct personal or material benefit.</p>
-        <p class="meta"><b>Strict evidence and causal rule:</b> Evidence must be a verbatim article quotation, not an interpretation. Do not convert transferred public property, a fictitious contract or payment, an advantage, or institutional involvement into an assumed harmful consequence. Harm caused by the investigation, prosecution, scandal, resignation, reputational fallout, or institutional response does not count. Do not infer who funded or lost money when the article does not identify the deprived entity.</p>
-        <p class="meta"><b>Favoritism rule:</b> Do not infer a victim merely because a tender, examination, appointment, contract, or decision favored someone. Code a victim only when the article explicitly identifies the losing or deprived party and describes its loss or adverse treatment.</p>
-        <p class="meta"><b>Case-handling rule:</b> Trial delays, judicial incompatibilities, staffing shortages, underfunding, legal proceedings, resignations, or institutional disruption caused by handling the case are not harm from corruption. They count only when the article separately attributes the harm to the underlying corrupt conduct.</p>
-        <p class="meta"><b>Coercion rule:</b> A communicated coercive demand or extortionate threat is itself realized adverse treatment, even if the demanded payment was not made and the threatened consequence did not occur. A non-coercive attempted bribe does not qualify by itself.</p>
-        <p class="meta"><b>Examples:</b> "He embezzled BGN 10 million from the company" = <span class="tag">concrete_victim</span>. "The clients did not receive any of the settlement money" = <span class="tag">concrete_victim</span>. "The scheme undermined Parliament's credibility" = <span class="tag">institutional_societal_victim</span>. "Billions in state money were stolen" = <span class="tag">institutional_societal_victim</span>. "The couple committed tax fraud and later paid EUR 2.3 million to the tax authorities" = <span class="tag">no_victim</span> unless state loss is explicit. "A tender was rigged to favor friendly companies" = <span class="tag">no_victim</span> unless the article identifies a deprived bidder and its loss. "A corruption trial was delayed by judicial incompatibilities and staff shortages, reducing service to citizens" = <span class="tag">no_victim</span> because case handling caused the harm. "Corruption kills" = <span class="tag">no_victim</span> if no person, group, or public interest is identified as suffering. "The operation was intended to cause chaos" = <span class="tag">no_victim</span> unless the article says chaos or resulting harm occurred.</p>
-      </div>
-
-      <div class="definition">
-        <h3>Corruption frame</h3>
-        <p><b>Question:</b> At what level does the article primarily represent the corruption problem?</p>
-        <p>Judge the dominant explanation and emphasis. Do not classify an article as individualized merely because it names a person. Do not classify it as systemic merely because several people, institutions, or offenses are mentioned.</p>
-        <ul>
-          <li><span class="tag">individualized</span> Principally centered on identifiable actors and a specific episode: personal misconduct, accusations or investigations, arrests, charges, trials, convictions, sentences, resignations, or a particular bribery, fraud, embezzlement, or conflict-of-interest scandal. Several individual defendants can still be individualized.</li>
-          <li><span class="tag">systemic</span> Principally represents corruption as a broader governance or institutional pattern: state capture, entrenched clientelism, recurring institutional abuse, systemic impunity, rule-of-law breakdown, democratic backsliding, institutionalized protection of corrupt actors, or corruption embedded across government, business, police, courts, or public administration.</li>
-          <li><span class="tag">other_or_mixed</span> Individualized and systemic framing are roughly balanced; corruption is incidental or background; the article is mainly about an unrelated event; the piece is mainly procedural, administrative, legal, technical, election-finance-specific, a roundup of unrelated cases, cultural commentary, fiction, entertainment, or otherwise outside the two-way distinction.</li>
-          <li><span class="tag">unclear</span> Not enough information to classify the frame.</li>
-        </ul>
-        <p class="meta"><b>Decision order:</b> If corruption is incidental, mainly procedural or technical, or balanced between individualized and systemic framing, code <span class="tag">other_or_mixed</span>. Otherwise, if the central explanation is institutional dysfunction or a recurring governance pattern, code <span class="tag">systemic</span>. Otherwise, if it centers on specific actors and a particular scandal or case, code <span class="tag">individualized</span>.</p>
-      </div>
-
-      <div class="definition">
-        <h3>Case location</h3>
-        <p><b>Question:</b> Where is the main corruption case located relative to the publication country?</p>
-        <p>Use the location of the corruption case, not the article's source agency, quoted speaker, court reporting location, or unrelated main event.</p>
-        <ul>
-          <li><span class="tag">domestic</span> The principal corruption case concerns the publication country, domestic politicians, companies, institutions, public contracts or funds, domestic misconduct involving foreign or EU money, a domestic actor using offshore accounts, or foreign sanctions imposed because of corruption centered in the publication country.</li>
-          <li><span class="tag">abroad</span> The principal corruption case concerns another country, foreign actors or institutions, a foreign government or public contract, an offshore or cross-border scheme whose main center is elsewhere, or foreign sanctions or investigations centered on foreign conduct.</li>
-          <li><span class="tag">unclear</span> No principal location can be determined, including cases with several equally central countries and no identifiable center.</li>
-        </ul>
-        <p class="meta"><b>Decision order:</b> Identify the principal corruption case. Identify where its main actors, institutions, conduct, or investigation are centered. Compare that location with the publication country. EU funds misused domestically still count as domestic. A binary abroad-case variable is derived automatically from this field.</p>
-      </div>
-
-      <div class="definition">
-        <h3>Accused actor visibility</h3>
-        <p><b>Question:</b> Does the article identify an actor as responsible for or participating in the corruption?</p>
-        <p>Count only actors whom the article explicitly represents as committing, attempting, assisting, enabling, financing, directing, or concealing the corruption. Do not count someone merely because they are mentioned as a victim, witness, whistleblower, investigator, prosecutor, judge, regulator, beneficiary, employer, associate, or owner. However, count such an actor if the article separately alleges that they participated in the corruption.</p>
-        <p class="meta"><b>Mandatory two-test method:</b> Ask independently: Is there an exact passage accusing a person, officeholder, or identifiable group of people of participating in the corruption? Is there an exact passage attributing corrupt participation to an organization or institution itself? Map the answers mechanically: No/No = <span class="tag">no_accused_actor</span>; Yes/No = <span class="tag">individual_actor</span>; No/Yes = <span class="tag">organizational_or_institutional_actor</span>; Yes/Yes = <span class="tag">both_individual_and_organizational</span>.</p>
-        <ul>
-          <li><span class="tag">no_accused_actor</span> Corruption is discussed, but no alleged perpetrator or participant is identified.</li>
-          <li><span class="tag">individual_actor</span> At least one person, officeholder, or identifiable group of people is accused, investigated, charged, convicted, sanctioned for their own conduct, or explicitly alleged to have committed or participated in the corruption. Several accused people still satisfy only the individual test.</li>
-          <li><span class="tag">organizational_or_institutional_actor</span> An organization or institution is explicitly alleged to have acted in its own capacity as a participant by carrying out, directing, coordinating, financing, enabling, facilitating, concealing, or systematically protecting the corruption.</li>
-          <li><span class="tag">both_individual_and_organizational</span> At least one individual is explicitly accused of corruption and at least one organization or institution is explicitly accused of its own participation.</li>
-          <li><span class="tag">unclear</span> The wording is too ambiguous to determine whether the alleged participant is a person, an organization, or neither.</li>
-        </ul>
-        <p class="meta"><b>Do not count:</b> victims, witnesses, whistleblowers, investigators, prosecutors, courts, regulators, organizations that merely employ an accused person, actors that merely benefited from corruption without an allegation of participation, vague references such as "they" or "political forces", or actors accused only of unrelated offenses.</p>
-        <p class="meta"><b>Organization test:</b> An organization counts only when the text attributes corrupt participation to the organization itself, for example by stating that it paid bribes, manipulated a tender, financed a scheme, facilitated money laundering, concealed misconduct, or was investigated for corruption. The required organizational allegation may appear in the same sentence as the individual allegation; it must simply be independently expressed.</p>
-        <p class="meta">Do not count an organization merely because an employee, leader, owner, member, subsidiary, or associate is accused; because it received a contract or payment; because it benefited from corruption; because it appears in the same investigation; because corrupt conduct occurred on its premises; because it is the accused person's employer; because it is a victim, investigator, regulator, court, or employer; or because it was derivatively sanctioned due to its connection to an accused person. Conduct by an organization's owner, employee, or leader becomes organizational conduct only when the article says the organization participated or the person acted on its behalf. A subsidiary and parent organization are separate.</p>
-        <p class="meta"><b>Decision order:</b> List only actors accused of participating in the corruption. Remove victims, witnesses, investigators, regulators, and unrelated accused actors. Mark whether at least one accused participant is an individual and whether at least one accused participant is an organization acting in its own capacity. A binary accused-actor-visible variable is derived automatically from this field.</p>
-      </div>
+      <h2>Full coding guide</h2>
+      <p class="meta">Canonical {{ codebook_version }} · SHA-256 {{ codebook_sha256[:12] }}...</p>
+      <pre class="canonical-codebook">{{ codebook_markdown }}</pre>
     </aside>
 
     <section>

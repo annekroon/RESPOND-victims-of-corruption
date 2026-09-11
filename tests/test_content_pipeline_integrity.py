@@ -18,6 +18,9 @@ SCRIPT_DIR = ROOT / "content-classification" / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import content_codebook as CODEBOOK
+import content_prompts as PROMPTS
+
 
 def load_script(name: str, relative_path: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / relative_path)
@@ -215,6 +218,24 @@ class ContentProvenanceTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["reviewed_rows"], 1)
             self.assertEqual(manifest["coder_id"], "anne")
+            self.assertEqual(
+                resumed_data.loc[0, "human_codebook_version"],
+                CODEBOOK.CODEBOOK_VERSION,
+            )
+            self.assertEqual(
+                resumed_data.loc[0, "human_codebook_sha256"],
+                CODEBOOK.CODEBOOK_SHA256,
+            )
+            self.assertEqual(
+                manifest["codebook"]["sha256"],
+                CODEBOOK.CODEBOOK_SHA256,
+            )
+
+    def test_machine_output_rows_record_the_canonical_codebook(self):
+        spec = type("Spec", (), {"name": "test", "prompt_version": "test-v1"})()
+        row = COMMON.base_output_row({}, spec, "gpt-5.1", 100)
+        self.assertEqual(row["codebook_version"], CODEBOOK.CODEBOOK_VERSION)
+        self.assertEqual(row["codebook_sha256"], CODEBOOK.CODEBOOK_SHA256)
 
 
 class ContentMergeGuardTests(unittest.TestCase):
@@ -223,6 +244,8 @@ class ContentMergeGuardTests(unittest.TestCase):
             "production_full_corpus": production,
             "article_id_sha256": "article-hash",
             "model": model,
+            "codebook_version": CODEBOOK.CODEBOOK_VERSION,
+            "codebook_sha256": CODEBOOK.CODEBOOK_SHA256,
             "rows": 326093,
             "upstream_classifier": {
                 "verified_final_classifier": True,
@@ -287,6 +310,28 @@ class ContentEvaluationTests(unittest.TestCase):
 
 
 class ContentWorkflowStructureTests(unittest.TestCase):
+    def test_one_canonical_codebook_drives_all_prompts(self):
+        self.assertEqual(
+            PROMPTS.CONTENT_CODING_INSTRUCTIONS,
+            CODEBOOK.CODEBOOK_MARKDOWN,
+        )
+        for variable, required_label in {
+            "victim_visibility": "concrete_victim",
+            "corruption_frame": "other_or_mixed",
+            "case_location": "domestic",
+            "accused_actor_visibility": "both_individual_and_organizational",
+        }.items():
+            instructions = CODEBOOK.codebook_for(variable)
+            self.assertIn(required_label, instructions)
+            self.assertIn(CODEBOOK.CODEBOOK_VERSION, instructions)
+
+        actor_prompt = PROMPTS.build_accused_actor_prompt(
+            "A company allegedly paid a bribe.",
+            {"country": "France", "year": 2020},
+        )
+        self.assertIn("Mandatory Two-Test Method", actor_prompt)
+        self.assertNotIn("## 1. Victim Visibility", actor_prompt)
+
     def test_streamlit_content_app_has_core_workflow_controls(self):
         app = (
             ROOT / "content-classification/tools/annotation_streamlit_app.py"
@@ -298,8 +343,15 @@ class ContentWorkflowStructureTests(unittest.TestCase):
             "Save and continue",
             "Coding complete",
             "Download backup",
+            "codebook_section",
         ]:
             self.assertIn(text, app)
+
+        flask_app = (
+            ROOT / "content-classification/tools/annotation_flask_app.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("CODEBOOK_MARKDOWN", flask_app)
+        self.assertNotIn("Mandatory evidence test:</b>", flask_app)
 
     def test_readme_prefers_content_streamlit_app(self):
         readme = (ROOT / "content-classification/README.md").read_text(

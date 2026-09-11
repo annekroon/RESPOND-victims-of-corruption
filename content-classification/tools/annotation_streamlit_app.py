@@ -9,11 +9,17 @@ from __future__ import annotations
 import gzip
 import html
 import os
+import sys
 import uuid
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = PROJECT_ROOT / "content-classification" / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from content_annotation_common import (
     load_annotation_data,
@@ -22,6 +28,13 @@ from content_annotation_common import (
     reviewed_mask,
     safe_coder_id,
     save_annotation_data,
+)
+from content_codebook import (
+    CODEBOOK_PATH,
+    CODEBOOK_SHA256,
+    CODEBOOK_VERSION,
+    codebook_preamble,
+    codebook_section,
 )
 
 
@@ -341,57 +354,23 @@ def label_radio(variable: str, row: pd.Series):
 
 
 def show_codebook() -> None:
-    st.subheader("Quick decision guide")
-    with st.expander("Victim visibility"):
-        st.markdown(
-            """
-**Require all three:** a victim or public interest, an explicit harm, and an
-explicit connection between that harm and the corruption. Do not infer harm
-from bribery, fraud, public money, prosecution, scandal, or a favored bidder.
-
-- **Concrete:** a bounded person, group, company, association, or community
-  explicitly loses money, rights, services, work, contracts, or opportunities,
-  or faces a coercive corrupt demand.
-- **Institutional/societal:** corruption explicitly harms public finances,
-  public services, democracy, rule of law, public trust, state capacity, the
-  economy, or another broad public interest.
-- If both are explicit, choose **concrete**. Use **unclear** only when the text
-  genuinely prevents a decision.
-"""
-        )
-    with st.expander("Corruption frame"):
-        st.markdown(
-            """
-- **Individualized:** a specific actor, allegation, investigation, trial, or scandal.
-- **Systemic:** corruption is represented as an entrenched institutional or governance pattern.
-- **Other/mixed:** corruption is incidental, procedural, technical, evenly mixed,
-  or does not fit the individualized/systemic distinction.
-
-Code the article's dominant explanation, not the number of people or institutions mentioned.
-"""
-        )
-    with st.expander("Case location"):
-        st.markdown(
-            """
-Locate the **main corruption case** and compare it with the publication country.
-Do not use the news agency, quoted speaker, court-reporting location, or an
-unrelated event. Domestic misuse of foreign or EU money remains domestic.
-"""
-        )
-    with st.expander("Accused actor visibility"):
-        st.markdown(
-            """
-Count actors explicitly represented as committing, attempting, assisting,
-enabling, financing, directing, or concealing the corruption. Do not count
-victims, witnesses, investigators, regulators, beneficiaries, employers,
-associates, or owners unless they are separately alleged to have participated.
-
-An organization counts only when the text independently attributes corrupt
-participation to the organization itself. An accusation against an employee,
-leader, owner, member, subsidiary, or associate does not automatically count
-as organizational participation.
-"""
-        )
+    st.subheader("Full coding guide")
+    st.caption(
+        f"Canonical {CODEBOOK_VERSION} | SHA-256 {CODEBOOK_SHA256[:12]}..."
+    )
+    general, victim, frame, location, actor = st.tabs(
+        ["General", "Victim", "Frame", "Location", "Accused actor"]
+    )
+    with general:
+        st.markdown(codebook_preamble())
+    with victim:
+        st.markdown(codebook_section("victim_visibility"))
+    with frame:
+        st.markdown(codebook_section("corruption_frame"))
+    with location:
+        st.markdown(codebook_section("case_location"))
+    with actor:
+        st.markdown(codebook_section("accused_actor_visibility"))
 
 
 authenticate()
@@ -448,6 +427,9 @@ st.sidebar.download_button(
 with st.sidebar.expander("Files"):
     st.caption(f"Input: {INPUT_PATH}")
     st.caption(f"Output: {st.session_state.output_path}")
+    st.caption(f"Codebook: {CODEBOOK_PATH}")
+    st.caption(f"Version: {CODEBOOK_VERSION}")
+    st.caption(f"SHA-256: {CODEBOOK_SHA256}")
 if st.sidebar.button("Change coder", use_container_width=True):
     for key in [
         "coder_id",

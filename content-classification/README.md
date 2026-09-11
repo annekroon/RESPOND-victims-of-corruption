@@ -28,7 +28,8 @@ from manifests and fail if files, hashes, counts, or the threshold disagree.
 |---|---|
 | Final political-corruption corpus | Complete |
 | Codebook-development set, 108 articles (12 per country) | Complete; preserve as development data |
-| Prompts | Current versions live in `scripts/content_prompts.py` |
+| Codebook | Canonical version lives in `CODEBOOK.md` |
+| Prompts | Load the canonical codebook and add only machine-output schemas |
 | Separate held-out content validation | Not yet complete |
 | Full-corpus content coding | Run only after held-out validation |
 
@@ -41,12 +42,14 @@ access check and a like-for-like validation before production coding.
 
 | File | Purpose |
 |---|---|
+| `CODEBOOK.md` | Single substantive codebook used by humans and GPT |
+| `scripts/content_codebook.py` | Loads, sections, versions, and hashes the canonical codebook |
 | `scripts/00_verify_final_corpus.py` | Validate upstream manifests, threshold, source policy, files, and counts |
 | `scripts/create_validation_sample.py` | Draw reproducible country-year samples and exclude development articles |
 | `scripts/translate_validation_sample.py` | Translate a sample for human coding and preserve provenance |
 | `tools/annotation_streamlit_app.py` | Recommended content-coding interface with country queues, progress, and review |
 | `tools/annotation_flask_app.py` | Compatibility interface for existing Flask-based coding sessions |
-| `scripts/content_prompts.py` | Versioned codebook prompts and output schemas |
+| `scripts/content_prompts.py` | Versioned machine-output schemas built around `CODEBOOK.md` |
 | `scripts/classify_all_content_categories.py` | Run all four coders on one validation sample |
 | `scripts/evaluate_codebook_gpt_against_human.py` | Agreement, kappa, F1, confusion, and disagreement outputs |
 | `scripts/05_run_final_content_classification.sh` | Resume all four production coders in sequence and merge them |
@@ -84,7 +87,10 @@ human annotations, GPT outputs, and disagreement analyses under:
 Do not overwrite or relabel these as final validation. The final sampler
 requires at least 108 distinct exclusions and records their file hashes.
 
-The substantive definitions are frozen in `scripts/content_prompts.py`. The
+The substantive definitions are frozen in `CODEBOOK.md`. Both annotation apps
+display that exact file, and every GPT prompt loads its relevant section from
+it. The apps and model outputs save the codebook version and SHA-256 hash so an
+agreement analysis can verify that both sides used identical rules. The
 most important narrow rules are:
 
 - Victim harm must be explicitly connected to the corruption, not inferred
@@ -95,6 +101,20 @@ most important narrow rules are:
   attributes corrupt participation to that organization.
 - `case_location` compares the main corruption case with the supplied
   publication country.
+
+### Four Variables And The Extra Saved Columns
+
+Only the four variables at the top of this README are substantive content
+categories. Other columns are supporting data:
+
+- `human_abroad_case` and `human_accused_actor_visible` are deterministic binary
+  derivatives retained for compatibility; annotators do not code them.
+- Evidence, reasoning, confidence, and intermediate gate fields are GPT audit
+  data used for error analysis; they are not additional concepts.
+- Coder, session, timestamp, codebook version/hash, translation, sampling, and
+  classifier columns provide provenance and reproducibility.
+
+Do not analyze these supporting fields as additional content variables.
 
 ## 02 Draw The Held-Out Validation Sample
 
@@ -277,7 +297,8 @@ options, but those outputs are not canonical production data.
 
 ## Reproducibility Contract
 
-- Never edit `scripts/content_prompts.py` while a run is in progress.
+- Never edit `CODEBOOK.md` or `scripts/content_prompts.py` while a run is in
+  progress.
 - Start changed prompts, changed models, or changed maximum text lengths in a
   new output directory.
 - Use `--retry-errors` to resume failed rows; use `--overwrite` only when
