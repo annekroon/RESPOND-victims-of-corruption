@@ -47,15 +47,15 @@ access check and a like-for-like validation before production coding.
 | `scripts/00_verify_final_corpus.py` | Validate upstream manifests, threshold, source policy, files, and counts |
 | `scripts/create_validation_sample.py` | Draw reproducible country-year samples and exclude development articles |
 | `scripts/translate_validation_sample.py` | Translate a sample for human coding and preserve provenance |
-| `tools/annotation_streamlit_app.py` | Recommended content-coding interface with country queues, progress, and review |
-| `tools/annotation_flask_app.py` | Compatibility interface for existing Flask-based coding sessions |
+| `tools/annotation_streamlit_app.py` | Content-coding interface with country queues, progress, and review |
+| `tools/model_review_streamlit_app.py` | Separate model-assisted review and adjudication interface |
+| `tools/model_review_common.py` | Validated joins, resumable review output, and review provenance |
 | `scripts/content_prompts.py` | Versioned machine-output schemas built around `CODEBOOK.md` |
+| `scripts/classify_content.py` | Run one selected substantive classifier |
 | `scripts/classify_all_content_categories.py` | Run all four coders on one validation sample |
 | `scripts/evaluate_codebook_gpt_against_human.py` | Agreement, kappa, F1, confusion, and disagreement outputs |
 | `scripts/05_run_final_content_classification.sh` | Resume all four production coders in sequence and merge them |
 | `scripts/merge_content_labels.py` | Strict one-to-one production merge |
-
-The notebook is optional inspection material, not a production entry point.
 
 ## 00 Verify The Final Corpus
 
@@ -87,11 +87,11 @@ human annotations, GPT outputs, and disagreement analyses under:
 Do not overwrite or relabel these as final validation. The final sampler
 requires at least 108 distinct exclusions and records their file hashes.
 
-The substantive definitions are frozen in `CODEBOOK.md`. Both annotation apps
-display that exact file, and every GPT prompt loads its relevant section from
-it. The apps and model outputs save the codebook version and SHA-256 hash so an
-agreement analysis can verify that both sides used identical rules. The
-most important narrow rules are:
+The substantive definitions are maintained in `CODEBOOK.md`. The Streamlit
+annotation app displays that exact file, and every GPT prompt loads its relevant
+section from it. Human and model outputs save the codebook version and SHA-256
+hash so an agreement analysis can verify that both sides used identical rules.
+The most important narrow rules are:
 
 - Victim harm must be explicitly connected to the corruption, not inferred
   from the offense, investigation, scandal, or surrounding controversy.
@@ -109,8 +109,9 @@ categories. Other columns are supporting data:
 
 - `human_abroad_case` and `human_accused_actor_visible` are deterministic binary
   derivatives retained for compatibility; annotators do not code them.
-- Evidence, reasoning, confidence, and intermediate gate fields are GPT audit
-  data used for error analysis; they are not additional concepts.
+- Human evidence fields contain exact supporting passages for adjudication.
+  GPT evidence, reasoning, confidence, and intermediate gate fields are model
+  audit data. None are additional substantive concepts.
 - Coder, session, timestamp, codebook version/hash, translation, sampling, and
   classifier columns provide provenance and reproducibility.
 
@@ -195,15 +196,19 @@ ssh -L 8502:127.0.0.1:8502 akroon@annecuda
 
 Open `http://localhost:8502`. The sidebar selects a country and an uncoded,
 all, or completed queue. The main view presents the English translation,
-original text, four required coding questions, and one prominent Save and
-continue action. Codes are saved after every article; restarting with the same
-coder ID resumes the existing file. The completion screen still allows coders
-to return to earlier items and revise saved codes. A download button provides a
-manual backup at any point.
+original text, four required coding questions, and structured human-evidence
+fields. Positive victim labels require an exact victim passage. Frame labels
+other than `unclear` require an exact framing passage. Individual and
+organizational accused actors each require their own exact passage. Put
+separate passages on separate lines. Saved evidence is highlighted in distinct
+colors in the article view after saving.
 
-The Flask app remains available for an existing session whose output was
-created with it. Both interfaces use the same CSV columns and annotation
-manifest contract; do not run both against the same coder file simultaneously.
+Codes and evidence are saved after every article; restarting with the same
+coder ID resumes the existing file. Rows created with an older codebook version
+remain intact but return to the coding queue for review under the current
+version. The completion screen still allows coders to return to earlier items
+and revise saved codes. A download button provides a manual backup at any
+point.
 
 ## 04 Code And Evaluate The Held-Out Sample
 
@@ -245,6 +250,75 @@ development data, exclude it, and draw a fresh final validation sample.
 
 The evaluator retains backward compatibility with the old country-by-country
 development files through `--countries` and `--codebook-dir`.
+
+### Optional Model-Assisted Review And Adjudication
+
+The blind annotation app above must remain the source of independent human
+validation. After blind coding and agreement evaluation are frozen, use the
+separate review app to inspect the model's labels, exact evidence, confidence,
+and rationale. Its outputs are explicitly marked as model-assisted adjudication
+and must not be reported as independent human validation.
+
+The app requires the translated sample plus all four outputs produced by
+`classify_all_content_categories.py`. Each reviewer can confirm the model label,
+correct it, or mark the case as genuinely undecidable. A comment is required for
+corrections and undecidable cases. The article highlights use the same colors as
+the corresponding review sections: victim evidence yellow, frame evidence blue,
+location evidence purple, individual accused actors pink, and organizational
+accused actors green.
+
+Start it on the server on a separate port:
+
+```bash
+cd ~/RESPOND-victims-of-corruption
+
+export VAL=/home/akroon/data/1t_storage/RESPOND-victims-of-corruption/content_classification/validation_final
+mkdir -p "$VAL/model_review"
+
+CONTENT_MODEL_REVIEW_INPUT="$VAL/content_validation_final_n500_english.csv.gz" \
+CONTENT_MODEL_REVIEW_GPT_DIR="$VAL/gpt51_labels" \
+CONTENT_MODEL_REVIEW_OUTPUT_TEMPLATE="$VAL/model_review/content_validation_final_n500_english_model_review_{coder_id}.csv.gz" \
+CONTENT_MODEL_REVIEW_CODER_ID="anne" \
+CONTENT_MODEL_REVIEW_CODER_FIRST_NAME="Anne" \
+CONTENT_MODEL_REVIEW_PASSWORD="choose-a-strong-password" \
+streamlit run content-classification/tools/model_review_streamlit_app.py \
+  --server.address 127.0.0.1 \
+  --server.port 8503
+```
+
+To keep the app running after logging out of the server, use the detached form:
+
+```bash
+nohup env \
+  CONTENT_MODEL_REVIEW_INPUT="$VAL/content_validation_final_n500_english.csv.gz" \
+  CONTENT_MODEL_REVIEW_GPT_DIR="$VAL/gpt51_labels" \
+  CONTENT_MODEL_REVIEW_OUTPUT_TEMPLATE="$VAL/model_review/content_validation_final_n500_english_model_review_{coder_id}.csv.gz" \
+  CONTENT_MODEL_REVIEW_PASSWORD="choose-a-strong-password" \
+  streamlit run content-classification/tools/model_review_streamlit_app.py \
+    --server.address 127.0.0.1 \
+    --server.port 8503 \
+    --server.headless true \
+  > "$VAL/model_review/model_review_app.log" 2>&1 &
+
+echo $! > "$VAL/model_review/model_review_app.pid"
+tail -f "$VAL/model_review/model_review_app.log"
+```
+
+From any other computer with SSH access to the server, open a tunnel and then
+visit `http://localhost:8503` in that computer's browser:
+
+```bash
+ssh -N -L 8503:127.0.0.1:8503 akroon@annecuda
+```
+
+The data remain on the server. Closing the browser or losing the SSH connection
+does not erase saved work. Restart the app with the same paths and reviewer ID
+to resume. The reviewer CSV is written atomically after every saved article and
+has a matching `*.model_review_manifest.json` containing hashes of the sample,
+all four model outputs, the codebook, and the saved review. The app refuses to
+resume if any of those upstream files changed. Use one active browser session
+per reviewer ID; different reviewers should enter different IDs and therefore
+write separate files.
 
 ## 05 Run Full Production Coding
 
@@ -292,8 +366,8 @@ different upstream corpus builds.
 
 CPI and other covariates are intentionally not added to this canonical
 measurement artifact. Add them in a separate analysis-data construction step.
-The merge retains diagnostic `--allow-partial`, `--allow-errors`, and `--cpi`
-options, but those outputs are not canonical production data.
+The merge has no partial or covariate mode: it creates only the verified
+four-variable measurement artifact.
 
 ## Reproducibility Contract
 

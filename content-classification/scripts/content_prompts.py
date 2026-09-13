@@ -244,13 +244,15 @@ def build_corruption_frame_prompt(article_text: str, metadata: dict) -> str:
 {codebook_for("corruption_frame")}
 
 Task: Assign the corruption_frame label. Judge the article's dominant
-explanation and emphasis. Require one short supporting quotation or close
-paraphrase before selecting the label.
+explanation and emphasis. Identify one short verbatim supporting quotation
+before selecting the label. A procedural development in one developed
+corruption case remains individualized; use other_or_mixed for procedure alone
+only when neither a substantive case nor a systemic pattern is developed.
 
 Return valid JSON only:
 {{
   "corruption_frame": "individualized | systemic | other_or_mixed | unclear",
-  "evidence": "short quote or close paraphrase from the article",
+  "evidence": "short verbatim quotation from the article",
   "reasoning_brief": "one short sentence",
   "confidence": 0.0
 }}
@@ -277,14 +279,14 @@ def build_abroad_case_prompt(article_text: str, metadata: dict) -> str:
 {codebook_for("case_location")}
 
 Task: Assign the case_location label and derive abroad_case from it. Use the
-publication country supplied below. Require one short supporting quotation or
-close paraphrase before selecting the label.
+publication country supplied below. Require one short verbatim supporting
+quotation before selecting the label.
 
 Return valid JSON only:
 {{
   "case_location": "domestic | abroad | unclear",
   "abroad_case": "yes | no | unclear",
-  "evidence": "short quote or close paraphrase from the article",
+  "evidence": "short verbatim quotation from the article",
   "reasoning_brief": "one short sentence",
   "confidence": 0.0
 }}
@@ -314,14 +316,17 @@ def build_accused_actor_prompt(article_text: str, metadata: dict) -> str:
 
 Task: Assign the accused_actor_visibility label and derive accused_actor_visible
 from it. First identify individual alleged participants and organizational
-alleged participants separately. Require one short supporting quotation or close
-paraphrase before selecting the label.
+alleged participants separately. Each positive test requires its own short
+verbatim quotation. Derive the final label mechanically from the two tests.
 
 Return valid JSON only:
 {{
+  "individual_actor_visible": "yes | no | unclear",
+  "individual_actor_evidence": "verbatim quotation accusing an individual participant, or none",
+  "organizational_actor_visible": "yes | no | unclear",
+  "organizational_actor_evidence": "verbatim quotation accusing an organization in its own capacity, or none",
   "accused_actor_visibility": "no_accused_actor | individual_actor | organizational_or_institutional_actor | both_individual_and_organizational | unclear",
   "accused_actor_visible": "yes | no | unclear",
-  "evidence": "short quote or close paraphrase from the article",
   "reasoning_brief": "one short sentence",
   "confidence": 0.0
 }}
@@ -331,30 +336,40 @@ Return valid JSON only:
 
 
 def normalize_accused_actor(parsed: dict) -> dict:
-    visibility = str(_value(parsed, "accused_actor_visibility")).strip()
-    allowed = {
-        "no_accused_actor",
-        "individual_actor",
-        "organizational_or_institutional_actor",
-        "both_individual_and_organizational",
-        "unclear",
-    }
-    if visibility not in allowed:
-        visibility = "unclear"
-    if visibility in {
-        "individual_actor",
-        "organizational_or_institutional_actor",
-        "both_individual_and_organizational",
-    }:
-        visible = "yes"
-    elif visibility == "no_accused_actor":
-        visible = "no"
+    individual = _normalized_yes_no(_value(parsed, "individual_actor_visible"))
+    organization = _normalized_yes_no(
+        _value(parsed, "organizational_actor_visible")
+    )
+    if individual == "yes" and organization == "yes":
+        visibility = "both_individual_and_organizational"
+    elif individual == "yes" and organization == "no":
+        visibility = "individual_actor"
+    elif individual == "no" and organization == "yes":
+        visibility = "organizational_or_institutional_actor"
+    elif individual == "no" and organization == "no":
+        visibility = "no_accused_actor"
     else:
-        visible = "unclear"
+        visibility = "unclear"
+    visible = (
+        "no"
+        if visibility == "no_accused_actor"
+        else "unclear" if visibility == "unclear" else "yes"
+    )
+    individual_evidence = _value(parsed, "individual_actor_evidence")
+    organization_evidence = _value(parsed, "organizational_actor_evidence")
+    combined_evidence = " | ".join(
+        str(value).strip()
+        for value in [individual_evidence, organization_evidence]
+        if _has_evidence(value)
+    )
     return {
         "accused_actor_visibility": visibility,
         "accused_actor_visible": visible,
-        "accused_evidence": _value(parsed, "evidence"),
+        "accused_individual_actor_visible": individual,
+        "accused_individual_evidence": individual_evidence,
+        "accused_organizational_actor_visible": organization,
+        "accused_organization_evidence": organization_evidence,
+        "accused_evidence": combined_evidence or "none",
         "accused_reasoning_brief": _value(parsed, "reasoning_brief"),
         "accused_confidence": _confidence(parsed),
     }
@@ -362,7 +377,7 @@ def normalize_accused_actor(parsed: dict) -> dict:
 
 VICTIM_VISIBILITY = ClassifierSpec(
     name="victim_visibility",
-    prompt_version="victim_visibility_zero_shot_v9",
+    prompt_version="victim_visibility_zero_shot_v11",
     default_output_name="victim_visibility_labels.csv.gz",
     result_columns=[
         "victim_visibility",
@@ -391,7 +406,7 @@ VICTIM_VISIBILITY = ClassifierSpec(
 
 CORRUPTION_FRAME = ClassifierSpec(
     name="corruption_frame",
-    prompt_version="corruption_frame_zero_shot_v4",
+    prompt_version="corruption_frame_zero_shot_v6",
     default_output_name="corruption_frame_labels.csv.gz",
     result_columns=[
         "corruption_frame",
@@ -405,7 +420,7 @@ CORRUPTION_FRAME = ClassifierSpec(
 
 ABROAD_CASE = ClassifierSpec(
     name="abroad_case",
-    prompt_version="abroad_case_zero_shot_v4",
+    prompt_version="abroad_case_zero_shot_v6",
     default_output_name="abroad_case_labels.csv.gz",
     result_columns=[
         "case_location",
@@ -420,11 +435,17 @@ ABROAD_CASE = ClassifierSpec(
 
 ACCUSED_ACTOR = ClassifierSpec(
     name="accused_actor",
-    prompt_version="accused_actor_zero_shot_v7",
+    prompt_version="accused_actor_zero_shot_v9",
     default_output_name="accused_actor_labels.csv.gz",
     result_columns=[
         "accused_actor_visibility",
         "accused_actor_visible",
+        "accused_individual_actor_visible",
+        "accused_individual_evidence",
+        "accused_individual_evidence_verbatim",
+        "accused_organizational_actor_visible",
+        "accused_organization_evidence",
+        "accused_organization_evidence_verbatim",
         "accused_evidence",
         "accused_reasoning_brief",
         "accused_confidence",
@@ -432,3 +453,11 @@ ACCUSED_ACTOR = ClassifierSpec(
     build_prompt=build_accused_actor_prompt,
     normalize_result=normalize_accused_actor,
 )
+
+
+CONTENT_CLASSIFIERS = {
+    "victim_visibility": VICTIM_VISIBILITY,
+    "corruption_frame": CORRUPTION_FRAME,
+    "case_location": ABROAD_CASE,
+    "accused_actor_visibility": ACCUSED_ACTOR,
+}

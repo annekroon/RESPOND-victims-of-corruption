@@ -30,23 +30,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument(
-        "--cpi",
-        type=Path,
-        default=None,
-        help="Optional CPI file. Canonical content-label outputs omit covariates.",
-    )
-    parser.add_argument("--skip-cpi", action="store_true")
-    parser.add_argument(
-        "--allow-partial",
-        action="store_true",
-        help="Diagnostic mode: retain articles missing one or more classifier outputs.",
-    )
-    parser.add_argument(
-        "--allow-errors",
-        action="store_true",
-        help="Diagnostic mode: merge rows with non-empty LLM errors.",
-    )
     return parser.parse_args()
 
 
@@ -65,10 +48,6 @@ def write_csv(data, path: Path) -> None:
         compression="gzip" if path.name.endswith(".gz") else None,
     )
     temporary.replace(path)
-
-
-def standardize_country(country: object) -> str:
-    return str(country).replace("_", " ").strip()
 
 
 def normalize_yes_no(value: object):
@@ -141,42 +120,6 @@ def base_metadata(frames: dict, base_cols: list[str]):
     if not parts:
         raise ValueError("No metadata columns found in classifier outputs.")
     return pd.concat(parts, ignore_index=True).drop_duplicates("article_id", keep="first")
-
-
-def add_cpi_context(data, cpi_path: Path):
-    import pandas as pd
-
-    if not cpi_path.exists():
-        raise FileNotFoundError(cpi_path)
-
-    cpi = pd.read_csv(cpi_path)
-    cpi["country_join"] = cpi["country"].map(standardize_country)
-    cpi["year"] = pd.to_numeric(cpi["year"], errors="coerce").astype("Int64")
-    cpi["perceived_corruption"] = 100 - pd.to_numeric(cpi["cpi_score"], errors="coerce")
-    cpi["year"] = cpi["year"] + 1
-    cpi = cpi.rename(
-        columns={
-            "cpi_score": "cpi_score_lag1",
-            "cpi_rank": "cpi_rank_lag1",
-            "perceived_corruption": "perceived_corruption_lag1",
-        }
-    )
-    cpi = cpi[
-        [
-            "country_join",
-            "year",
-            "cpi_score_lag1",
-            "cpi_rank_lag1",
-            "perceived_corruption_lag1",
-        ]
-    ]
-
-    data = data.copy()
-    data["country_join"] = data["country"].map(standardize_country)
-    data["year"] = pd.to_numeric(data["year"], errors="coerce").astype("Int64")
-    data = data.merge(cpi, on=["country_join", "year"], how="left")
-    data = data.drop(columns=["country_join"])
-    return data
 
 
 def validate_production_completions(paths: dict[str, Path]) -> dict[str, dict]:
@@ -257,9 +200,7 @@ def main() -> None:
         "abroad": abroad_path,
         "accused": accused_path,
     }
-    completions = {}
-    if not args.allow_partial and not args.allow_errors:
-        completions = validate_production_completions(paths)
+    completions = validate_production_completions(paths)
 
     frames = {
         "victim": read_csv(victim_path),
@@ -294,7 +235,7 @@ def main() -> None:
                 f"{name} output contains {duplicates.sum():,} duplicate article_id rows. "
                 "Rerun with the keyed checkpoint implementation."
             )
-        if not args.allow_errors and "llm_error" in frame.columns:
+        if "llm_error" in frame.columns:
             errors = frame["llm_error"].fillna("").astype(str).str.strip().ne("")
             if errors.any():
                 raise ValueError(
@@ -308,22 +249,21 @@ def main() -> None:
             values = sorted(frame.loc[invalid, label_column].astype(str).unique())
             raise ValueError(f"{name} output has invalid {label_column} values: {values}")
 
-    if not args.allow_partial:
-        reference_name = "victim"
-        reference_ids = set(frames[reference_name]["article_id"].astype(str))
-        differences = []
-        for name, frame in frames.items():
-            ids = set(frame["article_id"].astype(str))
-            missing = len(reference_ids - ids)
-            extra = len(ids - reference_ids)
-            if missing or extra:
-                differences.append(f"{name}: missing={missing}, extra={extra}")
-        if differences:
-            raise ValueError(
-                "Classifier outputs do not contain the same article IDs: "
-                + "; ".join(differences)
-                + ". Complete/retry all four outputs before the final merge."
-            )
+    reference_name = "victim"
+    reference_ids = set(frames[reference_name]["article_id"].astype(str))
+    differences = []
+    for name, frame in frames.items():
+        ids = set(frame["article_id"].astype(str))
+        missing = len(reference_ids - ids)
+        extra = len(ids - reference_ids)
+        if missing or extra:
+            differences.append(f"{name}: missing={missing}, extra={extra}")
+    if differences:
+        raise ValueError(
+            "Classifier outputs do not contain the same article IDs: "
+            + "; ".join(differences)
+            + ". Complete/retry all four outputs before the final merge."
+        )
 
     base_cols = [
         "article_id",
@@ -340,7 +280,6 @@ def main() -> None:
     ]
     data = base_metadata(frames, base_cols)
 
-    how = "outer" if args.allow_partial else "inner"
     shared_run_columns = {"codebook_version", "codebook_sha256"}
     for name, frame in frames.items():
         frame = frame.rename(
@@ -356,14 +295,16 @@ def main() -> None:
             not in (set(base_cols + ["classifier_name"]) | shared_run_columns)
         ]
         keep_cols = ["article_id", *label_cols]
-        data = data.merge(frame[keep_cols], on="article_id", how=how, suffixes=("", f"_{name}"))
+        data = data.merge(
+            frame[keep_cols],
+            on="article_id",
+            how="inner",
+            suffixes=("", f"_{name}"),
+        )
 
     data = derive_variables(data)
-    if completions:
-        data["content_codebook_version"] = CODEBOOK_VERSION
-        data["content_codebook_sha256"] = CODEBOOK_SHA256
-    if args.cpi is not None and not args.skip_cpi:
-        data = add_cpi_context(data, args.cpi)
+    data["content_codebook_version"] = CODEBOOK_VERSION
+    data["content_codebook_sha256"] = CODEBOOK_SHA256
 
     write_csv(data, output_path)
     manifest = {
@@ -372,9 +313,6 @@ def main() -> None:
         "git_commit": git_commit(PROJECT_ROOT),
         "output": file_record(output_path),
         "rows": len(data),
-        "allow_partial": args.allow_partial,
-        "allow_errors": args.allow_errors,
-        "cpi_input": file_record(args.cpi) if args.cpi is not None else None,
         "upstream_classifier": (
             next(iter(completions.values())).get("upstream_classifier")
             if completions
@@ -385,14 +323,10 @@ def main() -> None:
             if completions
             else None
         ),
-        "content_codebook": (
-            {
-                "version": CODEBOOK_VERSION,
-                "sha256": CODEBOOK_SHA256,
-            }
-            if completions
-            else None
-        ),
+        "content_codebook": {
+            "version": CODEBOOK_VERSION,
+            "sha256": CODEBOOK_SHA256,
+        },
         "article_id_sha256": (
             next(iter(completions.values())).get("article_id_sha256")
             if completions

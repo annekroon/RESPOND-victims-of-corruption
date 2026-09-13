@@ -9,14 +9,17 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+TOOLS_DIR = SCRIPT_DIR.parent / "tools"
+for path in [PROJECT_ROOT, TOOLS_DIR]:
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from content_classifier_common import (
     validate_completed_content_output,
     validate_content_sample,
 )
 from content_codebook import CODEBOOK_SHA256, CODEBOOK_VERSION
+from content_annotation_common import annotation_evidence_errors
 from config import ALL_COUNTRIES
 from political_classifier.reproducibility import sha256_file
 
@@ -47,6 +50,10 @@ HUMAN_REVIEW_COLUMNS = [
     "translated_text_en",
     "translated_text",
     "article_text",
+    "human_victim_evidence",
+    "human_corruption_frame_evidence",
+    "human_accused_individual_evidence",
+    "human_accused_organization_evidence",
     "human_notes",
     "human_codebook_version",
     "human_codebook_sha256",
@@ -315,6 +322,10 @@ def validate_final_human_sample(data, variables) -> None:
         "source_filter_policy",
         "human_codebook_version",
         "human_codebook_sha256",
+        "human_victim_evidence",
+        "human_corruption_frame_evidence",
+        "human_accused_individual_evidence",
+        "human_accused_organization_evidence",
     }
     missing = required - set(data.columns)
     if missing:
@@ -351,6 +362,14 @@ def validate_final_human_sample(data, variables) -> None:
                 f"Final validation has {int(missing_labels.sum()):,} uncoded "
                 f"{variable} row(s)."
             )
+    evidence_errors = data.apply(annotation_evidence_errors, axis=1)
+    invalid_evidence = evidence_errors.map(bool)
+    if invalid_evidence.any():
+        first_errors = " ".join(evidence_errors.loc[invalid_evidence].iloc[0])
+        raise ValueError(
+            "Final validation contains missing or non-verbatim human evidence "
+            f"for {int(invalid_evidence.sum()):,} row(s). First error: {first_errors}"
+        )
     if set(data["human_codebook_version"].dropna().astype(str)) != {
         CODEBOOK_VERSION
     }:

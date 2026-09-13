@@ -79,11 +79,15 @@ KEEP_COLUMNS = {
     "title",
     "body",
     "human_victim_visibility",
+    "human_victim_evidence",
     "human_corruption_frame",
+    "human_corruption_frame_evidence",
     "human_case_location",
     "human_abroad_case",
     "human_accused_actor_visibility",
     "human_accused_actor_visible",
+    "human_accused_individual_evidence",
+    "human_accused_organization_evidence",
     "human_notes",
     "human_coder_id",
     "human_coder_first_name",
@@ -126,7 +130,11 @@ class LLMResponseParseError(ValueError):
         self.raw_response = raw_response
 
 
-def parse_common_args(description: str, default_output_name: str) -> argparse.Namespace:
+def parse_common_args(
+    description: str,
+    default_output_name: str,
+    argv: list[str] | None = None,
+) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--source",
@@ -186,7 +194,7 @@ def parse_common_args(description: str, default_output_name: str) -> argparse.Na
     )
     parser.add_argument("--random-state", type=int, default=42)
     parser.set_defaults(default_output_name=default_output_name)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def normalize_text(text: object) -> str:
@@ -721,6 +729,8 @@ def classify_article(client, spec: ClassifierSpec, row: dict, model: str, max_ch
     result = spec.normalize_result(parsed)
     if spec.name == "victim_visibility":
         result = enforce_victim_evidence(result, article_text)
+    elif spec.name == "accused_actor":
+        result = enforce_actor_evidence(result, article_text)
     return result, prompt, raw
 
 
@@ -775,6 +785,62 @@ def enforce_victim_evidence(result: dict, article_text: str) -> dict:
     return result
 
 
+def enforce_actor_evidence(result: dict, article_text: str) -> dict:
+    """Require each positive actor test to have its own verbatim quotation."""
+    result = result.copy()
+    individual_verbatim = evidence_is_verbatim(
+        result.get("accused_individual_evidence", ""), article_text
+    )
+    organization_verbatim = evidence_is_verbatim(
+        result.get("accused_organization_evidence", ""), article_text
+    )
+    result["accused_individual_evidence_verbatim"] = (
+        "yes" if individual_verbatim else "no"
+    )
+    result["accused_organization_evidence_verbatim"] = (
+        "yes" if organization_verbatim else "no"
+    )
+
+    individual = result.get("accused_individual_actor_visible", "")
+    organization = result.get("accused_organizational_actor_visible", "")
+    unsupported = []
+    if individual == "yes" and not individual_verbatim:
+        individual = "unclear"
+        unsupported.append("individual")
+    if organization == "yes" and not organization_verbatim:
+        organization = "unclear"
+        unsupported.append("organizational")
+
+    if individual == "yes" and organization == "yes":
+        visibility = "both_individual_and_organizational"
+    elif individual == "yes" and organization == "no":
+        visibility = "individual_actor"
+    elif individual == "no" and organization == "yes":
+        visibility = "organizational_or_institutional_actor"
+    elif individual == "no" and organization == "no":
+        visibility = "no_accused_actor"
+    else:
+        visibility = "unclear"
+
+    result["accused_individual_actor_visible"] = individual
+    result["accused_organizational_actor_visible"] = organization
+    result["accused_actor_visibility"] = visibility
+    result["accused_actor_visible"] = (
+        "no"
+        if visibility == "no_accused_actor"
+        else "unclear" if visibility == "unclear" else "yes"
+    )
+    if unsupported:
+        reason = str(result.get("accused_reasoning_brief", "")).strip()
+        suffix = (
+            "Positive "
+            + " and ".join(unsupported)
+            + " actor test lacked a verbatim article quotation."
+        )
+        result["accused_reasoning_brief"] = f"{reason} {suffix}".strip()
+    return result
+
+
 def base_output_row(row: dict, spec: ClassifierSpec, model: str, max_chars: int) -> dict:
     out = {column: row.get(column, "") for column in METADATA_COLUMNS if column in row}
     out["classifier_name"] = spec.name
@@ -807,10 +873,11 @@ def select_unfinished(data, done_ids: set[str], args: argparse.Namespace):
     return unfinished
 
 
-def run_classifier(spec: ClassifierSpec) -> None:
+def run_classifier(spec: ClassifierSpec, argv: list[str] | None = None) -> None:
     args = parse_common_args(
         description=f"Classify political-corruption articles for {spec.name}.",
         default_output_name=spec.default_output_name,
+        argv=argv,
     )
 
     import pandas as pd

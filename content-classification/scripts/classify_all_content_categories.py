@@ -7,14 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+from content_prompts import CONTENT_CLASSIFIERS
 
-CLASSIFIER_SCRIPTS = [
-    ("victim_visibility", SCRIPT_DIR / "classify_victim_visibility.py"),
-    ("corruption_frame", SCRIPT_DIR / "classify_corruption_frame.py"),
-    ("abroad_case", SCRIPT_DIR / "classify_abroad_case.py"),
-    ("accused_actor", SCRIPT_DIR / "classify_accused_actor.py"),
-]
+CLASSIFIER_SCRIPT = Path(__file__).resolve().with_name("classify_content.py")
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,11 +53,16 @@ def main() -> None:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    for classifier_name, script_path in CLASSIFIER_SCRIPTS:
-        output_path = args.output_dir / output_name(args.input, classifier_name)
+    for variable, specification in CONTENT_CLASSIFIERS.items():
+        output_path = args.output_dir / output_name(
+            args.input,
+            specification.name,
+        )
         command = [
             sys.executable,
-            str(script_path),
+            str(CLASSIFIER_SCRIPT),
+            "--variable",
+            variable,
             "--source",
             "csv",
             "--input",
@@ -88,7 +88,7 @@ def main() -> None:
             command.append("--keep-non-political")
 
         print("\n" + "=" * 80, flush=True)
-        print(f"Running {classifier_name}", flush=True)
+        print(f"Running {variable}", flush=True)
         print(" ".join(command), flush=True)
         subprocess.run(command, check=True)
 

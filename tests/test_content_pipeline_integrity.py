@@ -51,6 +51,14 @@ ANNOTATION_COMMON = load_script(
     "content_annotation_common_test",
     "content-classification/tools/content_annotation_common.py",
 )
+MODEL_REVIEW_COMMON = load_script(
+    "model_review_common_test",
+    "content-classification/tools/model_review_common.py",
+)
+CLASSIFY_CONTENT = load_script(
+    "content_classify_entry_point_test",
+    "content-classification/scripts/classify_content.py",
+)
 
 
 class ContentProvenanceTests(unittest.TestCase):
@@ -189,9 +197,13 @@ class ContentProvenanceTests(unittest.TestCase):
                 data,
                 0,
                 victim_visibility="no_victim",
+                victim_evidence="",
                 corruption_frame="individualized",
+                corruption_frame_evidence="Article text",
                 case_location="domestic",
                 accused_actor_visibility="individual_actor",
+                accused_individual_evidence="Article text",
+                accused_organization_evidence="",
                 notes="checked",
                 coder_id="anne",
                 coder_first_name="Anne",
@@ -227,9 +239,151 @@ class ContentProvenanceTests(unittest.TestCase):
                 CODEBOOK.CODEBOOK_SHA256,
             )
             self.assertEqual(
+                resumed_data.loc[0, "human_corruption_frame_evidence"],
+                "Article text",
+            )
+            self.assertTrue(ANNOTATION_COMMON.reviewed_mask(resumed_data).all())
+            old_version = resumed_data.copy()
+            old_version.loc[0, "human_codebook_version"] = "older-codebook"
+            self.assertFalse(ANNOTATION_COMMON.reviewed_mask(old_version).any())
+            self.assertEqual(
                 manifest["codebook"]["sha256"],
                 CODEBOOK.CODEBOOK_SHA256,
             )
+
+    def test_model_review_is_resumable_and_marked_as_model_assisted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "review_sample_english.csv.gz"
+            model_dir = root / "gpt51_labels"
+            output_path = root / "review_sample_english_model_review_anne.csv.gz"
+            model_dir.mkdir()
+            pd.DataFrame(
+                [
+                    {
+                        "article_id": "A",
+                        "country": "France",
+                        "sample_purpose": "codebook_development",
+                        "translated_text_en": "The minister accepted a bribe.",
+                        "article_text": "Le ministre a accepte un pot-de-vin.",
+                    }
+                ]
+            ).to_csv(input_path, index=False, compression="gzip")
+
+            model_rows = {
+                "victim_visibility": {
+                    "victim_visibility": "no_victim",
+                    "victim_reasoning_brief": "No explicit harm is stated.",
+                    "victim_confidence": 0.9,
+                    "victim_entity": "none",
+                    "victim_harm_evidence": "none",
+                    "victim_corruption_harm_link_evidence": "none",
+                },
+                "corruption_frame": {
+                    "corruption_frame": "individualized",
+                    "frame_reasoning_brief": "The report concerns one minister.",
+                    "frame_confidence": 0.8,
+                    "frame_evidence": "The minister accepted a bribe.",
+                },
+                "case_location": {
+                    "case_location": "domestic",
+                    "abroad_reasoning_brief": "The case is in France.",
+                    "abroad_confidence": 0.8,
+                    "abroad_evidence": "The minister accepted a bribe.",
+                },
+                "accused_actor_visibility": {
+                    "accused_actor_visibility": "individual_actor",
+                    "accused_reasoning_brief": "A minister is accused.",
+                    "accused_confidence": 0.95,
+                    "accused_individual_evidence": "The minister accepted a bribe.",
+                    "accused_organization_evidence": "none",
+                },
+            }
+            for variable, row in model_rows.items():
+                specification = MODEL_REVIEW_COMMON.VARIABLES[variable]
+                record = {
+                    "article_id": "A",
+                    "llm_model": "gpt-5.1",
+                    "prompt_version": f"{variable}-test",
+                    "codebook_version": CODEBOOK.CODEBOOK_VERSION,
+                    "codebook_sha256": CODEBOOK.CODEBOOK_SHA256,
+                    **row,
+                }
+                path = MODEL_REVIEW_COMMON.model_output_paths(
+                    input_path, model_dir
+                )[variable]
+                pd.DataFrame([record]).to_csv(
+                    path,
+                    index=False,
+                    compression="gzip",
+                )
+
+            data, provenance, model_paths, resumed = (
+                MODEL_REVIEW_COMMON.load_review_data(
+                    input_path,
+                    model_dir,
+                    output_path,
+                )
+            )
+            self.assertFalse(resumed)
+            decisions = {variable: "confirm" for variable in model_rows}
+            corrected = {variable: "" for variable in model_rows}
+            comments = {variable: "" for variable in model_rows}
+            MODEL_REVIEW_COMMON.record_review(
+                data,
+                0,
+                decisions=decisions,
+                corrected_labels=corrected,
+                comments=comments,
+                overall_comment="Reviewed against the article.",
+                coder_id="anne",
+                coder_first_name="Anne",
+                session_id="session",
+            )
+            manifest_path = MODEL_REVIEW_COMMON.save_review_data(
+                data,
+                input_path=input_path,
+                model_paths=model_paths,
+                output_path=output_path,
+                coder_id="anne",
+                coder_first_name="Anne",
+                session_id="session",
+                provenance=provenance,
+            )
+            resumed_data, _, _, resumed = MODEL_REVIEW_COMMON.load_review_data(
+                input_path,
+                model_dir,
+                output_path,
+            )
+            self.assertTrue(resumed)
+            self.assertTrue(MODEL_REVIEW_COMMON.reviewed_mask(resumed_data).all())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["review_mode"], "model_assisted_adjudication")
+            self.assertFalse(manifest["independent_human_validation"])
+            self.assertEqual(manifest["reviewed_rows"], 1)
+
+    def test_model_review_corrections_require_a_different_label_and_comment(self):
+        errors = MODEL_REVIEW_COMMON.review_errors(
+            model_labels={
+                variable: specification["labels"][0]
+                for variable, specification in MODEL_REVIEW_COMMON.VARIABLES.items()
+            },
+            decisions={
+                variable: ("correct" if variable == "victim_visibility" else "confirm")
+                for variable in MODEL_REVIEW_COMMON.VARIABLES
+            },
+            corrected_labels={
+                variable: (
+                    specification["labels"][0]
+                    if variable == "victim_visibility"
+                    else ""
+                )
+                for variable, specification in MODEL_REVIEW_COMMON.VARIABLES.items()
+            },
+            comments={variable: "" for variable in MODEL_REVIEW_COMMON.VARIABLES},
+        )
+        self.assertTrue(any("must differ" in error for error in errors))
+        self.assertTrue(any("Explain" in error for error in errors))
 
     def test_machine_output_rows_record_the_canonical_codebook(self):
         spec = type("Spec", (), {"name": "test", "prompt_version": "test-v1"})()
@@ -330,7 +484,53 @@ class ContentWorkflowStructureTests(unittest.TestCase):
             {"country": "France", "year": 2020},
         )
         self.assertIn("Mandatory Two-Test Method", actor_prompt)
+        self.assertIn('"individual_actor_evidence"', actor_prompt)
+        self.assertIn('"organizational_actor_evidence"', actor_prompt)
         self.assertNotIn("## 1. Victim Visibility", actor_prompt)
+
+    def test_actor_label_is_derived_from_separate_evidence_tests(self):
+        normalized = PROMPTS.normalize_accused_actor(
+            {
+                "individual_actor_visible": "yes",
+                "individual_actor_evidence": "The minister accepted a bribe",
+                "organizational_actor_visible": "yes",
+                "organizational_actor_evidence": "The company paid the bribe",
+                "accused_actor_visibility": "individual_actor",
+            }
+        )
+        self.assertEqual(
+            normalized["accused_actor_visibility"],
+            "both_individual_and_organizational",
+        )
+        checked = COMMON.enforce_actor_evidence(
+            normalized,
+            "The minister accepted a bribe. The company paid the bribe.",
+        )
+        self.assertEqual(
+            checked["accused_actor_visibility"],
+            "both_individual_and_organizational",
+        )
+        self.assertEqual(checked["accused_individual_evidence_verbatim"], "yes")
+        self.assertEqual(checked["accused_organization_evidence_verbatim"], "yes")
+
+    def test_human_positive_labels_require_verbatim_evidence(self):
+        data = ANNOTATION_COMMON.ensure_columns(
+            pd.DataFrame(
+                [{"article_id": "A", "article_text": "The company paid a bribe."}]
+            )
+        )
+        row = data.loc[0].copy()
+        row["human_victim_visibility"] = "no_victim"
+        row["human_corruption_frame"] = "individualized"
+        row["human_corruption_frame_evidence"] = "Invented frame evidence"
+        row["human_case_location"] = "domestic"
+        row["human_accused_actor_visibility"] = (
+            "organizational_or_institutional_actor"
+        )
+        row["human_accused_organization_evidence"] = "The company paid a bribe."
+        errors = ANNOTATION_COMMON.annotation_evidence_errors(row)
+        self.assertTrue(any("frame evidence" in error for error in errors))
+        self.assertFalse(any("organization evidence" in error for error in errors))
 
     def test_streamlit_content_app_has_core_workflow_controls(self):
         app = (
@@ -344,14 +544,27 @@ class ContentWorkflowStructureTests(unittest.TestCase):
             "Coding complete",
             "Download backup",
             "codebook_section",
+            "Victim evidence",
+            "Frame evidence",
+            "Individual accused-actor evidence",
+            "Organizational accused-actor evidence",
         ]:
             self.assertIn(text, app)
 
-        flask_app = (
-            ROOT / "content-classification/tools/annotation_flask_app.py"
+    def test_model_review_app_is_separate_and_exposes_review_controls(self):
+        app = (
+            ROOT / "content-classification/tools/model_review_streamlit_app.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("CODEBOOK_MARKDOWN", flask_app)
-        self.assertNotIn("Mandatory evidence test:</b>", flask_app)
+        for text in [
+            "Model-assisted review",
+            "Confirm the model label",
+            "Correct the model label",
+            "Cannot decide from this article",
+            "Reviewer comment or rationale",
+            "Download review backup",
+            "adjudication data",
+        ]:
+            self.assertIn(text, app)
 
     def test_readme_prefers_content_streamlit_app(self):
         readme = (ROOT / "content-classification/README.md").read_text(
@@ -368,6 +581,22 @@ class ContentWorkflowStructureTests(unittest.TestCase):
         self.assertEqual(args.input_chunksize, 25_000)
         self.assertIsNone(args.random_sample)
 
+    def test_unified_classifier_uses_the_four_substantive_variable_names(self):
+        self.assertEqual(
+            set(PROMPTS.CONTENT_CLASSIFIERS),
+            {
+                "victim_visibility",
+                "corruption_frame",
+                "case_location",
+                "accused_actor_visibility",
+            },
+        )
+        variable, remaining = CLASSIFY_CONTENT.parse_variable(
+            ["--variable", "case_location", "--limit", "2"]
+        )
+        self.assertEqual(variable, "case_location")
+        self.assertEqual(remaining, ["--limit", "2"])
+
     def test_final_runner_uses_accessible_model_and_strict_merge(self):
         runner = (
             ROOT
@@ -375,6 +604,7 @@ class ContentWorkflowStructureTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("CONTENT_MODEL=${CONTENT_MODEL:-gpt-5.1}", runner)
         self.assertIn("00_verify_final_corpus.py", runner)
+        self.assertIn("classify_content.py", runner)
         self.assertIn("merge_content_labels.py", runner)
         self.assertNotIn("--allow-partial", runner)
         self.assertNotIn("--allow-errors", runner)
@@ -385,6 +615,18 @@ class ContentWorkflowStructureTests(unittest.TestCase):
         )
         self.assertIn("political_corruption_content_categories_final.csv.gz", readme)
         self.assertNotIn("content_silver_labels_merged.csv.gz", readme)
+
+    def test_obsolete_content_entry_points_are_removed(self):
+        obsolete = [
+            "tools/annotation_flask_app.py",
+            "notebooks/01_inspect_content_classification.ipynb",
+            "scripts/classify_abroad_case.py",
+            "scripts/classify_accused_actor.py",
+            "scripts/classify_corruption_frame.py",
+            "scripts/classify_victim_visibility.py",
+        ]
+        root = ROOT / "content-classification"
+        self.assertFalse([path for path in obsolete if (root / path).exists()])
 
 
 if __name__ == "__main__":

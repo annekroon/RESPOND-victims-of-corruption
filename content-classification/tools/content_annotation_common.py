@@ -23,11 +23,15 @@ from political_classifier.reproducibility import file_record, git_commit
 
 HUMAN_COLUMNS = [
     "human_victim_visibility",
+    "human_victim_evidence",
     "human_corruption_frame",
+    "human_corruption_frame_evidence",
     "human_case_location",
     "human_abroad_case",
     "human_accused_actor_visibility",
     "human_accused_actor_visible",
+    "human_accused_individual_evidence",
+    "human_accused_organization_evidence",
     "human_notes",
     "human_coder_id",
     "human_coder_first_name",
@@ -43,6 +47,19 @@ REQUIRED_HUMAN_COLUMNS = [
     "human_case_location",
     "human_accused_actor_visibility",
 ]
+
+EVIDENCE_COLUMNS = [
+    "human_victim_evidence",
+    "human_corruption_frame_evidence",
+    "human_accused_individual_evidence",
+    "human_accused_organization_evidence",
+]
+
+
+def scalar_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value)
 
 
 def read_csv(path: Path) -> pd.DataFrame:
@@ -124,10 +141,85 @@ def ensure_columns(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
+def evidence_passages(value: object) -> list[str]:
+    """Return one normalized evidence passage per nonblank line."""
+    passages = []
+    for line in scalar_text(value).splitlines():
+        passage = re.sub(r"^\s*[-*]\s+", "", line).strip().strip("\"'")
+        if passage:
+            passages.append(" ".join(passage.split()))
+    return passages
+
+
+def evidence_is_verbatim(value: object, row: pd.Series) -> bool:
+    passages = evidence_passages(value)
+    if not passages:
+        return False
+    article_versions = [
+        " ".join(scalar_text(row.get(column, "")).split()).casefold()
+        for column in ["translated_text_en", "translated_text", "article_text"]
+        if scalar_text(row.get(column, "")).strip()
+    ]
+    return bool(article_versions) and all(
+        any(passage.casefold() in article for article in article_versions)
+        for passage in passages
+    )
+
+
+def annotation_evidence_errors(row: pd.Series) -> list[str]:
+    """Validate evidence required by the selected substantive labels."""
+    required = []
+    if str(row.get("human_victim_visibility", "")) in {
+        "concrete_victim",
+        "institutional_societal_victim",
+    }:
+        required.append(("human_victim_evidence", "victim evidence"))
+    if str(row.get("human_corruption_frame", "")) not in {"", "unclear"}:
+        required.append(
+            ("human_corruption_frame_evidence", "corruption-frame evidence")
+        )
+    actor = str(row.get("human_accused_actor_visibility", ""))
+    if actor in {"individual_actor", "both_individual_and_organizational"}:
+        required.append(
+            ("human_accused_individual_evidence", "individual-actor evidence")
+        )
+    if actor in {
+        "organizational_or_institutional_actor",
+        "both_individual_and_organizational",
+    }:
+        required.append(
+            ("human_accused_organization_evidence", "organizational-actor evidence")
+        )
+
+    errors = []
+    for column, label in required:
+        if not evidence_passages(row.get(column, "")):
+            errors.append(f"Add {label}.")
+    for column in EVIDENCE_COLUMNS:
+        value = row.get(column, "")
+        if evidence_passages(value) and not evidence_is_verbatim(value, row):
+            label = column.removeprefix("human_").replace("_", " ")
+            errors.append(
+                f"The {label} must be copied exactly from the English or original article."
+            )
+    return errors
+
+
 def reviewed_mask(data: pd.DataFrame) -> pd.Series:
     mask = pd.Series(True, index=data.index)
     for column in REQUIRED_HUMAN_COLUMNS:
         mask &= data[column].fillna("").astype(str).str.strip().ne("")
+    mask &= data["human_codebook_version"].fillna("").astype(str).eq(
+        CODEBOOK_VERSION
+    )
+    mask &= data["human_codebook_sha256"].fillna("").astype(str).eq(
+        CODEBOOK_SHA256
+    )
+    evidence_valid = data.apply(
+        lambda row: not annotation_evidence_errors(row),
+        axis=1,
+    )
+    mask &= evidence_valid
     return mask
 
 
@@ -212,7 +304,7 @@ def save_annotation_data(
         .sum()
     )
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_commit(PROJECT_ROOT),
         "coder_id": safe_coder_id(coder_id),
@@ -248,16 +340,24 @@ def record_annotation(
     row_index: int,
     *,
     victim_visibility: str,
+    victim_evidence: str,
     corruption_frame: str,
+    corruption_frame_evidence: str,
     case_location: str,
     accused_actor_visibility: str,
+    accused_individual_evidence: str,
+    accused_organization_evidence: str,
     notes: str,
     coder_id: str,
     coder_first_name: str,
     code_session_id: str,
 ) -> None:
     data.loc[row_index, "human_victim_visibility"] = victim_visibility
+    data.loc[row_index, "human_victim_evidence"] = victim_evidence.strip()
     data.loc[row_index, "human_corruption_frame"] = corruption_frame
+    data.loc[row_index, "human_corruption_frame_evidence"] = (
+        corruption_frame_evidence.strip()
+    )
     data.loc[row_index, "human_case_location"] = case_location
     data.loc[row_index, "human_abroad_case"] = derive_abroad_case(case_location)
     data.loc[row_index, "human_accused_actor_visibility"] = (
@@ -265,6 +365,12 @@ def record_annotation(
     )
     data.loc[row_index, "human_accused_actor_visible"] = (
         derive_accused_actor_visible(accused_actor_visibility)
+    )
+    data.loc[row_index, "human_accused_individual_evidence"] = (
+        accused_individual_evidence.strip()
+    )
+    data.loc[row_index, "human_accused_organization_evidence"] = (
+        accused_organization_evidence.strip()
     )
     data.loc[row_index, "human_notes"] = notes
     data.loc[row_index, "human_coder_id"] = safe_coder_id(coder_id)

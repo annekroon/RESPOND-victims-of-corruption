@@ -1,6 +1,6 @@
 # Corruption-Article Content Codebook
 
-Version: `content_codebook_v1.0.0`
+Version: `content_codebook_v1.1.0`
 
 Inputs: `publication_country` and `article_text`.
 
@@ -25,6 +25,12 @@ the corruption-specific variables.
 Use `unclear` only when the text is genuinely ambiguous, incomplete, or
 translation-problematic. Do not use it merely because an allegation is unproven
 or some details are missing.
+
+For human validation, record short exact passages from the article that support
+the victim, frame, and accused-actor decisions. Evidence is not a separate
+substantive variable. It documents how the coder applied the labels and makes
+later adjudication possible. Do not copy an LLM explanation into a human
+evidence field.
 
 `corruption_frame` measures the article's dominant framing.
 `accused_actor_visibility` records every type of alleged corruption participant
@@ -129,24 +135,48 @@ decision.
 If concrete and institutional/societal victims are both explicit, select
 `concrete_victim`.
 
+For human validation, a positive victim label requires one or more exact
+article passages documenting the victim, harm, and corruption-to-harm connection.
+One passage may contain all three elements; otherwise record separate passages
+on separate lines. No victim-evidence passage is required for `no_victim`.
+
 ### Examples
 
-- "He embezzled EUR 10 million from the company." -> `concrete_victim`
-- "Money was collected through racketeering of businesspeople." ->
-  `concrete_victim`
-- "The scheme undermined Parliament's credibility." ->
-  `institutional_societal_victim`
-- "Billions in state money were stolen." ->
-  `institutional_societal_victim`
-- A tender favored friendly companies but no losing party or loss is stated ->
-  `no_victim`
-- Tax fraud followed by repayment, with no explicit state loss -> `no_victim`
-- A corruption proceeding is delayed by staff shortages, reducing service ->
-  `no_victim`
-- A company is threatened with official retaliation unless it signs a
-  fictitious contract -> `concrete_victim`
-- Passengers die in an accident and an old corruption charge is mentioned
-  separately -> `no_victim`
+These examples illustrate `victim_visibility` only. The same sentence can also
+provide evidence for another variable. For example, in an embezzlement sentence,
+the person taking the money can be an accused individual actor while the entity
+losing the money is the victim. Those two labels answer different questions and
+can both apply.
+
+Each positive example must make the victim and corruption-caused harm visible:
+
+- "The director embezzled EUR 10 million belonging to the company, causing the
+  company a EUR 10 million loss." -> `concrete_victim`. The company is the
+  identifiable victim; its stated financial loss is caused by the embezzlement.
+  Separately, the director satisfies the individual accused-actor test.
+- "Officials forced local business owners to pay protection money and collected
+  EUR 5,000 from them." -> `concrete_victim`. The business owners are an
+  identifiable group; the money was coercively taken from them through abuse of
+  official power.
+- "The bribery scheme undermined Parliament's credibility." ->
+  `institutional_societal_victim`. Parliament is the harmed institution and the
+  stated harm is loss of credibility caused by the scheme.
+- "Officials stole billions from the state budget." ->
+  `institutional_societal_victim`. The article explicitly identifies lost public
+  funds and attributes that loss to corrupt conduct.
+- "The tender was rigged to favor friendly companies." -> `no_victim` when no
+  losing party or loss is stated. Do not invent unsuccessful bidders.
+- "He committed tax fraud and later repaid EUR 2 million." -> `no_victim` when
+  the article never states that the state or another entity suffered a loss.
+- "Staff shortages delayed the corruption trial, reducing court services." ->
+  `no_victim`. The stated harm comes from staffing and case handling, not from
+  the underlying corruption.
+- "Officials threatened to cancel the company's permits unless it signed a
+  fictitious contract." -> `concrete_victim`. The company is explicitly
+  subjected to a coercive corrupt threat, which is itself adverse treatment.
+- "Passengers died in an accident; the article separately mentions an old
+  corruption charge." -> `no_victim`. The deaths are not attributed to the
+  corruption.
 
 ## 2. Corruption Frame
 
@@ -167,6 +197,11 @@ sentence, resignation, or a particular bribery, fraud, embezzlement, or
 conflict-of-interest scandal. Several defendants, an accused company, or brief
 systemic background can still form an individualized article.
 
+An article remains `individualized` when it reports a procedural development
+in one substantive corruption case, such as an arrest, hearing, appeal,
+acquittal, sentence, or extradition. The presence of legal procedure does not
+by itself make the frame `other_or_mixed`.
+
 `systemic`
 
 Coverage principally represents corruption as a broader governance or
@@ -185,18 +220,40 @@ mainly concerns election-finance regulation or another specialized regulatory
 issue; or the article cannot meaningfully be reduced to the
 individualized/systemic distinction.
 
+"Mainly procedural, administrative, legal, or technical" means that the
+article primarily explains rules, jurisdiction, deadlines, institutional
+process, or administration without substantively developing either a specific
+corruption case or a systemic corruption pattern. Do not use
+`other_or_mixed` merely because a developed individualized case is before a
+court or another formal body.
+
 `unclear`
 
 The text is insufficient or unusably ambiguous.
 
 ### Decision Order
 
-1. If corruption is incidental, procedural/technical, or evenly mixed, code
+1. If corruption is incidental, evenly mixed, or the article discusses only
+   procedure/rules without developing a case or systemic pattern, code
    `other_or_mixed`.
 2. Otherwise, if institutional dysfunction or a recurring governance pattern
    is the central explanation, code `systemic`.
-3. Otherwise, if a specific actor and episode dominate, code `individualized`.
+3. Otherwise, if a specific actor and episode dominate, including procedural
+   developments in that substantive case, code `individualized`.
 4. Use `unclear` only when the text prevents a decision.
+
+### Frame Boundary Examples
+
+- "The appeals court upheld the former minister's bribery conviction" ->
+  `individualized`. This is a procedural development in one developed case.
+- "The article explains which court has jurisdiction and the filing deadline,
+  but gives no developed corruption allegation" -> `other_or_mixed`.
+- "The minister's trial is used to explain recurring political control of
+  prosecutors across the country" -> `systemic` when that recurring
+  institutional pattern is the article's dominant emphasis.
+
+For human validation, every frame label except `unclear` requires at least one
+exact article passage supporting the dominant framing decision.
 
 ## 3. Case Location
 
@@ -316,6 +373,11 @@ person, an organization, or neither.
 - Individual No + Organization Yes -> `organizational_or_institutional_actor`
 - Individual Yes + Organization Yes -> `both_individual_and_organizational`
 - Genuinely ambiguous evidence -> `unclear`
+
+For human validation, record the exact individual-actor passage whenever the
+individual test is Yes and the exact organizational-actor passage whenever the
+organization test is Yes. The two tests therefore retain separate evidence
+fields even when both are supported by the same sentence.
 
 ### Examples
 

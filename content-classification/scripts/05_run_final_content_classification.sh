@@ -20,10 +20,11 @@ python3 -u content-classification/scripts/00_verify_final_corpus.py \
   --classified-dir "$CLASSIFIED_DIR"
 
 run_classifier() {
-  local script=$1
+  local variable=$1
   echo
-  echo "[$(date -Is)] START: $script"
-  python3 -u "content-classification/scripts/$script" \
+  echo "[$(date -Is)] START: $variable"
+  python3 -u content-classification/scripts/classify_content.py \
+    --variable "$variable" \
     --source classified \
     --classified-dir "$CLASSIFIED_DIR" \
     --classifier-output-dir "$CLASSIFIER_DIR" \
@@ -33,13 +34,13 @@ run_classifier() {
     --min-words 1 \
     --save-every "$CONTENT_SAVE_EVERY" \
     --retry-errors
-  echo "[$(date -Is)] FINISHED: $script"
+  echo "[$(date -Is)] FINISHED: $variable"
 }
 
-run_classifier classify_victim_visibility.py
-run_classifier classify_corruption_frame.py
-run_classifier classify_abroad_case.py
-run_classifier classify_accused_actor.py
+run_classifier victim_visibility
+run_classifier corruption_frame
+run_classifier case_location
+run_classifier accused_actor_visibility
 
 python3 -u content-classification/scripts/merge_content_labels.py \
   --input-dir "$CONTENT_OUTPUT_DIR"

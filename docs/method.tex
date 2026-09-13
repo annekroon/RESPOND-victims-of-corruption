@@ -154,6 +154,13 @@ individual's conduct to an organization. Each revision was implemented as a
 new prompt version, and earlier model outputs were retained as pilot results
 rather than overwritten.
 
+For validation, the annotation interface also records exact article passages
+supporting positive victim codes, the corruption-frame decision, and the
+individual and organizational accused-actor tests. These evidence fields are
+audit material rather than additional substantive variables. Human coders do
+not see model labels or model-generated evidence before submitting their own
+codes.
+
 Because these 108 articles informed the codebook and prompts, they are
 development data and cannot provide an unbiased final performance estimate.
 All 108 are excluded by article identifier when the final validation sample is
@@ -191,10 +198,10 @@ textual evidence, a brief rationale, and a confidence score. The production
 scripts save the model name, prompt version, prompt, raw response, parsed
 response, timestamp, and any error in per-article JSONL audit files. Output is
 checkpointed and resumable. The current versioned specifications are
-\nolinkurl{victim_visibility_zero_shot_v8},
-\nolinkurl{corruption_frame_zero_shot_v3},
-\nolinkurl{abroad_case_zero_shot_v3}, and
-\nolinkurl{accused_actor_zero_shot_v6}. Earlier outputs are treated as
+\nolinkurl{victim_visibility_zero_shot_v11},
+\nolinkurl{corruption_frame_zero_shot_v6},
+\nolinkurl{abroad_case_zero_shot_v6}, and
+\nolinkurl{accused_actor_zero_shot_v9}. Earlier outputs are treated as
 development pilots and must not be mixed with results produced by these
 versions.
 
@@ -257,7 +264,9 @@ the corruption problem. The labels are \nolinkurl{individualized},
 \nolinkurl{individualized} applies when coverage centers on identifiable actors
 and a specific allegation, investigation, trial, conviction, resignation, or
 scandal. Naming several defendants or briefly mentioning a wider scandal does
-not by itself make the frame systemic. \nolinkurl{systemic} applies when the
+not by itself make the frame systemic. Reporting an arrest, hearing, appeal,
+acquittal, sentence, or another procedural development in one developed case
+remains individualized. \nolinkurl{systemic} applies when the
 article's dominant explanation concerns a recurring governance or institutional
 pattern, such as state capture, entrenched clientelism, systemic impunity,
 rule-of-law breakdown, democratic backsliding, or corruption embedded across
@@ -265,8 +274,10 @@ public institutions.
 
 \nolinkurl{other_or_mixed} applies when individualized and systemic frames
 receive comparable emphasis, corruption is incidental, or the article is
-primarily procedural, administrative, legal, technical, regulatory, or a
-roundup of unrelated cases. \nolinkurl{unclear} is reserved for insufficient or
+limited to rules, jurisdiction, deadlines, administration, or another
+procedural or technical matter without developing either a substantive case or
+a systemic pattern. It also applies to roundups of unrelated cases.
+\nolinkurl{unclear} is reserved for insufficient or
 unusably ambiguous text. The coding decision concerns the article's dominant
 explanation, not merely whether a person or institution is mentioned. In the
 regression models, \nolinkurl{other_or_mixed} is the reference category.

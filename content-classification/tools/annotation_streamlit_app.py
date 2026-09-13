@@ -1,7 +1,7 @@
 """Streamlit interface for article-level content annotation.
 
 Run with environment variables documented in content-classification/README.md.
-The app writes the same coder CSV and annotation manifest as the Flask app.
+The app writes a resumable coder CSV and a matching annotation manifest.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import gzip
 import html
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -22,6 +23,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from content_annotation_common import (
+    annotation_evidence_errors,
+    evidence_passages,
     load_annotation_data,
     output_path_for_coder,
     record_annotation,
@@ -148,6 +151,10 @@ st.markdown(
     .article-copy {white-space: pre-wrap; line-height: 1.62; font-size: 1rem; color: inherit;}
     .article-meta {color: inherit; opacity: .72; font-size: .9rem; margin: .25rem 0 .8rem;}
     .saved-note {color: inherit; font-weight: 650; font-size: .9rem;}
+    .evidence-victim {background: #fff0a8; color: #1e2430; padding: 0 .08rem;}
+    .evidence-frame {background: #cfe8ff; color: #1e2430; padding: 0 .08rem;}
+    .evidence-individual {background: #f6cada; color: #1e2430; padding: 0 .08rem;}
+    .evidence-organization {background: #cdebd6; color: #1e2430; padding: 0 .08rem;}
     div[role="radiogroup"] label {padding-top: .16rem; padding-bottom: .16rem;}
     h1, h2, h3 {letter-spacing: 0;}
 </style>
@@ -163,8 +170,52 @@ def value(row: pd.Series, column: str, default: str = "") -> str:
     return str(item)
 
 
-def render_article_text(text: str) -> None:
-    safe_text = html.escape(text or "No text is available for this view.")
+def saved_evidence(row: pd.Series) -> list[tuple[str, str]]:
+    return [
+        ("victim", value(row, "human_victim_evidence")),
+        ("frame", value(row, "human_corruption_frame_evidence")),
+        ("individual", value(row, "human_accused_individual_evidence")),
+        ("organization", value(row, "human_accused_organization_evidence")),
+    ]
+
+
+def render_article_text(
+    text: str,
+    evidence: list[tuple[str, str]] | None = None,
+) -> None:
+    text = text or "No text is available for this view."
+    matches = []
+    for priority, (kind, raw_passages) in enumerate(evidence or []):
+        for passage in evidence_passages(raw_passages):
+            pattern = r"\s+".join(re.escape(token) for token in passage.split())
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                matches.append((match.start(), match.end(), priority, kind))
+
+    accepted = []
+    for start, end, priority, kind in sorted(
+        matches,
+        key=lambda item: (item[0], -(item[1] - item[0]), item[2]),
+    ):
+        if any(
+            start < previous_end and end > previous_start
+            for previous_start, previous_end, _, _ in accepted
+        ):
+            continue
+        accepted.append((start, end, priority, kind))
+
+    if accepted:
+        parts = []
+        cursor = 0
+        for start, end, _, kind in sorted(accepted):
+            parts.append(html.escape(text[cursor:start]))
+            parts.append(
+                f'<mark class="evidence-{kind}">{html.escape(text[start:end])}</mark>'
+            )
+            cursor = end
+        parts.append(html.escape(text[cursor:]))
+        safe_text = "".join(parts)
+    else:
+        safe_text = html.escape(text)
     st.markdown(
         f'<div class="article-copy">{safe_text}</div>',
         unsafe_allow_html=True,
@@ -300,9 +351,13 @@ def country_progress(data: pd.DataFrame) -> pd.DataFrame:
 def save_current(
     row_index: int,
     victim_visibility: str | None,
+    victim_evidence: str,
     corruption_frame: str | None,
+    corruption_frame_evidence: str,
     case_location: str | None,
     accused_actor_visibility: str | None,
+    accused_individual_evidence: str,
+    accused_organization_evidence: str,
     notes: str,
 ) -> bool:
     selections = [
@@ -314,13 +369,37 @@ def save_current(
     if any(not selection for selection in selections):
         st.error("Choose one answer for each of the four questions before saving.")
         return False
+    candidate = st.session_state.data.loc[row_index].copy()
+    candidate["human_victim_visibility"] = str(victim_visibility)
+    candidate["human_victim_evidence"] = victim_evidence.strip()
+    candidate["human_corruption_frame"] = str(corruption_frame)
+    candidate["human_corruption_frame_evidence"] = (
+        corruption_frame_evidence.strip()
+    )
+    candidate["human_accused_actor_visibility"] = str(
+        accused_actor_visibility
+    )
+    candidate["human_accused_individual_evidence"] = (
+        accused_individual_evidence.strip()
+    )
+    candidate["human_accused_organization_evidence"] = (
+        accused_organization_evidence.strip()
+    )
+    evidence_errors = annotation_evidence_errors(candidate)
+    if evidence_errors:
+        st.error(" ".join(evidence_errors))
+        return False
     record_annotation(
         st.session_state.data,
         row_index,
         victim_visibility=str(victim_visibility),
+        victim_evidence=victim_evidence,
         corruption_frame=str(corruption_frame),
+        corruption_frame_evidence=corruption_frame_evidence,
         case_location=str(case_location),
         accused_actor_visibility=str(accused_actor_visibility),
+        accused_individual_evidence=accused_individual_evidence,
+        accused_organization_evidence=accused_organization_evidence,
         notes=notes,
         coder_id=st.session_state.coder_id,
         coder_first_name=st.session_state.coder_first_name,
@@ -513,25 +592,31 @@ with article_column:
     )
     translated = value(row, "translated_text_en") or value(row, "translated_text")
     original = value(row, "article_text")
+    evidence = saved_evidence(row)
+    if any(evidence_passages(raw) for _, raw in evidence):
+        st.caption(
+            "Saved evidence: victim (yellow), frame (blue), individual actor "
+            "(pink), organization (green)."
+        )
     translation_tab, original_tab, compare_tab = st.tabs(
         ["English translation", "Original", "Compare"]
     )
     with translation_tab:
         with st.container(height=600, border=True):
-            render_article_text(translated)
+            render_article_text(translated, evidence)
     with original_tab:
         with st.container(height=600, border=True):
-            render_article_text(original)
+            render_article_text(original, evidence)
     with compare_tab:
         translated_column, original_column = st.columns(2)
         with translated_column:
             st.caption("English translation")
             with st.container(height=540, border=True):
-                render_article_text(translated)
+                render_article_text(translated, evidence)
         with original_column:
             st.caption("Original")
             with st.container(height=540, border=True):
-                render_article_text(original)
+                render_article_text(original, evidence)
     with st.expander("Article details"):
         st.write(f"Sample ID: {value(row, 'content_sample_id')}")
         st.write(f"Article ID: {value(row, 'article_id')}")
@@ -548,13 +633,53 @@ with coding_column:
     )
     with st.form(f"coding_form_{value(row, 'article_id')}"):
         victim_visibility = label_radio("victim_visibility", row)
+        victim_evidence = st.text_area(
+            "Victim evidence",
+            value=value(row, "human_victim_evidence"),
+            help=(
+                "Required for a concrete or institutional/societal victim. "
+                "Paste exact article wording; put separate passages on separate lines."
+            ),
+            height=84,
+            key=f"victim_evidence_{value(row, 'article_id')}",
+        )
         st.divider()
         corruption_frame = label_radio("corruption_frame", row)
+        corruption_frame_evidence = st.text_area(
+            "Frame evidence",
+            value=value(row, "human_corruption_frame_evidence"),
+            help=(
+                "Required unless the frame is unclear. Paste the exact passage "
+                "that best supports the article's dominant framing."
+            ),
+            height=84,
+            key=f"frame_evidence_{value(row, 'article_id')}",
+        )
         st.divider()
         case_location = label_radio("case_location", row)
         st.caption(f"Publication country: {value(row, 'country')}")
         st.divider()
         accused_actor_visibility = label_radio("accused_actor_visibility", row)
+        accused_individual_evidence = st.text_area(
+            "Individual accused-actor evidence",
+            value=value(row, "human_accused_individual_evidence"),
+            help=(
+                "Required when an individual actor is coded. Paste exact wording "
+                "that alleges the individual's participation in corruption."
+            ),
+            height=84,
+            key=f"individual_evidence_{value(row, 'article_id')}",
+        )
+        accused_organization_evidence = st.text_area(
+            "Organizational accused-actor evidence",
+            value=value(row, "human_accused_organization_evidence"),
+            help=(
+                "Required when an organization is coded. Paste exact wording that "
+                "attributes corrupt participation to the organization itself."
+            ),
+            height=84,
+            key=f"organization_evidence_{value(row, 'article_id')}",
+        )
         notes = st.text_area(
             "Notes (optional)",
             value=value(row, "human_notes"),
@@ -563,6 +688,7 @@ with coding_column:
                 "difficult decision."
             ),
             height=90,
+            key=f"notes_{value(row, 'article_id')}",
         )
         save_column, continue_column = st.columns([1, 1.5])
         save_only = save_column.form_submit_button(
@@ -579,9 +705,13 @@ with coding_column:
         if save_current(
             row_index,
             victim_visibility,
+            victim_evidence,
             corruption_frame,
+            corruption_frame_evidence,
             case_location,
             accused_actor_visibility,
+            accused_individual_evidence,
+            accused_organization_evidence,
             notes,
         ):
             if save_and_continue:
