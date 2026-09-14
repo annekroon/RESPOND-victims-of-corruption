@@ -151,11 +151,11 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-    .block-container {max-width: 1580px; padding-top: 1.3rem; padding-bottom: 3rem;}
+    .block-container {max-width: 1580px; padding-top: 3.75rem; padding-bottom: 3rem;}
     [data-testid="stSidebar"] {border-right: 1px solid #d9dee8;}
     .article-copy {white-space: pre-wrap; line-height: 1.65; font-size: 1rem; color: inherit;}
     .article-meta {color: inherit; opacity: .72; font-size: .9rem; margin: .25rem 0 .8rem;}
-    .review-warning {border-left: 4px solid #8a6d00; padding: .7rem .9rem; background: #fff8db; color: #27231a; margin-bottom: 1rem;}
+    .review-warning {border-left: 4px solid #8a6d00; padding: .72rem .9rem; background: #fff8db; color: #27231a; margin: .15rem 0 1rem; font-size: .94rem; line-height: 1.45;}
     .model-summary {border-left: 4px solid var(--accent); padding: .65rem .85rem; background: color-mix(in srgb, var(--soft) 38%, transparent); margin: .35rem 0 .75rem;}
     .model-label {font-weight: 750; color: var(--accent);}
     .section-key {display: inline-block; width: .82rem; height: .82rem; background: var(--soft); border: 2px solid var(--accent); margin-right: .42rem; vertical-align: -.06rem;}
