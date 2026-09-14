@@ -67,6 +67,14 @@ DEFAULT_CODER_FIRST_NAME = os.environ.get(
     DEFAULT_CODER_ID,
 )
 
+REVIEWER_PROFILES = {
+    "Anne (anne)": ("Anne", "anne"),
+    "Sofia (sofia)": ("Sofia", "sofia"),
+    "Chris (chris)": ("Chris", "chris"),
+}
+REVIEWER_PLACEHOLDER = "Select your name"
+CUSTOM_REVIEWER = "Another reviewer"
+
 LABELS = {
     "victim_visibility": {
         "title": "Victim visibility",
@@ -277,20 +285,34 @@ def establish_reviewer() -> None:
         st.session_state.model_review_session_id = uuid.uuid4().hex
         return
     st.sidebar.subheader("Reviewer")
+    reviewer_choice = st.sidebar.selectbox(
+        "Who is reviewing?",
+        [REVIEWER_PLACEHOLDER, *REVIEWER_PROFILES, CUSTOM_REVIEWER],
+        help="Your selection determines which separate review file is opened.",
+        key="model_review_reviewer_choice",
+    )
     with st.sidebar.form("model_review_identity"):
-        first_name = st.text_input(
-            "First name",
-            value=DEFAULT_CODER_FIRST_NAME,
-            autocomplete="given-name",
-        )
-        coder_id = st.text_input(
-            "Reviewer ID",
-            value=DEFAULT_CODER_ID or first_name,
-            help="Use the same ID to resume the same review file later.",
-        )
+        if reviewer_choice == CUSTOM_REVIEWER:
+            first_name = st.text_input(
+                "First name",
+                value=DEFAULT_CODER_FIRST_NAME,
+                autocomplete="given-name",
+            )
+            coder_id = st.text_input(
+                "Reviewer ID",
+                value=DEFAULT_CODER_ID,
+                help="Use the same ID to resume the same review file later.",
+            )
+        elif reviewer_choice in REVIEWER_PROFILES:
+            first_name, coder_id = REVIEWER_PROFILES[reviewer_choice]
+            st.caption(f"Review file: `{coder_id}`")
+        else:
+            first_name, coder_id = "", ""
         start = st.form_submit_button("Start or resume", type="primary")
     if start:
-        if not first_name.strip():
+        if reviewer_choice == REVIEWER_PLACEHOLDER:
+            st.sidebar.error("Select your name before starting.")
+        elif not first_name.strip():
             st.sidebar.error("Enter your first name.")
         else:
             st.session_state.model_review_coder_first_name = first_name.strip()
@@ -658,6 +680,7 @@ if st.sidebar.button("Change reviewer", use_container_width=True):
     for key in [
         "model_review_coder_id",
         "model_review_coder_first_name",
+        "model_review_reviewer_choice",
         "model_review_session_id",
         "model_review_data",
         "model_review_data_signature",

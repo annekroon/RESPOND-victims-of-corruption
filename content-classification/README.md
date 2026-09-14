@@ -317,7 +317,9 @@ The data remain on the server. Closing the browser or losing the SSH connection
 does not erase saved work. Restart the app with the same paths and reviewer ID
 to resume. When both reviewer environment variables are set, the app opens that
 reviewer's file directly; leave them unset on a shared deployment so each
-reviewer must identify themselves. The reviewer CSV is written atomically after every saved article and
+reviewer selects Anne, Sofia, or Chris (or enters another reviewer identity).
+No reviewer is preselected, which prevents accidental cross-coder saves. The
+reviewer CSV is written atomically after every saved article and
 has a matching `*.model_review_manifest.json` containing hashes of the sample,
 all four model outputs, the codebook, and the saved review. The app refuses to
 resume if any of those upstream files changed. Use one active browser session
