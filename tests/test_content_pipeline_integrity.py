@@ -563,6 +563,7 @@ class ContentWorkflowStructureTests(unittest.TestCase):
             "Reviewer comment or rationale",
             "Download review backup",
             "adjudication data",
+            "DEFAULT_CODER_ID and DEFAULT_CODER_FIRST_NAME",
         ]:
             self.assertIn(text, app)
 

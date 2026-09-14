@@ -269,6 +269,13 @@ def authenticate() -> None:
 def establish_reviewer() -> None:
     if st.session_state.get("model_review_coder_id"):
         return
+    if DEFAULT_CODER_ID and DEFAULT_CODER_FIRST_NAME:
+        st.session_state.model_review_coder_first_name = (
+            DEFAULT_CODER_FIRST_NAME.strip()
+        )
+        st.session_state.model_review_coder_id = safe_coder_id(DEFAULT_CODER_ID)
+        st.session_state.model_review_session_id = uuid.uuid4().hex
+        return
     st.sidebar.subheader("Reviewer")
     with st.sidebar.form("model_review_identity"):
         first_name = st.text_input(

@@ -293,6 +293,8 @@ nohup env \
   CONTENT_MODEL_REVIEW_INPUT="$VAL/content_validation_final_n500_english.csv.gz" \
   CONTENT_MODEL_REVIEW_GPT_DIR="$VAL/gpt51_labels" \
   CONTENT_MODEL_REVIEW_OUTPUT_TEMPLATE="$VAL/model_review/content_validation_final_n500_english_model_review_{coder_id}.csv.gz" \
+  CONTENT_MODEL_REVIEW_CODER_ID="anne" \
+  CONTENT_MODEL_REVIEW_CODER_FIRST_NAME="Anne" \
   CONTENT_MODEL_REVIEW_PASSWORD="choose-a-strong-password" \
   streamlit run content-classification/tools/model_review_streamlit_app.py \
     --server.address 127.0.0.1 \
@@ -313,7 +315,9 @@ ssh -N -L 8503:127.0.0.1:8503 akroon@annecuda
 
 The data remain on the server. Closing the browser or losing the SSH connection
 does not erase saved work. Restart the app with the same paths and reviewer ID
-to resume. The reviewer CSV is written atomically after every saved article and
+to resume. When both reviewer environment variables are set, the app opens that
+reviewer's file directly; leave them unset on a shared deployment so each
+reviewer must identify themselves. The reviewer CSV is written atomically after every saved article and
 has a matching `*.model_review_manifest.json` containing hashes of the sample,
 all four model outputs, the codebook, and the saved review. The app refuses to
 resume if any of those upstream files changed. Use one active browser session
